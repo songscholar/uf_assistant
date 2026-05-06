@@ -73,11 +73,11 @@
 
 /* Rain theme overrides */
 .rain {
-  --color-bg-primary: #0f172a;
-  --color-bg-secondary: #1e293b;
-  --color-bg-card: rgba(30, 41, 59, 0.72);
-  --color-bg-hover: rgba(51, 65, 85, 0.5);
-  --color-bg-active: rgba(71, 85, 105, 0.5);
+  --color-bg-primary: transparent;
+  --color-bg-secondary: transparent;
+  --color-bg-card: transparent;
+  --color-bg-hover: rgba(255, 255, 255, 0.06);
+  --color-bg-active: rgba(255, 255, 255, 0.1);
 
   --color-text-primary: #eef2f7;
   --color-text-secondary: #b0c4de;
@@ -86,10 +86,10 @@
 
   --color-accent: #60a5fa;
   --color-accent-light: #93c5fd;
-  --color-accent-bg: rgba(96, 165, 250, 0.12);
+  --color-accent-bg: rgba(96, 165, 250, 0.15);
 
-  --color-border: #334155;
-  --color-border-light: #1e293b;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-light: rgba(255, 255, 255, 0.05);
   --color-border-focus: #60a5fa;
 
   --color-success: #4ade80;
@@ -297,17 +297,26 @@ button:focus-visible {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-.rain .glass,
-.rain [class*="bg-bg-card"] {
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
-  background: rgba(30, 41, 59, 0.72);
-  border-color: rgba(51, 65, 85, 0.6);
+.rain .glass {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
-.rain .glass {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(20px) saturate(180%);
+/* ===== Rain: all backgrounds transparent ===== */
+.rain aside {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-right-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.rain header {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
 }
 
 /* ===== Rain canvas ===== */
@@ -331,6 +340,33 @@ button:focus-visible {
   pointer-events: none;
   z-index: 1;
   background: radial-gradient(ellipse at center, transparent 0%, transparent 50%, rgba(0,0,0,0.25) 100%);
+}
+
+/* ===== Rain mode: everything transparent ===== */
+.rain body,
+.rain #root,
+.rain [class*="bg-bg-primary"],
+.rain [class*="bg-bg-secondary"],
+.rain [class*="bg-bg-card"] {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Rain: inputs, tables, markdown — all transparent */
+.rain input,
+.rain textarea,
+.rain select,
+.rain th,
+.rain thead tr,
+.rain .markdown-body pre,
+.rain .markdown-body code,
+.rain .markdown-body th,
+.rain .animate-shimmer {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* ===== Markdown ===== */

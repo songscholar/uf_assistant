@@ -117,7 +117,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
             onClick={handleNewChat}
             className={cn(
               'w-full flex items-center justify-center gap-2',
-              'h-10 rounded-xl bg-accent text-white font-medium',
+              'h-10 rounded-xl font-medium',
+              'bg-[rgba(96,165,250,0.15)] text-[#93c5fd]',
               'shadow-md hover:shadow-lg',
               'transition-all duration-200',
               'hover:bg-accent-light hover:-translate-y-[1px]',

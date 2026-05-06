@@ -7,8 +7,7 @@ export interface RainConfig {
   refract: number     // 折射率 0-2
   glass: number       // 玻璃透明度 0-1
   speed: number       // 雨滴速度 0-1
-  bgMode: 'default' | 'image' | 'video' | 'upload'
-  bgImage: string | null // uploaded image data URL
+  bgMode: 'default' | 'image' | 'video'
 }
 
 const DEFAULT_CONFIG: RainConfig = {
@@ -18,13 +17,14 @@ const DEFAULT_CONFIG: RainConfig = {
   glass: 0.0,
   speed: 0.2,
   bgMode: 'default',
-  bgImage: null,
 }
 
 interface RainStore {
   config: RainConfig
+  uploadFile: File | null  // 运行时持有的上传文件，不持久化
   isPanelOpen: boolean
   setConfig: (config: Partial<RainConfig>) => void
+  setUploadFile: (file: File | null) => void
   resetConfig: () => void
   openPanel: () => void
   closePanel: () => void
@@ -35,6 +35,7 @@ export const useRainStore = create<RainStore>()(
   persist(
     (set) => ({
       config: { ...DEFAULT_CONFIG },
+      uploadFile: null,
       isPanelOpen: false,
 
       setConfig: (partial) =>
@@ -42,7 +43,9 @@ export const useRainStore = create<RainStore>()(
           config: { ...state.config, ...partial },
         })),
 
-      resetConfig: () => set({ config: { ...DEFAULT_CONFIG } }),
+      setUploadFile: (file) => set({ uploadFile: file }),
+
+      resetConfig: () => set({ config: { ...DEFAULT_CONFIG }, uploadFile: null }),
 
       openPanel: () => set({ isPanelOpen: true }),
       closePanel: () => set({ isPanelOpen: false }),

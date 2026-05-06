@@ -131,7 +131,7 @@ export default function TradingPage() {
                     className={cn(
                       'flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200',
                       orderSide === side
-                        ? side === 'buy' ? 'bg-success text-white' : 'bg-danger text-white'
+                        ? side === 'buy' ? 'bg-[rgba(74,222,128,0.15)] text-[#4ade80]' : 'bg-[rgba(248,113,113,0.15)] text-[#f87171]'
                         : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover'
                     )}
                   >
@@ -165,8 +165,8 @@ export default function TradingPage() {
               className={cn(
                 'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 orderSide === 'buy'
-                  ? 'bg-success text-white hover:bg-success/90 hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
-                  : 'bg-danger text-white hover:bg-danger/90 hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
+                  ? 'bg-[rgba(74,222,128,0.15)] text-[#4ade80] hover:bg-[rgba(74,222,128,0.25)] hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
+                  : 'bg-[rgba(248,113,113,0.15)] text-[#f87171] hover:bg-[rgba(248,113,113,0.25)] hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
               )}
             >
               确认{orderSide === 'buy' ? '买入' : '卖出'}

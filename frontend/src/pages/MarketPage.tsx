@@ -1,5 +1,14 @@
-import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, Activity, Flame, ArrowUpRight } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Flame,
+  ArrowUpRight,
+  RefreshCw,
+  AlertTriangle,
+  Clock,
+} from 'lucide-react'
 import { marketApi } from '@/lib/api'
 import type { MarketIndex, SectorData } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
@@ -46,45 +55,103 @@ function SectorRow({ sector, rank }: { sector: SectorData; rank: number }) {
   )
 }
 
+function DataSourceBadge({
+  source,
+  timestamp,
+  isLoading,
+}: {
+  source: 'live' | 'demo' | 'unknown'
+  timestamp: string
+  isLoading: boolean
+}) {
+  const timeStr = timestamp
+    ? new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '--:--:--'
+
+  if (isLoading) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-text-tertiary">
+        <RefreshCw className="w-3 h-3 animate-spin" />
+        更新中...
+      </span>
+    )
+  }
+
+  if (source === 'demo') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-amber-500">
+        <AlertTriangle className="w-3 h-3" />
+        模拟数据
+        <span className="text-text-tertiary ml-1">{timeStr}</span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-success">
+      <Clock className="w-3 h-3" />
+      实时 {timeStr}
+    </span>
+  )
+}
+
+const REFRESH_INTERVAL = 30000 // 30 秒
+
 export default function MarketPage() {
   const [indices, setIndices] = useState<MarketIndex[]>([])
   const [sectors, setSectors] = useState<SectorData[]>([])
+  const [northbound, setNorthbound] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [dataSource, setDataSource] = useState<'live' | 'demo' | 'unknown'>('unknown')
+  const [lastUpdated, setLastUpdated] = useState('')
+  const [error, setError] = useState('')
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [indicesRes, sectorsRes] = await Promise.all([
-          marketApi.getIndices(),
-          marketApi.getSectors(),
-        ])
-        setIndices(indicesRes.data || [])
-        setSectors(sectorsRes.data || [])
-      } catch (err) {
-        setIndices([
-          { name: '上证指数', symbol: 'SH000001', value: 3456.78, change: 12.45, change_percent: 0.36 },
-          { name: '深证成指', symbol: 'SZ399001', value: 11234.56, change: -15.32, change_percent: -0.14 },
-          { name: '创业板指', symbol: 'SZ399006', value: 2345.67, change: 28.9, change_percent: 1.23 },
-          { name: '科创50', symbol: 'SH000688', value: 1234.56, change: -8.23, change_percent: -0.67 },
-        ])
-        setSectors([
-          { name: '半导体', change_percent: 3.45 },
-          { name: '新能源', change_percent: 2.87 },
-          { name: '人工智能', change_percent: 2.34 },
-          { name: '医药生物', change_percent: 1.89 },
-          { name: '消费电子', change_percent: 1.56 },
-          { name: '汽车整车', change_percent: -0.78 },
-          { name: '银行', change_percent: -0.45 },
-          { name: '房地产', change_percent: -1.23 },
-        ])
-      } finally {
-        setLoading(false)
-      }
+  const fetchData = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true)
+    else setRefreshing(true)
+    setError('')
+
+    try {
+      const [indicesRes, sectorsRes, northboundRes] = await Promise.all([
+        marketApi.getIndices(),
+        marketApi.getSectors(),
+        marketApi.getNorthbound().catch(() => ({ data: null })),
+      ])
+
+      const idxData = indicesRes.data || {}
+      const secData = sectorsRes.data || {}
+
+      setIndices(idxData.indices || [])
+      setSectors(secData.sectors || [])
+      setNorthbound(northboundRes.data)
+
+      // 只要任一接口是 demo，就标记为 demo
+      const isDemo = idxData.source === 'demo' || secData.source === 'demo'
+      setDataSource(isDemo ? 'demo' : 'live')
+      setLastUpdated(idxData.timestamp || new Date().toISOString())
+    } catch (err: any) {
+      setError(err.message || '获取数据失败')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
     }
-    fetchData()
   }, [])
 
-  if (loading) {
+  useEffect(() => {
+    fetchData()
+
+    intervalRef.current = setInterval(() => {
+      fetchData(true)
+    }, REFRESH_INTERVAL)
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [fetchData])
+
+  if (loading && !refreshing) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="animate-shimmer w-8 h-8 rounded-full" />
@@ -94,15 +161,52 @@ export default function MarketPage() {
 
   return (
     <div className="h-full overflow-y-auto p-4">
+      {/* Header with refresh */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-text-primary">市场行情</h2>
+          <DataSourceBadge source={dataSource} timestamp={lastUpdated} isLoading={refreshing} />
+        </div>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                     bg-bg-hover text-text-secondary hover:bg-bg-active hover:text-text-primary
+                     transition-smooth disabled:opacity-50"
+        >
+          <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
+          刷新
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-danger/10 border border-danger/20 text-danger text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          {error}
+        </div>
+      )}
+
+      {dataSource === 'demo' && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 text-sm flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            当前展示的是模拟数据，非真实市场行情。数据源服务暂时不可用（可能是网络问题或非交易时间）。
+            系统每 30 秒会自动重试获取真实数据。
+          </div>
+        </div>
+      )}
+
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
           <Activity className="w-5 h-5 text-accent" />
           大盘指数
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {indices.map((index) => (
-            <IndexCard key={index.symbol} index={index} />
-          ))}
+          {indices.length > 0 ? (
+            indices.map((index) => <IndexCard key={index.symbol} index={index} />)
+          ) : (
+            <div className="col-span-full text-center py-8 text-text-tertiary text-sm">暂无指数数据</div>
+          )}
         </div>
       </section>
 
@@ -113,9 +217,13 @@ export default function MarketPage() {
             板块热点
           </h2>
           <div className="divide-y divide-border-light">
-            {sectors.map((sector, i) => (
-              <SectorRow key={sector.name} sector={sector} rank={i + 1} />
-            ))}
+            {sectors.length > 0 ? (
+              sectors.map((sector, i) => (
+                <SectorRow key={sector.name} sector={sector} rank={i + 1} />
+              ))
+            ) : (
+              <div className="text-center py-8 text-text-tertiary text-sm">暂无板块数据</div>
+            )}
           </div>
         </section>
 
@@ -124,21 +232,29 @@ export default function MarketPage() {
             <ArrowUpRight className="w-5 h-5 text-accent" />
             北向资金
           </h2>
-          <div className="text-center py-8">
-            <div className="text-3xl font-bold text-success mb-2">+28.45 亿</div>
-            <div className="text-sm text-text-secondary">今日净流入</div>
-            <div className="mt-4 flex items-center justify-center gap-4 text-sm">
-              <div>
-                <div className="text-text-tertiary">沪股通</div>
-                <div className="font-medium text-success">+15.23亿</div>
-              </div>
-              <div className="w-px h-8 bg-border" />
-              <div>
-                <div className="text-text-tertiary">深股通</div>
-                <div className="font-medium text-success">+13.22亿</div>
-              </div>
+          {northbound?.flow?.length > 0 ? (
+            <div className="divide-y divide-border-light">
+              {northbound.flow.map((item: any, i: number) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-bg-hover transition-all duration-200"
+                >
+                  <span className="text-sm text-text-secondary">{item.date}</span>
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      item.net_inflow >= 0 ? 'text-success' : 'text-danger'
+                    )}
+                  >
+                    {item.net_inflow >= 0 ? '+' : ''}
+                    {item.net_inflow} 亿
+                  </span>
+                </div>
+              ))}
             </div>
-          </div>
+          ) : (
+            <div className="text-center py-8 text-text-tertiary text-sm">暂无北向资金数据</div>
+          )}
         </section>
       </div>
     </div>

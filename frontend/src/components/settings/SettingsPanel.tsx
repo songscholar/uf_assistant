@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 
 export default function SettingsPanel() {
   const { theme } = useThemeStore()
-  const { config, isPanelOpen, closePanel, setConfig, resetConfig } = useRainStore()
+  const { config, uploadFile, isPanelOpen, closePanel, setConfig, setUploadFile, resetConfig } = useRainStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isRain = theme === 'rain'
 
@@ -34,14 +34,10 @@ export default function SettingsPanel() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      setConfig({
-        bgImage: ev.target?.result as string,
-        bgMode: file.type.startsWith('video/') ? 'video' : 'image',
-      })
-    }
-    reader.readAsDataURL(file)
+    setUploadFile(file)
+    setConfig({
+      bgMode: file.type.startsWith('video/') ? 'video' : 'image',
+    })
   }
 
   if (!isPanelOpen) return null
@@ -89,7 +85,7 @@ export default function SettingsPanel() {
           <h3 className="text-base font-semibold text-text-primary tracking-tight">设置</h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={resetConfig}
+              onClick={() => { resetConfig(); setUploadFile(null) }}
               className="p-2 rounded-xl hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth"
               title="重置默认值"
             >
@@ -174,7 +170,7 @@ export default function SettingsPanel() {
                 <div className="text-[13px] font-medium text-text-secondary mb-3">背景</div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setConfig({ bgMode: 'default', bgImage: null })}
+                    onClick={() => { setConfig({ bgMode: 'default' }); setUploadFile(null) }}
                     className={cn(
                       'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-smooth',
                       config.bgMode === 'default'
@@ -199,16 +195,27 @@ export default function SettingsPanel() {
                   </button>
                 </div>
 
-                {config.bgImage && (
+                {uploadFile && !uploadFile.type.startsWith('video/') && (
                   <div className="mt-3 relative rounded-xl overflow-hidden border border-border">
                     <img
-                      src={config.bgImage}
+                      src={URL.createObjectURL(uploadFile)}
                       alt="Background preview"
                       className="w-full h-24 object-cover"
                     />
                     <button
-                      onClick={() => setConfig({ bgMode: 'default', bgImage: null })}
+                      onClick={() => { setConfig({ bgMode: 'default' }); setUploadFile(null) }}
                       className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-smooth"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+                {uploadFile && uploadFile.type.startsWith('video/') && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
+                    <span className="truncate">{uploadFile.name}</span>
+                    <button
+                      onClick={() => { setConfig({ bgMode: 'default' }); setUploadFile(null) }}
+                      className="p-1 rounded-lg hover:bg-bg-hover text-text-tertiary"
                     >
                       <X className="w-3 h-3" />
                     </button>
