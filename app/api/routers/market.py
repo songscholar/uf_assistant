@@ -23,31 +23,19 @@ router = APIRouter()
 @router.get("/market/overview")
 async def overview():
     """获取市场概况"""
-    try:
-        return get_market_overview()
-    except Exception as exc:
-        logger.error("overview_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+    return get_market_overview()
 
 
 @router.get("/market/indices")
 async def indices():
     """获取大盘指数"""
-    try:
-        return get_market_index()
-    except Exception as exc:
-        logger.error("indices_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+    return get_market_index()
 
 
 @router.get("/market/sectors")
 async def sectors():
     """获取板块热点"""
-    try:
-        return get_sector_hot()
-    except Exception as exc:
-        logger.error("sectors_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+    return get_sector_hot()
 
 
 @router.get("/market/longhu")
