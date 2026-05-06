@@ -12,10 +12,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
-  MoreHorizontal,
+  CloudRain,
 } from 'lucide-react'
 import { useChatStore } from '@/stores/chatStore'
-import { useThemeStore } from '@/stores/themeStore'
+import { useThemeStore, getThemeLabel } from '@/stores/themeStore'
 import { APP_NAME, NAV_ITEMS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import type { Conversation } from '@/types'
@@ -222,9 +222,14 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               'w-full flex items-center gap-3 px-3 h-9 rounded-lg',
               'text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-smooth'
             )}
+            title="点击切换主题"
           >
-            <Settings className="w-4 h-4 shrink-0" />
-            {!collapsed && <span>{theme === 'light' ? '浅色模式' : '深色模式'}</span>}
+            {theme === 'rain' ? (
+              <CloudRain className="w-4 h-4 shrink-0 text-accent" />
+            ) : (
+              <Settings className="w-4 h-4 shrink-0" />
+            )}
+            {!collapsed && <span>{getThemeLabel(theme)}</span>}
           </button>
           <button
             className={cn(

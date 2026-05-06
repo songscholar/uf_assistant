@@ -6,6 +6,7 @@ import StockPage from '@/pages/StockPage'
 import StrategyPage from '@/pages/StrategyPage'
 import TradingPage from '@/pages/TradingPage'
 import CryptoPage from '@/pages/CryptoPage'
+import RainCanvas from '@/components/effects/RainCanvas'
 import { useThemeStore } from '@/stores/themeStore'
 import { useEffect } from 'react'
 
@@ -13,27 +14,43 @@ function ThemeInitializer() {
   const { theme } = useThemeStore()
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
+    const html = document.documentElement
+    html.classList.remove('dark', 'rain')
+
+    if (theme === 'dark') {
+      html.classList.add('dark')
+    } else if (theme === 'rain') {
+      html.classList.add('rain')
+    }
+
+    html.setAttribute('data-theme', theme)
   }, [theme])
 
   return null
 }
 
 export default function App() {
+  const { theme } = useThemeStore()
+  const isRain = theme === 'rain'
+
   return (
     <BrowserRouter>
       <ThemeInitializer />
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/market" element={<MarketPage />} />
-          <Route path="/stock/:symbol" element={<StockPage />} />
-          <Route path="/strategy" element={<StrategyPage />} />
-          <Route path="/trading" element={<TradingPage />} />
-          <Route path="/crypto" element={<CryptoPage />} />
-          <Route path="/" element={<Navigate to="/chat" replace />} />
-        </Route>
-      </Routes>
+      <RainCanvas enabled={isRain} intensity={0.5} speed={1} />
+      {isRain && <div className="rain-vignette" />}
+      <div className="relative z-10">
+        <Routes>
+          <Route element={<MainLayout />}>
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/market" element={<MarketPage />} />
+            <Route path="/stock/:symbol" element={<StockPage />} />
+            <Route path="/strategy" element={<StrategyPage />} />
+            <Route path="/trading" element={<TradingPage />} />
+            <Route path="/crypto" element={<CryptoPage />} />
+            <Route path="/" element={<Navigate to="/chat" replace />} />
+          </Route>
+        </Routes>
+      </div>
     </BrowserRouter>
   )
 }

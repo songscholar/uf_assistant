@@ -71,6 +71,57 @@
   --color-info: #60a5fa;
 }
 
+/* Rain theme overrides */
+.rain {
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #1e293b;
+  --color-bg-card: rgba(30, 41, 59, 0.72);
+  --color-bg-hover: rgba(51, 65, 85, 0.5);
+  --color-bg-active: rgba(71, 85, 105, 0.5);
+
+  --color-text-primary: #eef2f7;
+  --color-text-secondary: #b0c4de;
+  --color-text-tertiary: #7a94ad;
+  --color-text-inverse: #0f172a;
+
+  --color-accent: #60a5fa;
+  --color-accent-light: #93c5fd;
+  --color-accent-bg: rgba(96, 165, 250, 0.12);
+
+  --color-border: #334155;
+  --color-border-light: #1e293b;
+  --color-border-focus: #60a5fa;
+
+  --color-success: #4ade80;
+  --color-danger: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+}
+
+/* Rain theme text readability enhancements */
+.rain .markdown-body,
+.rain p,
+.rain h1,
+.rain h2,
+.rain h3,
+.rain span,
+.rain div {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.rain .bg-bg-card,
+.rain [class*="bg-bg-card"] {
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(51, 65, 85, 0.6);
+}
+
+.rain .glass {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
 /* Base styles */
 html {
   font-family: var(--font-sans);
@@ -257,4 +308,27 @@ body {
 
 .transition-smooth {
   transition: all 0.2s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+
+/* Rain canvas container */
+.rain-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Vignette for rain theme readability */
+.rain-vignette {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(ellipse at center, transparent 0%, transparent 50%, rgba(0,0,0,0.25) 100%);
 }
