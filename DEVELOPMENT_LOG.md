@@ -229,3 +229,89 @@ feat(phase-3): 工具层 — 股票/虚拟货币/市场数据/文件解析/交�
 - 工具统一注册 ALL_TOOLS 便于 Agent 绑定
 - 编写工具层单元测试（92个测试用例全部通过）
 ```
+
+---
+
+## 2026-05-06 — 第四阶段：业务功能层
+
+### 变更摘要
+
+实现交易策略模块（基类 + 内置策略 + 注册表 + 自定义策略）、选股服务、市场分析服务。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/strategies/base.py` | 策略基类：BaseStrategy 抽象类 + Signal/StrategyResult/StrategyParameter 数据类 |
+| `app/strategies/builtin/ma_crossover.py` | 均线交叉策略：短期均线上穿/下穿长期均线产生买卖信号 |
+| `app/strategies/builtin/macd.py` | MACD 策略：DIF/DEA 金叉死叉信号 |
+| `app/strategies/builtin/rsi.py` | RSI 超卖策略：RSI<30 买入、RSI>70 卖出 |
+| `app/strategies/builtin/bollinger.py` | 布林带突破策略：价格突破上下轨产生信号 |
+| `app/strategies/registry.py` | 策略注册表：内置策略管理、名称映射、实例化工厂 |
+| `app/strategies/custom.py` | 自定义策略管理器：LLM 生成策略代码、安全编译、代码检查 |
+| `app/services/stock_picker.py` | 选股服务：按策略批量分析股票、快速筛选 |
+| `app/services/market_analyzer.py` | 市场分析服务：生成日报、板块轮动分析、风险等级评估 |
+| `app/strategies/__init__.py` | 策略模块统一导出 |
+| `app/services/__init__.py` | 服务层统一导出 |
+| `tests/test_strategies.py` | 策略模块测试（基础组件 3 个 + 内置策略 7 个 + 注册表 5 个 = 15 个用例） |
+| `tests/test_services.py` | 服务层测试（选股 2 个 + 市场分析 4 个 = 6 个用例） |
+
+### 修改文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `app/services/stock_picker.py` | 模块级别导入 akshare，便于测试 mock |
+
+### 技术决策
+
+1. **策略架构**：
+   - 抽象基类 `BaseStrategy`：定义统一接口（name, description, parameters, evaluate）
+   - 数据类：`Signal`（交易信号）、`StrategyResult`（分析结果）、`StrategyParameter`（参数定义）
+   - 内置策略：均线交叉、MACD、RSI、布林带，均使用 pandas 计算技术指标
+
+2. **策略注册表**：
+   - 单例模式管理所有策略
+   - 支持 key 和中文名称映射（如 "均线交叉" → "ma_crossover"）
+   - 可注册自定义策略
+
+3. **自定义策略**：
+   - 使用 LLM 将自然语言描述转换为 Python 策略代码
+   - 安全编译：禁止危险操作（import os/eval/exec/open/subprocess）
+   - 隔离命名空间执行
+
+4. **选股服务**：
+   - `pick_by_strategy`：对股票列表批量执行策略，筛选信号
+   - `quick_screen`：基于价格/涨跌幅/成交量等基本条件快速筛选
+   - 排除 ST/退市股票
+
+5. **市场分析**：
+   - 整合指数、板块、涨跌家数生成日报
+   - 风险等级 1-5 级评估
+   - 板块轮动分析
+
+### 验证结果
+
+- ✅ 所有单元测试通过：`pytest -q`（117 个测试用例，新增 25 个）
+- ✅ 策略基类：属性定义、参数构建、数据验证 正常
+- ✅ 内置策略：均线/MACD/RSI/布林带 全部能产生信号
+- ✅ 策略注册表：列表/创建/名称映射/单例 正常
+- ✅ 选股服务：快速筛选 正常
+- ✅ 市场分析：风险计算/日报生成 正常
+
+### 遇到的问题
+
+1. **akshare mock 困难**：`stock_picker.py` 原在函数内导入 akshare，测试无法 patch。解决方案：改为模块级别导入。
+
+2. **Pandas DataFrame 过滤 mock**：`quick_screen` 测试中 DataFrame 过滤操作（如 `df[df["最新价"] >= 5]`）对 MagicMock 不支持比较。解决方案：使用真实 pandas DataFrame 作为 mock 返回值。
+
+### Git 提交
+
+```
+feat(phase-4): 业务功能层 — 交易策略/选股/自定义策略/市场分析
+
+- 实现策略基类和4个内置策略（均线交叉/MACD/RSI/布林带）
+- 实现策略注册表和自定义策略接口（LLM生成+安全编译）
+- 实现选股服务（策略选股+快速筛选）
+- 实现市场分析服务（日报/板块轮动/风险评估）
+- 编写策略和服务层单元测试（117个测试用例全部通过）
+```
