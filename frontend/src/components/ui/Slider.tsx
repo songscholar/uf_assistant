@@ -22,38 +22,42 @@ export default function Slider({
   const percentage = ((value - min) / (max - min)) * 100
 
   return (
-    <div className="mb-4">
+    <div className="mb-5">
       <div className="flex items-center justify-between mb-2.5">
         <span className="text-[13px] font-medium text-text-secondary">{label}</span>
-        <span className="text-[12px] font-mono font-medium text-text-tertiary bg-bg-hover px-2 py-0.5 rounded-md min-w-[52px] text-right">
+        <span className="text-[12px] font-mono font-medium text-text-tertiary bg-bg-hover/80 px-2.5 py-0.5 rounded-md min-w-[52px] text-right">
           {valueFormatter(value)}
         </span>
       </div>
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 h-[5px]">
-          {/* Track background */}
-          <div className="absolute inset-0 rounded-full bg-border" />
+      <div className="relative h-5 flex items-center">
+        {/* Track background */}
+        <div className="absolute left-0 right-0 h-[5px] rounded-full bg-border overflow-hidden">
           {/* Track fill */}
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-accent transition-all duration-75"
+            className="h-full rounded-full bg-accent transition-all duration-75"
             style={{ width: `${percentage}%` }}
           />
-          {/* Native range input (invisible but functional) */}
-          <input
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={value}
-            onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          />
-          {/* Custom thumb */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-[18px] h-[18px] rounded-full bg-accent border-[3px] border-bg-card shadow-md pointer-events-none transition-all duration-75 hover:scale-110"
-            style={{ left: `calc(${percentage}% - 9px)` }}
-          />
         </div>
+        {/* Native range input */}
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        />
+        {/* Custom thumb - follows percentage */}
+        <div
+          className={cn(
+            'absolute w-[18px] h-[18px] rounded-full pointer-events-none',
+            'bg-accent border-[3px] border-bg-card shadow-md',
+            'transition-transform duration-150',
+            'hover:scale-125'
+          )}
+          style={{ left: `calc(${percentage}% - 9px)` }}
+        />
       </div>
     </div>
   )

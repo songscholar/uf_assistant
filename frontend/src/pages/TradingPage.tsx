@@ -9,8 +9,6 @@ export default function TradingPage() {
   const [positions, setPositions] = useState<Position[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [activeTab, setActiveTab] = useState<'order' | 'positions' | 'orders'>('order')
-
-  // Order form state
   const [orderSymbol, setOrderSymbol] = useState('')
   const [orderSide, setOrderSide] = useState<'buy' | 'sell'>('buy')
   const [orderPrice, setOrderPrice] = useState('')
@@ -28,7 +26,6 @@ export default function TradingPage() {
         setPositions(positionsRes.data || [])
         setOrders(ordersRes.data || [])
       } catch (err) {
-        // Demo data
         setPortfolio({
           total_assets: 1000000,
           available_cash: 653000,
@@ -70,31 +67,25 @@ export default function TradingPage() {
 
   return (
     <div className="h-full overflow-y-auto p-4">
-      {/* Portfolio Overview */}
       {portfolio && (
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <div className="bg-bg-card border border-border rounded-xl p-4">
-            <div className="text-xs text-text-tertiary mb-1">总资产</div>
-            <div className="text-xl font-bold text-text-primary">¥{formatNumber(portfolio.total_assets)}</div>
-          </div>
-          <div className="bg-bg-card border border-border rounded-xl p-4">
-            <div className="text-xs text-text-tertiary mb-1">可用资金</div>
-            <div className="text-xl font-bold text-text-primary">¥{formatNumber(portfolio.available_cash)}</div>
-          </div>
-          <div className="bg-bg-card border border-border rounded-xl p-4">
-            <div className="text-xs text-text-tertiary mb-1">持仓市值</div>
-            <div className="text-xl font-bold text-text-primary">¥{formatNumber(portfolio.position_value)}</div>
-          </div>
-          <div className="bg-bg-card border border-border rounded-xl p-4">
-            <div className="text-xs text-text-tertiary mb-1">累计收益</div>
-            <div className={cn('text-xl font-bold', portfolio.total_pnl >= 0 ? 'text-success' : 'text-danger')}>
-              {portfolio.total_pnl >= 0 ? '+' : ''}{formatPercent(portfolio.total_pnl_percent)}
+          {[
+            { label: '总资产', value: `¥${formatNumber(portfolio.total_assets)}` },
+            { label: '可用资金', value: `¥${formatNumber(portfolio.available_cash)}` },
+            { label: '持仓市值', value: `¥${formatNumber(portfolio.position_value)}` },
+            { label: '累计收益', value: `${portfolio.total_pnl >= 0 ? '+' : ''}${formatPercent(portfolio.total_pnl_percent)}`, color: portfolio.total_pnl >= 0 ? 'text-success' : 'text-danger' },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="bg-bg-card border border-border rounded-xl p-4 card-hover cursor-pointer"
+            >
+              <div className="text-xs text-text-tertiary mb-1">{item.label}</div>
+              <div className={cn('text-xl font-bold', item.color || 'text-text-primary')}>{item.value}</div>
             </div>
-          </div>
+          ))}
         </section>
       )}
 
-      {/* Tabs */}
       <div className="flex items-center gap-1 mb-4 border-b border-border">
         {[
           { key: 'order' as const, label: '下单', icon: ArrowUpDown },
@@ -105,7 +96,7 @@ export default function TradingPage() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-smooth',
+              'flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-all duration-200',
               activeTab === tab.key
                 ? 'border-accent text-accent'
                 : 'border-transparent text-text-secondary hover:text-text-primary'
@@ -117,9 +108,8 @@ export default function TradingPage() {
         ))}
       </div>
 
-      {/* Order Form */}
       {activeTab === 'order' && (
-        <div className="bg-bg-card border border-border rounded-xl p-4 max-w-md">
+        <div className="bg-bg-card border border-border rounded-xl p-4 max-w-md card-hover">
           <div className="space-y-4">
             <div>
               <label className="text-xs text-text-tertiary mb-1 block">股票代码</label>
@@ -128,34 +118,26 @@ export default function TradingPage() {
                 value={orderSymbol}
                 onChange={(e) => setOrderSymbol(e.target.value)}
                 placeholder="如: 600519"
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm focus:outline-none focus:border-accent"
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
               />
             </div>
             <div>
               <label className="text-xs text-text-tertiary mb-1 block">买卖方向</label>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setOrderSide('buy')}
-                  className={cn(
-                    'flex-1 py-2 rounded-lg text-sm font-medium transition-smooth',
-                    orderSide === 'buy'
-                      ? 'bg-success text-white'
-                      : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover'
-                  )}
-                >
-                  买入
-                </button>
-                <button
-                  onClick={() => setOrderSide('sell')}
-                  className={cn(
-                    'flex-1 py-2 rounded-lg text-sm font-medium transition-smooth',
-                    orderSide === 'sell'
-                      ? 'bg-danger text-white'
-                      : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover'
-                  )}
-                >
-                  卖出
-                </button>
+                {(['buy', 'sell'] as const).map((side) => (
+                  <button
+                    key={side}
+                    onClick={() => setOrderSide(side)}
+                    className={cn(
+                      'flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                      orderSide === side
+                        ? side === 'buy' ? 'bg-success text-white' : 'bg-danger text-white'
+                        : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover'
+                    )}
+                  >
+                    {side === 'buy' ? '买入' : '卖出'}
+                  </button>
+                ))}
               </div>
             </div>
             <div>
@@ -165,7 +147,7 @@ export default function TradingPage() {
                 value={orderPrice}
                 onChange={(e) => setOrderPrice(e.target.value)}
                 placeholder="市价"
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm focus:outline-none focus:border-accent"
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
               />
             </div>
             <div>
@@ -175,16 +157,16 @@ export default function TradingPage() {
                 value={orderQuantity}
                 onChange={(e) => setOrderQuantity(e.target.value)}
                 placeholder="100"
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm focus:outline-none focus:border-accent"
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
               />
             </div>
             <button
               onClick={handleSubmitOrder}
               className={cn(
-                'w-full py-2.5 rounded-lg text-sm font-medium transition-smooth',
+                'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 orderSide === 'buy'
-                  ? 'bg-success text-white hover:bg-success/90'
-                  : 'bg-danger text-white hover:bg-danger/90'
+                  ? 'bg-success text-white hover:bg-success/90 hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
+                  : 'bg-danger text-white hover:bg-danger/90 hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
               )}
             >
               确认{orderSide === 'buy' ? '买入' : '卖出'}
@@ -193,24 +175,22 @@ export default function TradingPage() {
         </div>
       )}
 
-      {/* Positions Table */}
       {activeTab === 'positions' && (
         <div className="bg-bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-bg-secondary text-text-secondary text-xs">
-                <th className="text-left px-4 py-2">代码</th>
-                <th className="text-left px-4 py-2">名称</th>
-                <th className="text-right px-4 py-2">数量</th>
-                <th className="text-right px-4 py-2">成本</th>
-                <th className="text-right px-4 py-2">现价</th>
-                <th className="text-right px-4 py-2">市值</th>
-                <th className="text-right px-4 py-2">盈亏</th>
+                {['代码', '名称', '数量', '成本', '现价', '市值', '盈亏'].map((h) => (
+                  <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border-light">
               {positions.map((pos) => (
-                <tr key={pos.symbol} className="hover:bg-bg-hover transition-smooth">
+                <tr
+                  key={pos.symbol}
+                  className="hover:bg-bg-hover transition-colors duration-150 cursor-pointer"
+                >
                   <td className="px-4 py-3 text-text-primary font-medium">{pos.symbol}</td>
                   <td className="px-4 py-3 text-text-secondary">{pos.name}</td>
                   <td className="px-4 py-3 text-right text-text-primary">{pos.quantity}</td>
@@ -227,26 +207,23 @@ export default function TradingPage() {
         </div>
       )}
 
-      {/* Orders Table */}
       {activeTab === 'orders' && (
         <div className="bg-bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-bg-secondary text-text-secondary text-xs">
-                <th className="text-left px-4 py-2">时间</th>
-                <th className="text-left px-4 py-2">代码</th>
-                <th className="text-left px-4 py-2">方向</th>
-                <th className="text-right px-4 py-2">价格</th>
-                <th className="text-right px-4 py-2">数量</th>
-                <th className="text-left px-4 py-2">状态</th>
+                {['时间', '代码', '方向', '价格', '数量', '状态'].map((h) => (
+                  <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border-light">
               {orders.map((order) => (
-                <tr key={order.order_id} className="hover:bg-bg-hover transition-smooth">
-                  <td className="px-4 py-3 text-text-secondary text-xs">
-                    {new Date(order.created_at).toLocaleString('zh-CN')}
-                  </td>
+                <tr
+                  key={order.order_id}
+                  className="hover:bg-bg-hover transition-colors duration-150"
+                >
+                  <td className="px-4 py-3 text-text-secondary text-xs">{new Date(order.created_at).toLocaleString('zh-CN')}</td>
                   <td className="px-4 py-3 text-text-primary font-medium">{order.symbol}</td>
                   <td className="px-4 py-3">
                     <span className={cn(
@@ -256,9 +233,7 @@ export default function TradingPage() {
                       {order.side === 'buy' ? '买入' : '卖出'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-text-primary">
-                    {order.price ? formatNumber(order.price) : '市价'}
-                  </td>
+                  <td className="px-4 py-3 text-right text-text-primary">{order.price ? formatNumber(order.price) : '市价'}</td>
                   <td className="px-4 py-3 text-right text-text-primary">{order.quantity}</td>
                   <td className="px-4 py-3">
                     <span className="text-xs text-text-secondary">{order.status}</span>

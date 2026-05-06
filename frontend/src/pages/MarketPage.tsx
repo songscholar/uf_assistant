@@ -7,7 +7,12 @@ import { cn, formatNumber, formatPercent } from '@/lib/utils'
 function IndexCard({ index }: { index: MarketIndex }) {
   const isUp = index.change >= 0
   return (
-    <div className="bg-bg-card border border-border rounded-xl p-4 hover:shadow-md transition-smooth">
+    <div
+      className={cn(
+        'bg-bg-card border border-border rounded-xl p-4',
+        'card-hover cursor-pointer'
+      )}
+    >
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium text-text-secondary">{index.name}</span>
         {isUp ? (
@@ -29,9 +34,9 @@ function IndexCard({ index }: { index: MarketIndex }) {
 function SectorRow({ sector, rank }: { sector: SectorData; rank: number }) {
   const isUp = sector.change_percent >= 0
   return (
-    <div className="flex items-center justify-between py-2.5 px-3 hover:bg-bg-hover rounded-lg transition-smooth">
+    <div className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-bg-hover transition-all duration-200 cursor-pointer">
       <div className="flex items-center gap-3">
-        <span className="w-5 text-xs text-text-tertiary text-center">{rank}</span>
+        <span className="w-5 text-xs text-text-tertiary text-center font-mono">{rank}</span>
         <span className="text-sm text-text-primary">{sector.name}</span>
       </div>
       <span className={cn('text-sm font-medium', isUp ? 'text-success' : 'text-danger')}>
@@ -56,8 +61,6 @@ export default function MarketPage() {
         setIndices(indicesRes.data || [])
         setSectors(sectorsRes.data || [])
       } catch (err) {
-        console.error('Failed to fetch market data:', err)
-        // Fallback demo data
         setIndices([
           { name: '上证指数', symbol: 'SH000001', value: 3456.78, change: 12.45, change_percent: 0.36 },
           { name: '深证成指', symbol: 'SZ399001', value: 11234.56, change: -15.32, change_percent: -0.14 },
@@ -78,7 +81,6 @@ export default function MarketPage() {
         setLoading(false)
       }
     }
-
     fetchData()
   }, [])
 
@@ -92,7 +94,6 @@ export default function MarketPage() {
 
   return (
     <div className="h-full overflow-y-auto p-4">
-      {/* Indices */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
           <Activity className="w-5 h-5 text-accent" />
@@ -106,8 +107,7 @@ export default function MarketPage() {
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Sectors */}
-        <section className="bg-bg-card border border-border rounded-xl p-4">
+        <section className="bg-bg-card border border-border rounded-xl p-4 card-hover">
           <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
             <Flame className="w-5 h-5 text-accent" />
             板块热点
@@ -119,8 +119,7 @@ export default function MarketPage() {
           </div>
         </section>
 
-        {/* Northbound */}
-        <section className="bg-bg-card border border-border rounded-xl p-4">
+        <section className="bg-bg-card border border-border rounded-xl p-4 card-hover">
           <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
             <ArrowUpRight className="w-5 h-5 text-accent" />
             北向资金

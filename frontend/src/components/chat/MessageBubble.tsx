@@ -12,6 +12,8 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message, onRetry }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
+  const [liked, setLiked] = useState<'up' | 'down' | null>(null)
+  const [showActions, setShowActions] = useState(false)
   const isUser = message.role === 'user'
 
   const handleCopy = () => {
@@ -23,14 +25,17 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
   return (
     <div
       className={cn(
-        'flex gap-3 px-4 py-4 animate-fade-in-up',
+        'flex gap-3 px-4 py-4 animate-fade-in-up group',
         isUser ? 'flex-row-reverse' : 'flex-row'
       )}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
     >
       {/* Avatar */}
       <div
         className={cn(
           'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
+          'transition-transform duration-200',
           isUser ? 'bg-accent' : 'bg-bg-secondary border border-border'
         )}
       >
@@ -47,9 +52,10 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
         <div
           className={cn(
             'px-4 py-2.5 text-[15px] leading-relaxed',
+            'transition-shadow duration-200',
             isUser
               ? 'bg-accent text-white rounded-2xl rounded-tr-sm'
-              : 'bg-bg-card border border-border rounded-2xl rounded-tl-sm shadow-sm'
+              : 'bg-bg-card border border-border rounded-2xl rounded-tl-sm shadow-sm hover:shadow-md'
           )}
         >
           {isUser ? (
@@ -57,7 +63,7 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
           ) : (
             <div className="markdown-body text-text-primary">
               {message.status === 'streaming' && !message.content ? (
-                <div className="flex items-center gap-1 py-2">
+                <div className="flex items-center gap-1.5 py-2">
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" style={{ animationDelay: '0ms' }} />
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" style={{ animationDelay: '200ms' }} />
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" style={{ animationDelay: '400ms' }} />
@@ -73,34 +79,37 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
 
         {/* Actions */}
         {!isUser && message.status === 'complete' && (
-          <div className="flex items-center gap-1 mt-1.5 opacity-0 hover:opacity-100 transition-opacity">
-            <button
+          <div
+            className={cn(
+              'flex items-center gap-0.5 mt-1.5 transition-all duration-200',
+              showActions ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'
+            )}
+          >
+            <ActionButton
               onClick={handleCopy}
-              className="p-1.5 rounded-md hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth"
               title="复制"
+              active={copied}
             >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-            <button
-              className="p-1.5 rounded-md hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth"
+              {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+            </ActionButton>
+            <ActionButton
+              onClick={() => setLiked(liked === 'up' ? null : 'up')}
               title="点赞"
+              active={liked === 'up'}
             >
-              <ThumbsUp className="w-3.5 h-3.5" />
-            </button>
-            <button
-              className="p-1.5 rounded-md hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth"
+              <ThumbsUp className={cn('w-3.5 h-3.5', liked === 'up' && 'fill-accent text-accent')} />
+            </ActionButton>
+            <ActionButton
+              onClick={() => setLiked(liked === 'down' ? null : 'down')}
               title="点踩"
+              active={liked === 'down'}
             >
-              <ThumbsDown className="w-3.5 h-3.5" />
-            </button>
+              <ThumbsDown className={cn('w-3.5 h-3.5', liked === 'down' && 'fill-danger text-danger')} />
+            </ActionButton>
             {onRetry && (
-              <button
-                onClick={onRetry}
-                className="p-1.5 rounded-md hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth"
-                title="重新生成"
-              >
+              <ActionButton onClick={onRetry} title="重新生成">
                 <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+              </ActionButton>
             )}
           </div>
         )}
@@ -111,5 +120,32 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
         </span>
       </div>
     </div>
+  )
+}
+
+function ActionButton({
+  children,
+  onClick,
+  title,
+  active,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  title: string
+  active?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={cn(
+        'p-1.5 rounded-md text-text-tertiary transition-all duration-150',
+        'hover:bg-bg-hover hover:text-text-secondary',
+        'active:scale-95',
+        active && 'bg-accent-bg text-accent'
+      )}
+    >
+      {children}
+    </button>
   )
 }

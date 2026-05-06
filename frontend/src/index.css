@@ -98,31 +98,7 @@
   --color-info: #60a5fa;
 }
 
-/* Rain theme text readability enhancements */
-.rain .markdown-body,
-.rain p,
-.rain h1,
-.rain h2,
-.rain h3,
-.rain span,
-.rain div {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-}
-
-.rain .bg-bg-card,
-.rain [class*="bg-bg-card"] {
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
-  background: rgba(30, 41, 59, 0.72);
-  border-color: rgba(51, 65, 85, 0.6);
-}
-
-.rain .glass {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(20px) saturate(180%);
-}
-
-/* Base styles */
+/* ===== Base ===== */
 html {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -134,57 +110,61 @@ body {
   color: var(--color-text-primary);
 }
 
-/* Scrollbar */
+/* ===== Selection ===== */
+::selection {
+  background: var(--color-accent-light);
+  color: var(--color-text-primary);
+}
+
+.dark ::selection,
+.rain ::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
   background: var(--color-border);
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-tertiary);
 }
 
-/* Animations */
+/* ===== Animations ===== */
 @keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 @keyframes pulse-dot {
-  0%, 100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+  animation: fade-in-up 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.25s cubic-bezier(0.22, 0.8, 0.24, 1) forwards;
 }
 
 .animate-shimmer {
@@ -202,115 +182,135 @@ body {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
-/* Glass effect */
+/* ===== Glass ===== */
 .glass {
   background: rgba(250, 250, 248, 0.85);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
-
 .dark .glass {
   background: rgba(12, 14, 18, 0.85);
 }
 
-/* Markdown styles */
-.markdown-body {
-  line-height: 1.625;
-}
-
-.markdown-body p {
-  margin-bottom: 0.75rem;
-}
-
-.markdown-body p:last-child {
-  margin-bottom: 0;
-}
-
-.markdown-body pre {
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-md);
-  padding: 1rem;
-  overflow-x: auto;
-  margin: 0.75rem 0;
-}
-
-.markdown-body code {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  background: var(--color-bg-secondary);
-  padding: 0.125rem 0.375rem;
-  border-radius: 4px;
-}
-
-.markdown-body pre code {
-  background: none;
-  padding: 0;
-}
-
-.markdown-body ul,
-.markdown-body ol {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
-}
-
-.markdown-body li {
-  margin: 0.25rem 0;
-}
-
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3 {
-  margin: 1rem 0 0.5rem;
-  font-weight: 600;
-}
-
-.markdown-body h1 {
-  font-size: 1.25rem;
-}
-
-.markdown-body h2 {
-  font-size: 1.125rem;
-}
-
-.markdown-body h3 {
-  font-size: 1rem;
-}
-
-.markdown-body table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.75rem 0;
-}
-
-.markdown-body th,
-.markdown-body td {
-  border: 1px solid var(--color-border);
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-}
-
-.markdown-body th {
-  background: var(--color-bg-secondary);
-  font-weight: 600;
-}
-
-.markdown-body blockquote {
-  border-left: 3px solid var(--color-accent);
-  padding-left: 1rem;
-  margin: 0.75rem 0;
-  color: var(--color-text-secondary);
-}
-
-/* Transitions */
+/* ===== Transitions (global defaults) ===== */
 .transition-default {
-  transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .transition-smooth {
   transition: all 0.2s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
-/* Rain canvas container */
+.transition-fast {
+  transition: all 0.15s ease;
+}
+
+/* ===== Button / Interactive Base ===== */
+.btn-interactive {
+  transition: all 0.2s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+.btn-interactive:hover {
+  transform: translateY(-1px);
+}
+.btn-interactive:active {
+  transform: translateY(0) scale(0.985);
+}
+
+/* ===== Card Hover System ===== */
+.card-hover {
+  transition: transform 0.18s cubic-bezier(0.22, 0.8, 0.24, 1),
+              box-shadow 0.18s cubic-bezier(0.22, 0.8, 0.24, 1),
+              border-color 0.2s ease;
+  will-change: transform, box-shadow;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== Top accent line hover ===== */
+.accent-line-hover {
+  position: relative;
+  overflow: hidden;
+}
+.accent-line-hover::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.accent-line-hover:hover::before {
+  transform: scaleX(1);
+}
+
+/* ===== Underline hover ===== */
+.underline-hover {
+  position: relative;
+}
+.underline-hover::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1.5px;
+  background: var(--color-accent);
+  transition: width 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.underline-hover:hover::after {
+  width: 100%;
+}
+
+/* ===== Focus states ===== */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(200, 85, 61, 0.1);
+  border-color: var(--color-accent);
+}
+
+.dark input:focus,
+.dark textarea:focus,
+.rain input:focus,
+.rain textarea:focus {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(200, 85, 61, 0.12);
+}
+
+/* ===== Rain theme text readability ===== */
+.rain .markdown-body,
+.rain p,
+.rain h1,
+.rain h2,
+.rain h3 {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.rain .glass,
+.rain [class*="bg-bg-card"] {
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(51, 65, 85, 0.6);
+}
+
+.rain .glass {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ===== Rain canvas ===== */
 .rain-canvas {
   position: fixed;
   top: 0;
@@ -321,7 +321,7 @@ body {
   pointer-events: none;
 }
 
-/* Vignette for rain theme readability */
+/* ===== Rain vignette ===== */
 .rain-vignette {
   position: fixed;
   top: 0;
@@ -331,4 +331,71 @@ body {
   pointer-events: none;
   z-index: 1;
   background: radial-gradient(ellipse at center, transparent 0%, transparent 50%, rgba(0,0,0,0.25) 100%);
+}
+
+/* ===== Markdown ===== */
+.markdown-body {
+  line-height: 1.625;
+}
+.markdown-body p {
+  margin-bottom: 0.75rem;
+}
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+.markdown-body pre {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+.markdown-body code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background: var(--color-bg-secondary);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+}
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+.markdown-body li {
+  margin: 0.25rem 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+}
+.markdown-body h1 { font-size: 1.25rem; }
+.markdown-body h2 { font-size: 1.125rem; }
+.markdown-body h3 { font-size: 1rem; }
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.markdown-body th {
+  background: var(--color-bg-secondary);
+  font-weight: 600;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: var(--color-text-secondary);
 }

@@ -37,20 +37,18 @@ export default function ChatInput({ onSend }: ChatInputProps) {
 
   return (
     <div className="px-4 pb-4 pt-2">
-      <div className="bg-bg-card border border-border rounded-2xl shadow-md hover:shadow-lg transition-shadow">
+      <div
+        className={cn(
+          'bg-bg-card border border-border rounded-2xl shadow-md',
+          'transition-all duration-200',
+          'hover:shadow-lg focus-within:shadow-lg focus-within:border-accent'
+        )}
+      >
         {/* Toolbar */}
         <div className="flex items-center gap-1 px-3 pt-2">
-          <button className="p-1.5 rounded-lg hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth">
-            <Paperclip className="w-4 h-4" />
-          </button>
-          <button className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth text-xs">
-            <Globe className="w-3.5 h-3.5" />
-            <span>联网搜索</span>
-          </button>
-          <button className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-bg-hover text-text-tertiary hover:text-text-secondary transition-smooth text-xs">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>深度思考</span>
-          </button>
+          <ToolbarButton icon={<Paperclip className="w-4 h-4" />} label="附件" />
+          <ToolbarButton icon={<Globe className="w-3.5 h-3.5" />} label="联网搜索" />
+          <ToolbarButton icon={<Sparkles className="w-3.5 h-3.5" />} label="深度思考" />
         </div>
 
         {/* Input */}
@@ -75,7 +73,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
               'w-9 h-9 rounded-full flex items-center justify-center shrink-0 mb-0.5',
               'transition-all duration-150',
               content.trim() && !isStreaming
-                ? 'bg-accent text-white hover:scale-105 hover:shadow-md'
+                ? 'bg-accent text-white hover:scale-105 hover:shadow-md active:scale-95'
                 : 'bg-bg-hover text-text-tertiary'
             )}
           >
@@ -84,5 +82,14 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         </div>
       </div>
     </div>
+  )
+}
+
+function ToolbarButton({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <button className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-text-tertiary hover:bg-bg-hover hover:text-text-secondary transition-all duration-150 text-xs active:scale-95">
+      {icon}
+      <span>{label}</span>
+    </button>
   )
 }
