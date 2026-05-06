@@ -454,3 +454,61 @@ docs: 完善 README 和架构设计文档
 - 新增 docs/system/ARCHITECTURE.md 架构设计文档
 - 覆盖系统概览/模块架构/数据流/技术决策/扩展性/安全/部署
 ```
+
+---
+
+## 2026-05-06 — 市场行情接口超时优化（方案A）
+
+### 变更摘要
+
+解决前端市场行情页面和个股实时行情接口响应慢/超时的问题。核心思路：**共享缓存 + 线程池隔离 + 超时控制 + 启动后后台预加载**。
+
+### 根因分析
+
+1. **`async` 路由直接调用同步 AKShare**：`stock_zh_a_spot_em()` 等接口是 `requests` 爬虫，在 `async def` 中直接调用会阻塞整个 Uvicorn 事件循环
+2. **查单只股票却拉全市场数据**：`get_stock_realtime(symbol)` 调用 `stock_zh_a_spot_em()` 拉取 5000+ 只 A 股数据再过滤，严重浪费
+3. **无任何缓存**：`config.py` 中定义了 `CacheSettings` 但从未使用，每 30 秒自动刷新都重新爬取
+4. **无超时控制**：AKShare 挂起时前端要等 30 秒（axios timeout）才收到错误
+
+### 新增/修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/core/cache.py` | **新增**：全市场数据共享缓存模块。支持 `market:spot`/`market:index`/`market:sector` 三个 TTL 缓存（60s），线程安全，带后台自动刷新循环 |
+| `app/tools/stock_data.py` | `get_stock_realtime()` / `search_stocks()` 优先从 `market:spot` 缓存过滤，避免重复拉取全市场数据 |
+| `app/tools/market.py` | `get_market_index()` / `get_sector_hot()` / `get_market_overview()` 优先读对应缓存，缓存 miss 再 fallback 到 AKShare |
+| `app/api/routers/stock.py` | 所有路由使用 `run_in_threadpool` + `asyncio.wait_for`（20s 超时），防止阻塞事件循环 |
+| `app/api/routers/market.py` | 同上，所有市场接口加线程池 + 超时控制 |
+| `app/api/main.py` | `lifespan` 中启动后台数据预刷新任务：启动后延迟 3 秒首次拉取 AKShare 全量数据到缓存，之后每 60 秒自动刷新 |
+| `tests/test_tools_market.py` | 修复原有测试断言 bug（`"上证指数" in result` 中 `result` 是字典），新增缓存路径和 fallback 路径两个测试用例 |
+
+### 技术决策
+
+1. **缓存设计**：使用模块级全局变量 + `threading.RLock()` 实现线程安全，而非引入 `cachetools` 等第三方库。原因：
+   - 减少新依赖
+   - AKShare 返回的是 `pandas.DataFrame`，需要支持任意 Python 对象的缓存
+   - 简单可控，便于调试
+
+2. **后台刷新策略**：FastAPI `lifespan` 中启动 `asyncio.Task`，首次延迟 3 秒（避免拖慢启动），之后每 60 秒在线程池中执行 AKShare 请求。这样用户第一次进入页面时数据已准备好。
+
+3. **超时 20 秒**：前端 axios timeout 为 30 秒，后端设为 20 秒，给网络波动留足余量，同时保证前端能在超时前收到 504 降级响应。
+
+4. **fallback 机制保留**：缓存 miss 且 AKShare 失败时，各工具函数仍返回 demo 数据（`source: "demo"`），确保前端不白屏。
+
+### 验证结果
+
+- ✅ `python3 -m py_compile` 语法检查通过
+- ✅ `app.core.cache` 模块导入测试通过
+- ✅ 全量测试 **138 passed**（含新增/修复的 market 工具测试）
+
+### Git 提交
+
+```
+fix: 市场行情接口超时优化（共享缓存+线程池+后台预加载）
+
+- 新增 app/core/cache.py 全市场数据共享缓存（TTL 60s）
+- stock_data/market 工具优先从缓存过滤，避免重复拉取 5000+ 数据
+- API 路由使用 run_in_threadpool + 20s 超时，防止阻塞事件循环
+- FastAPI lifespan 启动后台预刷新任务，首次加载延迟 3s
+- 修复 tests/test_tools_market.py 原有断言 bug
+```

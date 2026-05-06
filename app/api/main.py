@@ -4,6 +4,7 @@ UF Stock Assistant — FastAPI 主应用
 
 from __future__ import annotations
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.cache import start_background_refresh, stop_background_refresh
 from app.core.config import get_settings
 from app.core.exceptions import AssistantException
 from app.core.logging import get_logger, setup_logging
@@ -26,8 +28,20 @@ async def lifespan(app: FastAPI):
     # 启动
     setup_logging()
     logger.info("api_server_starting", version=get_settings().version)
+
+    # 启动后台数据预刷新任务（首次延迟后自动拉取 AKShare 全量数据到缓存）
+    refresh_task = start_background_refresh()
+    logger.info("background_refresh_task_started")
+
     yield
+
     # 关闭
+    stop_background_refresh()
+    refresh_task.cancel()
+    try:
+        await refresh_task
+    except asyncio.CancelledError:
+        pass
     logger.info("api_server_shutting_down")
 
 
