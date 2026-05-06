@@ -20,6 +20,7 @@
 ### 技术架构
 - **AI 框架**：LangChain + LangGraph（状态机 Agent）
 - **API 服务**：FastAPI + Uvicorn
+- **前端**：React 19 + TypeScript + Vite + Tailwind CSS v4 + Zustand
 - **数据存储**：SQLite（开发）/ PostgreSQL（生产）
 - **股票数据**：AKShare（A股）
 - **虚拟货币**：CCXT（Binance 等）
@@ -80,6 +81,18 @@ uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --workers 4
 服务启动后访问：
 - API 文档：`http://127.0.0.1:8000/docs`（Swagger UI）
 - 健康检查：`http://127.0.0.1:8000/health`
+
+### 启动前端界面
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+前端启动后访问 `http://localhost:5173`，会自动代理 API 请求到后端服务。
+
+前端技术栈：React 19 + TypeScript + Vite + Tailwind CSS v4 + Zustand
 
 ---
 
@@ -357,7 +370,7 @@ files: <文件2>
 
 ```
 .
-├── app/                        # 主应用目录
+├── app/                        # 主应用目录（后端）
 │   ├── core/                   # 核心框架层
 │   │   ├── config.py           # Pydantic Settings 配置管理
 │   │   ├── constants.py        # 项目常量、枚举定义
@@ -400,9 +413,19 @@ files: <文件2>
 │   │       ├── strategy.py     # 策略
 │   │       └── upload.py       # 文件上传
 │   └── data/                   # 数据层
+├── frontend/                   # 前端应用（React + Vite + Tailwind）
+│   ├── src/
+│   │   ├── components/         # 组件目录
+│   │   ├── pages/              # 页面组件
+│   │   ├── stores/             # Zustand 状态管理
+│   │   ├── hooks/              # 自定义 Hooks
+│   │   ├── types/              # TypeScript 类型
+│   │   └── lib/                # 工具函数、API 封装
+│   └── public/                 # 静态资源
 ├── tests/                      # 测试目录
 ├── docs/                       # 项目文档
-│   └── system/                 # 系统文档
+│   ├── system/                 # 系统文档
+│   └── design/                 # UI/UX 设计文档
 ├── logs/                       # 运行日志
 ├── data/                       # 本地数据（SQLite）
 ├── pyproject.toml              # 项目配置
