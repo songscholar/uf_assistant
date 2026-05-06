@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import MainLayout from '@/components/layout/MainLayout'
+import SettingsPanel from '@/components/settings/SettingsPanel'
 import ChatPage from '@/pages/ChatPage'
 import MarketPage from '@/pages/MarketPage'
 import StockPage from '@/pages/StockPage'
@@ -36,7 +37,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeInitializer />
-      <RainCanvas enabled={isRain} intensity={0.5} speed={1} />
+      <RainCanvas enabled={isRain} />
       {isRain && <div className="rain-vignette" />}
       <div className="relative z-10">
         <Routes>
@@ -51,6 +52,7 @@ export default function App() {
           </Route>
         </Routes>
       </div>
+      <SettingsPanel />
     </BrowserRouter>
   )
 }

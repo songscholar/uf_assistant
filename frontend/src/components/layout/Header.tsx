@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Share2, MoreHorizontal, Bot } from 'lucide-react'
+import { Menu, Share2, MoreHorizontal, Settings } from 'lucide-react'
 import { useChatStore } from '@/stores/chatStore'
+import { useRainStore } from '@/stores/rainStore'
 import { cn } from '@/lib/utils'
 
 interface HeaderProps {
@@ -19,9 +20,9 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { currentConversationId, messages } = useChatStore()
+  const { togglePanel } = useRainStore()
 
   const isChat = location.pathname.startsWith('/chat')
-  const isStock = location.pathname.startsWith('/stock/')
 
   let title = pageTitles[location.pathname] || '优富助手'
   let subtitle = ''
@@ -50,6 +51,13 @@ export default function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1">
+        <button
+          onClick={togglePanel}
+          className="p-2 rounded-lg hover:bg-bg-hover transition-smooth text-text-secondary"
+          title="设置"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
         <button className="p-2 rounded-lg hover:bg-bg-hover transition-smooth text-text-secondary">
           <Share2 className="w-4 h-4" />
         </button>

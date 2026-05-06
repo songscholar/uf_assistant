@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useRainStore } from '@/stores/rainStore'
 
 interface RainDrop {
   x: number
@@ -7,8 +8,8 @@ interface RainDrop {
   speed: number
   opacity: number
   width: number
-  layer: number // 0: background, 1: mid, 2: foreground
-  drift: number // horizontal drift
+  layer: number
+  drift: number
 }
 
 interface Splash {
@@ -21,20 +22,14 @@ interface Splash {
 
 interface RainCanvasProps {
   enabled: boolean
-  intensity?: number // 0-1
-  speed?: number // 0-2
 }
 
 function createDrop(width: number, height: number, layer: number): RainDrop {
   const configs = [
-    // background layer
     { lengthRange: [8, 15], speedRange: [3, 6], opacityRange: [0.05, 0.15], widthRange: [0.5, 1] },
-    // mid layer
     { lengthRange: [12, 22], speedRange: [6, 11], opacityRange: [0.12, 0.3], widthRange: [0.8, 1.5] },
-    // foreground layer
     { lengthRange: [16, 30], speedRange: [10, 18], opacityRange: [0.2, 0.5], widthRange: [1, 2.5] },
   ]
-
   const cfg = configs[layer]
   return {
     x: Math.random() * width,
@@ -67,31 +62,53 @@ function createSplash(x: number, y: number): Splash {
   }
 }
 
-export default function RainCanvas({ enabled, intensity = 0.5, speed = 1 }: RainCanvasProps) {
+export default function RainCanvas({ enabled }: RainCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const bgCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const bgImageRef = useRef<HTMLImageElement | null>(null)
   const rafRef = useRef<number>(0)
   const dropsRef = useRef<RainDrop[]>([])
   const splashesRef = useRef<Splash[]>([])
   const frameCountRef = useRef(0)
   const lastTimeRef = useRef(0)
   const fpsRef = useRef(60)
+  const { config } = useRainStore()
+
+  // Load background image when config changes
+  useEffect(() => {
+    if (config.bgImage && config.bgMode !== 'default') {
+      const img = new Image()
+      img.onload = () => {
+        bgImageRef.current = img
+      }
+      img.src = config.bgImage
+    } else {
+      bgImageRef.current = null
+    }
+  }, [config.bgImage, config.bgMode])
 
   useEffect(() => {
     if (!enabled) return
 
     const canvas = canvasRef.current
     if (!canvas) return
-
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Limit DPR for performance
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
     let width = window.innerWidth
     let height = window.innerHeight
 
+    // Background canvas for fog effect
+    let bgCanvas = bgCanvasRef.current
+    if (!bgCanvas) {
+      bgCanvas = document.createElement('canvas')
+      bgCanvasRef.current = bgCanvas
+    }
+    const bgCtx = bgCanvas.getContext('2d')
+
     function resize() {
-      if (!canvas) return
+      if (!canvas || !bgCanvas || !bgCtx) return
       width = window.innerWidth
       height = window.innerHeight
       canvas.width = width * dpr
@@ -99,16 +116,19 @@ export default function RainCanvas({ enabled, intensity = 0.5, speed = 1 }: Rain
       canvas.style.width = width + 'px'
       canvas.style.height = height + 'px'
       ctx?.scale(dpr, dpr)
+
+      bgCanvas.width = width
+      bgCanvas.height = height
     }
 
     resize()
 
-    // Initialize drops based on intensity and screen size
+    // Initialize drops based on config intensity
     const area = width * height
     const baseCount = Math.floor(area / 8000)
-    const count = Math.floor(baseCount * intensity)
+    const count = Math.floor(baseCount * config.intensity * 2) // scale up for visibility
 
-    const layerDistribution = [0.45, 0.35, 0.2] // bg, mid, fg percentages
+    const layerDistribution = [0.45, 0.35, 0.2]
     dropsRef.current = []
     for (let layer = 0; layer < 3; layer++) {
       const layerCount = Math.floor(count * layerDistribution[layer])
@@ -117,12 +137,11 @@ export default function RainCanvas({ enabled, intensity = 0.5, speed = 1 }: Rain
       }
     }
 
-    // Frame rate adaptive rendering
     let adaptiveSkip = 0
     let skipCounter = 0
 
     function render(timestamp: number) {
-      if (!ctx || !canvas) return
+      if (!ctx || !canvas || !bgCanvas || !bgCtx) return
 
       // FPS calculation
       if (lastTimeRef.current > 0) {
@@ -132,57 +151,99 @@ export default function RainCanvas({ enabled, intensity = 0.5, speed = 1 }: Rain
       }
       lastTimeRef.current = timestamp
 
-      // Adaptive: if FPS drops below 30, skip every other frame for splashes
       if (fpsRef.current < 30) {
         adaptiveSkip = 1
       } else if (fpsRef.current > 45) {
         adaptiveSkip = 0
       }
-
       skipCounter++
       const shouldRenderSplash = adaptiveSkip === 0 || skipCounter % 2 === 0
 
+      // Clear main canvas
       ctx.clearRect(0, 0, width, height)
 
-      // Rain color based on theme - cool blue-white for rain
-      const rainColor = { r: 147, g: 197, b: 253 } // blue-300
+      // Draw background (custom image or gradient)
+      if (bgImageRef.current && (config.bgMode === 'image' || config.bgMode === 'upload')) {
+        const img = bgImageRef.current
+        const imgAspect = img.width / img.height
+        const canvasAspect = width / height
+        let drawW, drawH, drawX, drawY
+        if (imgAspect > canvasAspect) {
+          drawH = height
+          drawW = height * imgAspect
+          drawX = (width - drawW) / 2
+          drawY = 0
+        } else {
+          drawW = width
+          drawH = width / imgAspect
+          drawX = 0
+          drawY = (height - drawH) / 2
+        }
+        ctx.drawImage(img, drawX, drawY, drawW, drawH)
+      } else {
+        // Default: dark blue gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, height)
+        gradient.addColorStop(0, '#0f172a')
+        gradient.addColorStop(0.5, '#1e293b')
+        gradient.addColorStop(1, '#0f172a')
+        ctx.fillStyle = gradient
+        ctx.fillRect(0, 0, width, height)
+      }
 
-      // Update and draw drops
+      // Apply fog / glass blur effect
+      if (config.fog > 0 || config.glass > 0) {
+        ctx.save()
+        const blurAmount = Math.max(config.fog * 8, config.glass * 6)
+        ctx.filter = `blur(${blurAmount}px)`
+        ctx.globalAlpha = config.fog * 0.5 + config.glass * 0.3
+        ctx.drawImage(canvas, 0, 0, width, height)
+        ctx.restore()
+      }
+
+      const rainColor = { r: 147, g: 197, b: 253 }
+      const speedMultiplier = 0.5 + config.speed * 2
+      const refractMultiplier = config.refract
+
+      // Draw drops
       const drops = dropsRef.current
       for (let i = 0; i < drops.length; i++) {
         const drop = drops[i]
-        drop.y += drop.speed * speed
-        drop.x += drop.drift * speed
+        drop.y += drop.speed * speedMultiplier
+        drop.x += drop.drift * speedMultiplier * refractMultiplier
 
-        // Wrap around
         if (drop.y > height) {
-          // Chance to create splash on foreground drops
           if (shouldRenderSplash && drop.layer === 2 && Math.random() < 0.08) {
             splashesRef.current.push(createSplash(drop.x, height - 2))
           }
-
           drop.y = -drop.length - Math.random() * 50
           drop.x = Math.random() * width
         }
         if (drop.x > width) drop.x = 0
         if (drop.x < 0) drop.x = width
 
-        // Draw drop
-        const gradient = ctx.createLinearGradient(drop.x, drop.y, drop.x + drop.drift, drop.y + drop.length)
+        // Apply refract to horizontal drift
+        const driftX = drop.drift * refractMultiplier
+
+        const gradient = ctx.createLinearGradient(
+          drop.x,
+          drop.y,
+          drop.x + driftX,
+          drop.y + drop.length
+        )
         gradient.addColorStop(0, `rgba(${rainColor.r}, ${rainColor.g}, ${rainColor.b}, 0)`)
         gradient.addColorStop(0.5, `rgba(${rainColor.r}, ${rainColor.g}, ${rainColor.b}, ${drop.opacity})`)
         gradient.addColorStop(1, `rgba(${rainColor.r}, ${rainColor.g}, ${rainColor.b}, ${drop.opacity * 0.3})`)
 
         ctx.beginPath()
         ctx.moveTo(drop.x, drop.y)
-        ctx.lineTo(drop.x + drop.drift, drop.y + drop.length)
+        ctx.lineTo(drop.x + driftX, drop.y + drop.length)
         ctx.strokeStyle = gradient
         ctx.lineWidth = drop.width
         ctx.lineCap = 'round'
         ctx.stroke()
       }
 
-      // Update and draw splashes
+      // Draw splashes
       if (shouldRenderSplash) {
         const splashes = splashesRef.current
         for (let i = splashes.length - 1; i >= 0; i--) {
@@ -222,7 +283,7 @@ export default function RainCanvas({ enabled, intensity = 0.5, speed = 1 }: Rain
       dropsRef.current = []
       splashesRef.current = []
     }
-  }, [enabled, intensity, speed])
+  }, [enabled, config.intensity, config.speed, config.refract, config.fog, config.glass, config.bgMode, config.bgImage])
 
   if (!enabled) return null
 
@@ -230,7 +291,15 @@ export default function RainCanvas({ enabled, intensity = 0.5, speed = 1 }: Rain
     <canvas
       ref={canvasRef}
       className="rain-canvas"
-      style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, pointerEvents: 'none' }}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 0,
+        pointerEvents: 'none',
+      }}
     />
   )
 }
