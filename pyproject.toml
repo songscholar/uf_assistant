@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uf-stock-assistant"
+version = "0.1.0"
+description = "基于 LangChain 的智能股票助手 Agent"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "UF Assistant Team" }
+]
+keywords = ["stock", "agent", "langchain", "trading", "assistant"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  # LangChain 生态
+  "langchain>=0.3.0",
+  "langchain-core>=0.3.0",
+  "langchain-community>=0.3.0",
+  "langchain-openai>=0.2.0",
+  "langgraph>=0.2.0",
+  # API 服务
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "python-multipart>=0.0.12",
+  # 数据与金融
+  "akshare>=1.15.0",
+  "ccxt>=4.4.0",
+  "pandas>=2.2.0",
+  "numpy>=1.26.0",
+  # 文件解析
+  "unstructured>=0.16.0",
+  "python-docx>=1.1.0",
+  "openpyxl>=3.1.0",
+  "pillow>=10.4.0",
+  # 日志与配置
+  "structlog>=24.4.0",
+  "python-dotenv>=1.0.0",
+  "pydantic>=2.9.0",
+  "pydantic-settings>=2.6.0",
+  # 数据库
+  "sqlalchemy>=2.0.0",
+  "alembic>=1.13.0",
+  # 工具
+  "httpx>=0.27.0",
+  "tenacity>=9.0.0",
+  "orjson>=3.10.0",
+  # 测试
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
+  "pytest-cov>=6.0.0",
+  "respx>=0.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.7.0",
+  "mypy>=1.13.0",
+  "pre-commit>=4.0.0",
+]
+
+[project.scripts]
+uf-assistant = "app.cli:main"
+
+[tool.setuptools]
+packages = ["app", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
