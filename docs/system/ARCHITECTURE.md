@@ -211,6 +211,26 @@ admin  → [...manager, user_manage, credentials]
 - `records.py`：本地 DB 持仓快照（加权平均成本、平仓盈亏计算）
 - `execution.py`：8-way 信号 → 交易所特定下单参数分发
 
+**交易所后端抽象层**（`app/trading/backends/`）:
+
+双层级架构：
+```
+              BackendRouter.create(market_type)
+                          │
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+    ExchangeBackend   ExchangeBackend   ExchangeBackend
+    (异步 ABC)        (异步 ABC)        (异步 ABC)
+          │               │               │
+    CryptoBackend   AShareBackend   USStockBackend
+    IBKRBackend     MT5Backend
+```
+
+- `ExchangeBackend`（ABC）：统一 async 接口 — `connect()` / `place_order()` / `cancel_order()` / `get_order_status()` / `get_positions()` / `get_balance()` / `get_ticker()`
+- `BackendRouter`：根据 `market_type` 返回对应后端实例；按需 `import`（各分支独立），避免 ccxt 等重型依赖在不需要时被加载
+- IBKR / MT5 适配：原始 QuantDinger 客户端是同步 API（`ib_insync.IB()` / `MetaTrader5`），全部用 `asyncio.to_thread()` 包装为 async 接口
+- SaaS 拦截：`settings.local_broker.allowed`（默认 `false`），SaaS/云容器部署时自动拒绝 IBKR/MT5 后端实例化
+
 **安全沙箱**（`app/core/safe_exec.py`）：
 - 白名单 builtins（~50 个安全函数）
 - 受限 import（仅 numpy/pandas/math/json/datetime 等）

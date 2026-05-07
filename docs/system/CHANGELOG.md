@@ -68,7 +68,18 @@
   - HTX：broker_id、统一账户检测、双 URL（spot/futures）
   - Deepcoin：ISO 8601 时间、appid
   - 基础设施：`BaseRestClient`（统一 REST）、`create_client` 工厂、`symbol` 标准化、`records` 持仓快照、`execution` 信号分发
-  - IBKR / MT5 支持：lazy import，本机 TWS/Gateway / MT5 终端连接
+  - **桌面券商后端（IBKR + MT5）适配 `ExchangeBackend` ABC**
+    - `IBKRBackend`（`app/trading/backends/ibkr_backend.py`）：基于 `ib_insync` 连接 TWS/IB Gateway，支持美股市场订单 / 限价订单、持仓查询、账户余额、实时行情；SaaS 模式下通过 `settings.local_broker.allowed` 拦截
+    - `MT5Backend`（`app/trading/backends/mt5_backend.py`）：基于 `MetaTrader5` 连接 MT5 终端，支持外汇/贵金属/指数/加密货币；市场/限价订单、volume 按 symbol 的 `volume_step` 圆整、filling mode 自动探测（IOC/FOK/RETURN）
+    - 同步 API → async 包装：所有 `ib_insync` / `MetaTrader5` 调用均通过 `asyncio.to_thread()` 包装，适配 FastAPI 异步运行时
+    - lazy import：`ib_insync` / `MetaTrader5` 不在项目依赖中，首次使用时报 `ImportError` 并提示安装
+    - `BackendRouter` 按需导入：各后端 `import` 延迟到对应分支，避免 `ccxt` PyO3 初始化问题污染桌面券商测试
+    - `LocalBrokerSettings`（`app/core/config.py`）：统一环境变量 `STOCK_ASSISTANT_LOCAL_BROKER_*` 控制桌面券商开关
+    - 测试覆盖：`tests/test_ibkr_backend.py` 19 例 + `tests/test_mt5_backend.py` 19 例，全 mock 无需真实 TWS/MT5
+
+  - **凭证管理增强**
+    - 新增 `GET /api/v1/credentials/desktop-brokers-policy`：返回 `allow_local_desktop_brokers` + `disabled_message`，供前端在配置 IBKR/MT5 前探测部署环境是否允许
+    - 已有 `GET /api/v1/credentials/egress-ip`：返回公网 IPv4/IPv6（交易所 API Key 白名单配置用）
 
 - **策略服务增强（迁移自 QuantDinger）**
   - `batch_create_strategies()`：批量创建策略 + group_id 分组，支持多 symbol 同时创建
@@ -92,7 +103,9 @@
   - 回测模型：StrategyModel / IndicatorModel / BacktestRun / BacktestTrade / BacktestEquityPoint
 
 ### Changed
-- `app/core/config.py`：新增 BillingSettings、MembershipSettings、UsdtPaymentSettings、AgentSettings.deployment_mode、ReflectionSettings
+- `app/core/config.py`：新增 BillingSettings、MembershipSettings、UsdtPaymentSettings、AgentSettings.deployment_mode、ReflectionSettings、**LocalBrokerSettings**（`STOCK_ASSISTANT_LOCAL_BROKER_*` 环境变量，控制 IBKR/MT5 桌面券商开关）
+- `app/trading/backends/__init__.py`：`BackendRouter` 按需导入各后端，避免 ccxt PyO3 初始化污染 IBKR/MT5 测试
+- `app/utils/local_brokers.py`：统一使用 `settings.local_broker.allowed` 判断，替代裸环境变量读取
 - `app/core/exceptions.py`：新增 BillingError、InsufficientCreditsError、UsdtPaymentError
 - `app/api/main.py`：注册 billing/analysis 路由，lifespan 启动/停止 UsdtOrderWorker 与 Reflection Worker，Agent Gateway 响应头注入中间件
 - `app/core/constants.py`：新增 AgentScope.NOTIFY、AgentScope.CREDENTIALS、AgentTokenStatus
