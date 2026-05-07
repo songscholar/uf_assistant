@@ -123,21 +123,40 @@ UF Stock Assistant 是一个基于 LangChain + LangGraph 的智能股票助手 A
 
 ### 2.4 策略层 (`app/strategies/`)
 
+支持双范式策略引擎：
+
 ```
-BaseStrategy (抽象基类)
-    │
-    ├── MACrossoverStrategy    短期/长期均线交叉
-    ├── MACDStrategy           DIF/DEA 金叉死叉
-    ├── RSIStrategy            RSI 超买超卖
-    ├── BollingerStrategy      布林带突破/回归
-    │
-    └── [自定义策略]           LLM 生成 + 安全编译
+┌─────────────────────────────────────────────────────────────────┐
+│                    策略引擎（双范式）                              │
+├─────────────────────────────────────────────────────────────────┤
+│  evaluate 模式（传统）        │  IndicatorStrategy（指标代码）    │
+│  BaseStrategy → 4 个内置策略  │  df['buy']/df['sell'] 数据帧    │
+│  MA/MACD/RSI/Bollinger       │  @param 参数 + @strategy 风控    │
+├─────────────────────────────────────────────────────────────────┤
+│  ScriptStrategy（事件驱动）   │  回测引擎（BacktestService）      │
+│  on_bar(ctx, bar) 脚本       │  SL/TP/追踪止损/仓位管理          │
+│  ctx.buy()/ctx.sell()        │  多时间框架 / 夏普 / 最大回撤     │
+├─────────────────────────────────────────────────────────────────┤
+│  实盘执行器（TradingExecutor）│  交易所适配（ExchangeClient）     │
+│  守护线程/策略               │  CCXT（9 个交易所）               │
+│  信号队列 + 服务端风控       │  SimulatedStockClient（A 股）     │
+├─────────────────────────────────────────────────────────────────┤
+│  辅助模块                                                     │
+│  PendingOrderWorker │ PortfolioMonitor │ NotifierManager        │
+│  挂单执行            │ 持仓监控           │ 信号通知             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 **策略注册表**：
-- 单例模式管理所有策略
-- 支持 key 和中文名称映射
-- 参数 schema 定义（类型/默认值/范围/描述）
+- `StrategyRegistry`：管理 evaluate 模式策略（MA/MACD/RSI/Bollinger）
+- `IndicatorCodeRegistry`：管理指标代码（name, code, @param, @strategy）
+- 单例模式，支持 key 和中文名称映射
+
+**安全沙箱**（`app/core/safe_exec.py`）：
+- 白名单 builtins（~50 个安全函数）
+- 受限 import（仅 numpy/pandas/math/json/datetime 等）
+- AST + regex 双重安全检查（~40 个危险模式）
+- 超时控制（SIGALRM + threading.Timer）
 
 ### 2.5 记忆层 (`app/memory/`)
 
@@ -163,6 +182,10 @@ BaseStrategy (抽象基类)
 |------|------|
 | `stock_picker.py` | 策略选股、快速筛选（排除 ST） |
 | `market_analyzer.py` | 日报生成、板块轮动、风险等级评估 |
+| `analysis_memory.py` | AI 分析记忆存储、历史验证、相似模式匹配、用户反馈 |
+| `ai_calibration.py` | 离线阈值校准：Grid Search 最优 BUY/SELL/HOLD 决策边界 |
+| `reflection.py` | 后台反射 Worker：定期验证旧决策 → 触发校准 |
+| `billing.py` | 积分扣减、会员管理、USDT 支付对账 |
 
 ### 2.7 API 层 (`app/api/`)
 
@@ -178,6 +201,7 @@ BaseStrategy (抽象基类)
 | `strategy.py` | 5 | 策略执行/选股/自定义 |
 | `upload.py` | 2 | 文件上传/解析 |
 | `billing.py` | 8 | 计费/会员/USDT 支付 |
+| `analysis.py` | 6 | AI 分析记忆（历史/统计/反馈/校准配置） |
 
 **Agent Gateway** (`app/api/agent/`)
 
@@ -186,6 +210,7 @@ BaseStrategy (抽象基类)
 | `markets.py` | 8 | R | 股票搜索/实时/历史、市场概况/指数/板块、加密货币 |
 | `chat.py` | 2 | R | 对话 + SSE 流式（支持断点续传） |
 | `strategies.py` | 4 | R/B | 策略列表、异步执行（返回 job_id）、选股、筛选 |
+| `backtests.py` | 1 | B | 提交异步回测任务（复用 BacktestService，返回 job_id） |
 | `trading.py` | 7 | R/T | 持仓/订单查询、下单（paper-only）、Kill Switch、Paper Orders |
 | `__init__.py` | 8 | R/C | whoami、admin token CRUD、jobs 查询 |
 
@@ -254,6 +279,104 @@ StockPicker.pick_by_strategy()
         │
         └──▶ 返回买卖信号列表
 ```
+
+### 3.3 回测流程
+
+```
+用户提交指标代码 + 参数
+        │
+        ▼
+BacktestService.run()
+        │
+        ├──▶ _fetch_kline_data() ──▶ AKShare / CCXT ──▶ 内存缓存 (TTL+LRU)
+        │
+        ├──▶ _execute_indicator() ──▶ safe_exec_code()
+        │       │                           │
+        │       │                           ├──▶ 白名单 builtins
+        │       │                           ├──▶ AST + regex 安全检查
+        │       │                           └──▶ 60s 超时
+        │       │
+        │       └──▶ df['buy'] / df['sell'] / df['open_long'] ...
+        │
+        ├──▶ _simulate_trading()
+        │       │
+        │       ├──▶ 4-way 信号解析（open_long/close_long/open_short/close_short）
+        │       │
+        │       ├──▶ 仓位管理（trendAdd / dcaAdd / trendReduce / adverseReduce）
+        │       │
+        │       ├──▶ 风控检查（SL / TP / trailing_stop）
+        │       │
+        │       └──▶ 生成 equity_curve + trades[]
+        │
+        ├──▶ _calculate_metrics()
+        │       │
+        │       ├──▶ Sharpe / Sortino / max_drawdown
+        │       ├──▶ profit_factor / win_rate / CAGR
+        │       └──▶ calmar_ratio / volatility
+        │
+        ├──▶ _persist_backtest_run()
+        │       │
+        │       └──▶ SQLite: backtest_runs / backtest_trades / backtest_equity_points
+        │
+        └──▶ 返回 JSON（含 equity_curve 采样点、逐笔交易、绩效指标）
+```
+
+**Agent Gateway 回测**（`POST /api/agent/v1/backtests`）：
+- 复用相同的 `BacktestService.run()`，结果与人类 UI 一致
+- 通过 `submit_job()` 放入异步队列，返回 `job_id`
+- 支持 `Idempotency-Key` 防止重复提交
+
+### 3.4 AI 分析记忆与反射校准流程
+
+```
+Agent 产生分析结果
+        │
+        ▼
+AnalysisMemoryService.store()
+        │
+        ├──▶ 解析 consensus / scores / indicators / reasons
+        │
+        └──▶ INSERT analysis_memory (user_id, market, symbol, decision, ...)
+        │
+        ▼
+用户查看历史 ──▶ GET /api/v1/analysis/history
+用户反馈质量 ──▶ POST /api/v1/analysis/feedback
+相似模式比对 ──▶ GET /api/v1/analysis/similar/{market}/{symbol}
+
+
+后台 Reflection Worker（每日 / 可配置间隔）
+        │
+        ▼
+ReflectionService.run_verification_cycle()
+        │
+        ├──▶ 拉取 N 天前未验证记录
+        │       │
+        │       ├──▶ get_current_price() ──▶ AKShare / CCXT
+        │       │
+        │       ├──▶ 计算 actual_return_pct
+        │       │
+        │       └──▶ UPDATE validated_at / was_correct
+        │
+        └──▶ 样本充足? ──▶ AICalibrationService.calibrate_market()
+                │
+                ├──▶ Grid Search 候选阈值 [10, 12, ..., 30]
+                │
+                ├──▶ 对每个阈值：预测决策 vs 实际收益 → 准确率
+                │
+                ├──▶ Tie-break：优先更高 BUY+SELL 覆盖率
+                │
+                └──▶ INSERT ai_calibration (buy_threshold, sell_threshold, ...)
+                        │
+                        ▼
+                后续分析复用最新阈值 ──▶ AICalibrationService.get_latest(market)
+```
+
+**校准规则**：
+- BUY 正确：actual_return_pct > +2%
+- SELL 正确：actual_return_pct < -2%
+- HOLD 正确：|actual_return_pct| ≤ 5%
+- 默认阈值：BUY ≥ 20, SELL ≤ -20, min_consensus_abs = 15
+- 前端/Agent 轮询 `/api/agent/v1/jobs/{job_id}` 获取结果
 
 ---
 
@@ -400,3 +523,5 @@ GET /health
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 0.1.0 | 2026-05-06 | 初始版本，完成核心功能 |
+| 0.1.0 | 2026-05-06 | 回测引擎迁移（QuantDinger → UF Stock Assistant） |
+| 0.1.0 | 2026-05-06 | Agent Gateway 回测端点补充（`POST /api/agent/v1/backtests`） |

@@ -19,7 +19,9 @@
   "paths": {
     "/api/agent/v1/whoami": {
       "get": {
-        "tags": ["Identity"],
+        "tags": [
+          "Identity"
+        ],
         "summary": "Get current token identity",
         "description": "Returns the calling token's scopes, allowlists, and metadata.",
         "operationId": "whoami",
@@ -31,120 +33,244 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "name": {"type": "string"},
-                    "scopes": {"type": "array", "items": {"type": "string"}},
-                    "markets": {"type": "array", "items": {"type": "string"}},
-                    "instruments": {"type": "array", "items": {"type": "string"}},
-                    "paper_only": {"type": "boolean"},
-                    "status": {"type": "string"},
-                    "rate_limit_per_min": {"type": "integer"}
+                    "name": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "markets": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "instruments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "paper_only": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "rate_limit_per_min": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/api/agent/v1/markets/stocks/search": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Search stocks",
         "operationId": "searchStocks",
         "parameters": [
-          {"name": "q", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 10}}
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Stock search results"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Stock search results"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/markets/stocks/{symbol}/realtime": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Get stock realtime quote",
         "operationId": "getStockRealtime",
         "parameters": [
-          {"name": "symbol", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Realtime quote"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/Forbidden"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Realtime quote"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/markets/stocks/{symbol}/history": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Get stock history K-lines",
         "operationId": "getStockHistory",
         "parameters": [
-          {"name": "symbol", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "period", "in": "query", "schema": {"type": "string", "default": "daily"}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 100}}
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "daily"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "History data"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "History data"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/markets/overview": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Get market overview",
         "operationId": "getMarketOverview",
         "responses": {
-          "200": {"description": "Market overview"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Market overview"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/markets/indices": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Get market indices",
         "operationId": "getMarketIndices",
         "responses": {
-          "200": {"description": "Indices data"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Indices data"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/markets/sectors": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Get sector hot list",
         "operationId": "getSectors",
         "responses": {
-          "200": {"description": "Sector list"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Sector list"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/markets/crypto/price": {
       "get": {
-        "tags": ["Markets"],
+        "tags": [
+          "Markets"
+        ],
         "summary": "Get crypto price",
         "operationId": "getCryptoPrice",
         "parameters": [
-          {"name": "symbol", "in": "query", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Crypto price"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Crypto price"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/chat": {
       "post": {
-        "tags": ["Chat"],
+        "tags": [
+          "Chat"
+        ],
         "summary": "Agent chat",
         "operationId": "chat",
         "requestBody": {
@@ -154,39 +280,66 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "message": {"type": "string"},
-                  "conversation_id": {"type": "string"},
-                  "user_id": {"type": "string"}
+                  "message": {
+                    "type": "string"
+                  },
+                  "conversation_id": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "type": "string"
+                  }
                 },
-                "required": ["message"]
+                "required": [
+                  "message"
+                ]
               }
             }
           }
         },
         "responses": {
-          "200": {"description": "Chat response"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Chat response"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/strategies/list": {
       "get": {
-        "tags": ["Strategies"],
+        "tags": [
+          "Strategies"
+        ],
         "summary": "List available strategies",
         "operationId": "listStrategies",
         "responses": {
-          "200": {"description": "Strategy list"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Strategy list"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/strategies/{strategy_key}/evaluate": {
       "post": {
-        "tags": ["Strategies"],
+        "tags": [
+          "Strategies"
+        ],
         "summary": "Evaluate strategy (async job)",
         "operationId": "evaluateStrategy",
         "parameters": [
-          {"name": "strategy_key", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "strategy_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -195,48 +348,79 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "symbol": {"type": "string"},
-                  "params": {"type": "object"}
+                  "symbol": {
+                    "type": "string"
+                  },
+                  "params": {
+                    "type": "object"
+                  }
                 },
-                "required": ["symbol"]
+                "required": [
+                  "symbol"
+                ]
               }
             }
           }
         },
         "responses": {
-          "200": {"description": "Job submitted"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Job submitted"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/jobs/{job_id}": {
       "get": {
-        "tags": ["Jobs"],
+        "tags": [
+          "Jobs"
+        ],
         "summary": "Get job status",
         "operationId": "getJob",
         "parameters": [
-          {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Job status"},
-          "404": {"description": "Job not found"}
+          "200": {
+            "description": "Job status"
+          },
+          "404": {
+            "description": "Job not found"
+          }
         }
       }
     },
     "/api/agent/v1/trading/positions": {
       "get": {
-        "tags": ["Trading"],
+        "tags": [
+          "Trading"
+        ],
         "summary": "Get positions",
         "operationId": "getPositions",
         "responses": {
-          "200": {"description": "Positions"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Positions"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/trading/orders": {
       "post": {
-        "tags": ["Trading"],
+        "tags": [
+          "Trading"
+        ],
         "summary": "Place order (paper-only by default)",
         "operationId": "placeOrder",
         "requestBody": {
@@ -246,42 +430,204 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "symbol": {"type": "string"},
-                  "side": {"type": "string", "enum": ["buy", "sell"]},
-                  "quantity": {"type": "number"},
-                  "price": {"type": "number"},
-                  "order_type": {"type": "string", "enum": ["market", "limit"]}
+                  "symbol": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "type": "string",
+                    "enum": [
+                      "buy",
+                      "sell"
+                    ]
+                  },
+                  "quantity": {
+                    "type": "number"
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "order_type": {
+                    "type": "string",
+                    "enum": [
+                      "market",
+                      "limit"
+                    ]
+                  }
                 },
-                "required": ["symbol", "side", "quantity"]
+                "required": [
+                  "symbol",
+                  "side",
+                  "quantity"
+                ]
               }
             }
           }
         },
         "responses": {
-          "200": {"description": "Order result"},
-          "403": {"$ref": "#/components/responses/Forbidden"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "Order result"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/api/agent/v1/trading/kill-switch": {
       "post": {
-        "tags": ["Trading"],
+        "tags": [
+          "Trading"
+        ],
         "summary": "Kill switch: cancel all open paper orders",
         "operationId": "killSwitch",
         "responses": {
-          "200": {"description": "Cancelled count"}
+          "200": {
+            "description": "Cancelled count"
+          }
         }
       }
     },
     "/api/agent/v1/admin/tokens": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "List all tokens",
         "operationId": "listTokens",
         "responses": {
-          "200": {"description": "Token list"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
+          "200": {
+            "description": "Token list"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/agent/v1/backtests": {
+      "post": {
+        "tags": [
+          "Backtest"
+        ],
+        "summary": "Submit backtest task (async job)",
+        "operationId": "createBacktest",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Prevent duplicate submissions"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "Indicator code (Python) or strategy script"
+                  },
+                  "market": {
+                    "type": "string",
+                    "default": "A_SHARE",
+                    "description": "Market code: A_SHARE, CRYPTO, etc."
+                  },
+                  "symbol": {
+                    "type": "string",
+                    "description": "Stock/crypto symbol"
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "default": "1D",
+                    "description": "K-line interval: 1m, 5m, 15m, 1H, 1D, 1W"
+                  },
+                  "start_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Backtest start date (YYYY-MM-DD)"
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Backtest end date (YYYY-MM-DD)"
+                  },
+                  "initial_capital": {
+                    "type": "number",
+                    "default": 10000,
+                    "description": "Initial capital"
+                  },
+                  "commission": {
+                    "type": "number",
+                    "default": 0.001,
+                    "description": "Commission rate per trade"
+                  },
+                  "leverage": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Leverage multiplier"
+                  },
+                  "trade_direction": {
+                    "type": "string",
+                    "enum": [
+                      "long",
+                      "short",
+                      "both"
+                    ],
+                    "default": "long",
+                    "description": "Allowed trade direction"
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "Indicator parameters"
+                  }
+                },
+                "required": [
+                  "code",
+                  "symbol",
+                  "start_date",
+                  "end_date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backtest completed synchronously (result included)"
+          },
+          "202": {
+            "description": "Backtest accepted, job created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     }
@@ -303,10 +649,18 @@
             "schema": {
               "type": "object",
               "properties": {
-                "code": {"type": "string"},
-                "message": {"type": "string"},
-                "details": {"type": "object"},
-                "retriable": {"type": "boolean"}
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "object"
+                },
+                "retriable": {
+                  "type": "boolean"
+                }
               }
             }
           }
@@ -319,10 +673,18 @@
             "schema": {
               "type": "object",
               "properties": {
-                "code": {"type": "string"},
-                "message": {"type": "string"},
-                "details": {"type": "object"},
-                "retriable": {"type": "boolean"}
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "object"
+                },
+                "retriable": {
+                  "type": "boolean"
+                }
               }
             }
           }
@@ -331,25 +693,55 @@
       "RateLimited": {
         "description": "Rate limit exceeded",
         "headers": {
-          "Retry-After": {"schema": {"type": "integer"}},
-          "X-RateLimit-Limit": {"schema": {"type": "integer"}},
-          "X-RateLimit-Remaining": {"schema": {"type": "integer"}},
-          "X-RateLimit-Reset": {"schema": {"type": "integer"}}
+          "Retry-After": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "X-RateLimit-Limit": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "X-RateLimit-Remaining": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "X-RateLimit-Reset": {
+            "schema": {
+              "type": "integer"
+            }
+          }
         },
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
               "properties": {
-                "code": {"type": "string"},
-                "message": {"type": "string"},
-                "details": {"type": "object"},
-                "retriable": {"type": "boolean"}
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "object"
+                },
+                "retriable": {
+                  "type": "boolean"
+                }
               }
             }
           }
         }
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "Backtest",
+      "description": "Backtest operations (class B scope)"
+    }
+  ]
 }

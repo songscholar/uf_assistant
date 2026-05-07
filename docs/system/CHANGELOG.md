@@ -28,6 +28,19 @@
   - OpenAPI 3.0 规范：`docs/agent/agent-openapi.json`
   - MCP Server：`mcp_server/` 独立包，stdio/sse/streamable-http 传输，只暴露 R/B 类工具
 
+- **回测引擎（完整迁移自 QuantDinger）**
+  - `BacktestService`：K 线缓存（TTL+LRU）、指标执行、交易模拟、绩效计算
+  - 双范式策略回测：Indicator 模式（df['buy']/df['sell']）+ Script 模式（on_bar 事件驱动）
+  - 多时间框架回测：信号在粗粒度生成，执行在细粒度（1m/5m）进行
+  - 风险控制：止损/止盈/追踪止损、仓位缩放（trendAdd/dcaAdd/trendReduce/adverseReduce）
+  - 绩效指标：Sharpe、max drawdown、profit factor、win rate、CAGR、Sortino
+  - 数据持久化：`backtest_runs` / `backtest_trades` / `backtest_equity_points`
+  - 安全沙箱：用户指标代码通过 `safe_exec_code` 运行，60s 超时，禁止危险操作
+  - 人类 API：`POST /api/v1/strategies/backtest`
+  - Agent Gateway API：`POST /api/agent/v1/backtests`（异步 Job，class B scope）
+  - 辅助端点：代码验证、质量评分、参数解析、指标执行
+  - 回测模型：StrategyModel / IndicatorModel / BacktestRun / BacktestTrade / BacktestEquityPoint
+
 ### Changed
 - `app/core/config.py`：新增 BillingSettings、MembershipSettings、UsdtPaymentSettings、AgentSettings.deployment_mode
 - `app/core/exceptions.py`：新增 BillingError、InsufficientCreditsError、UsdtPaymentError
