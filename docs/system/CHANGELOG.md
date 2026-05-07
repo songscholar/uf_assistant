@@ -28,6 +28,17 @@
   - OpenAPI 3.0 规范：`docs/agent/agent-openapi.json`
   - MCP Server：`mcp_server/` 独立包，stdio/sse/streamable-http 传输，只暴露 R/B 类工具
 
+- **AI 分析记忆与反射校准系统（迁移自 QuantDinger）**
+  - 分析记忆：`analysis_memory` 表存储每次 AI 决策（decision / confidence / consensus / indicators / reasons）
+  - 历史验证：后台 Worker 定期拉取旧记录，对比当前价格计算实际收益率，标记 was_correct
+  - 相似模式：基于 RSI / MACD / MA / 波动率加权相似度，检索历史同类技术指标模式
+  - 用户反馈：支持 helpful / not_helpful / accurate / inaccurate 反馈，用于质量评估
+  - 离线校准：Grid Search 最优 BUY/SELL/HOLD 阈值（候选 10~30），按准确率排序，Tie-break 优先覆盖
+  - 阈值默认：BUY ≥ 20, SELL ≤ -20, min_consensus_abs = 15, quality_hold = 0.7
+  - 反射 Worker：可配置间隔（默认 86400s），验证 + 条件触发校准
+  - API 端点：`/api/v1/analysis/history`, `/stats`, `/feedback`, `/similar`, `/calibration/{market}`
+  - 单元测试：10 个用例覆盖存储、查询、反馈、校准、阈值预测
+
 - **回测引擎（完整迁移自 QuantDinger）**
   - `BacktestService`：K 线缓存（TTL+LRU）、指标执行、交易模拟、绩效计算
   - 双范式策略回测：Indicator 模式（df['buy']/df['sell']）+ Script 模式（on_bar 事件驱动）
@@ -42,9 +53,9 @@
   - 回测模型：StrategyModel / IndicatorModel / BacktestRun / BacktestTrade / BacktestEquityPoint
 
 ### Changed
-- `app/core/config.py`：新增 BillingSettings、MembershipSettings、UsdtPaymentSettings、AgentSettings.deployment_mode
+- `app/core/config.py`：新增 BillingSettings、MembershipSettings、UsdtPaymentSettings、AgentSettings.deployment_mode、ReflectionSettings
 - `app/core/exceptions.py`：新增 BillingError、InsufficientCreditsError、UsdtPaymentError
-- `app/api/main.py`：注册 billing 路由，lifespan 启动/停止 UsdtOrderWorker，Agent Gateway 响应头注入中间件
+- `app/api/main.py`：注册 billing/analysis 路由，lifespan 启动/停止 UsdtOrderWorker 与 Reflection Worker，Agent Gateway 响应头注入中间件
 - `app/core/constants.py`：新增 AgentScope.NOTIFY、AgentScope.CREDENTIALS、AgentTokenStatus
 - `app/memory/`：新增 agent_models.py（agent_tokens / agent_jobs / agent_paper_orders ORM 模型）
 
