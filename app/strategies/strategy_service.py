@@ -720,39 +720,175 @@ def batch_stop_strategies(strategy_ids: list[str]) -> dict[str, bool]:
     return results
 
 
+import threading
+
+_TEST_CONN_SEMAPHORE = threading.Semaphore(5)
+
+
 def test_exchange_connection(exchange_config: dict[str, Any]) -> dict[str, Any]:
     """
-    Test exchange connectivity using the provided config.
+    Test exchange connectivity with enhanced diagnostics.
+
+    Migrated from QuantDinger:
+    - Egress IP detection (for Binance IP whitelist debugging)
+    - Demo mode detection
+    - Binance -2015 cross-market diagnosis
+    - Market type probing (spot/swap candidates)
+    - Secret masking in logs
+    - Concurrency limit (threading.Semaphore(5))
 
     Returns:
-        {"success": bool, "error": str_or_empty, "balance": dict_or_none}
+        {"success": bool, "message": str, "data": dict}
     """
-    try:
-        from app.strategies.exchange_client import CCXTExchangeClient
+    with _TEST_CONN_SEMAPHORE:
+        try:
+            from app.strategies.exchange_client import (
+                CCXTExchangeClient,
+                _hint_binance_2015,
+                exchange_demo_mode_enabled,
+                safe_exchange_config_for_log,
+            )
 
-        exchange_id = exchange_config.get("exchange_id", "binance")
-        api_key = exchange_config.get("api_key", "")
-        api_secret = exchange_config.get("api_secret", "")
-        passphrase = exchange_config.get("passphrase")
-        sandbox = exchange_config.get("sandbox", False)
+            cfg = exchange_config or {}
+            safe_cfg = safe_exchange_config_for_log(cfg)
+            exchange_id = (cfg.get("exchange_id") or "").strip().lower()
+            if not exchange_id:
+                return {"success": False, "message": "Missing exchange_id", "data": None}
 
-        if not api_key or not api_secret:
-            return {"success": False, "error": "Missing api_key or api_secret", "balance": None}
+            # Egress IP detection (best-effort)
+            egress_ip = ""
+            try:
+                import urllib.request
+                with urllib.request.urlopen("https://ifconfig.me/ip", timeout=5) as resp:
+                    egress_ip = resp.read().decode("utf-8").strip()
+            except Exception:
+                pass
 
-        client = CCXTExchangeClient(
-            exchange_id=exchange_id,
-            api_key=api_key,
-            api_secret=api_secret,
-            passphrase=passphrase,
-            sandbox=sandbox,
-        )
+            # Resolve market type candidates
+            raw_market_type = str(
+                cfg.get("market_type") or cfg.get("defaultType") or ""
+            ).strip().lower()
+            if raw_market_type in ("futures", "future", "perp", "perpetual"):
+                raw_market_type = "swap"
+            explicit_market_type = raw_market_type in ("spot", "swap")
+            if exchange_id in ("coinbase", "coinbaseexchange"):
+                market_candidates = ["spot"]
+            else:
+                market_candidates = [raw_market_type] if explicit_market_type else ["spot", "swap"]
 
-        balance = client.get_balance()
-        return {"success": True, "error": "", "balance": balance}
+            def _probe(market_type: str) -> dict[str, Any]:
+                """Probe a single market type."""
+                try:
+                    client = CCXTExchangeClient(
+                        exchange_id=exchange_id,
+                        api_key=cfg.get("api_key", ""),
+                        api_secret=cfg.get("api_secret", ""),
+                        passphrase=cfg.get("passphrase"),
+                        sandbox=cfg.get("sandbox", False),
+                    )
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "message": f"Create client failed: {e}",
+                        "data": {
+                            "exchange": safe_cfg,
+                            "market_type": market_type,
+                            "egress_ip": egress_ip,
+                        },
+                    }
 
-    except Exception as exc:
-        logger.error("test_exchange_connection_failed", error=str(exc))
-        return {"success": False, "error": str(exc), "balance": None}
+                client_kind = type(client).__name__
+
+                # Public ping
+                ok_public = False
+                try:
+                    ok_public = bool(client._exchange.fetch_time())
+                except Exception:
+                    try:
+                        client._exchange.load_markets()
+                        ok_public = True
+                    except Exception:
+                        ok_public = False
+
+                if not ok_public:
+                    return {
+                        "success": False,
+                        "message": f"Public ping failed: {exchange_id}",
+                        "data": {
+                            "exchange": safe_cfg,
+                            "client": client_kind,
+                            "market_type": market_type,
+                            "egress_ip": egress_ip,
+                        },
+                    }
+
+                # Private validation
+                try:
+                    balance = client.get_balance()
+                except Exception as e:
+                    msg = str(e)
+                    # Binance -2015 diagnosis
+                    if exchange_id == "binance" and ("-2015" in msg or "Invalid API-key, IP, or permissions" in msg):
+                        alt_market_type = "spot" if market_type != "spot" else "swap"
+                        alt_ok = False
+                        try:
+                            alt_client = CCXTExchangeClient(
+                                exchange_id=exchange_id,
+                                api_key=cfg.get("api_key", ""),
+                                api_secret=cfg.get("api_secret", ""),
+                                passphrase=cfg.get("passphrase"),
+                                sandbox=cfg.get("sandbox", False),
+                            )
+                            alt_client._exchange.fetch_balance()
+                            alt_ok = True
+                        except Exception:
+                            alt_ok = False
+
+                        is_demo = exchange_demo_mode_enabled(cfg)
+                        base_url = getattr(client._exchange, "urls", {}).get("api", "")
+                        hint = _hint_binance_2015(market_type, base_url, is_demo, alt_ok, alt_market_type)
+                        msg = f"{msg} | {hint}"
+
+                    return {
+                        "success": False,
+                        "message": f"Auth failed: {msg}",
+                        "data": {
+                            "exchange": safe_cfg,
+                            "client": client_kind,
+                            "market_type": market_type,
+                            "egress_ip": egress_ip,
+                        },
+                    }
+
+                return {
+                    "success": True,
+                    "message": "Connection OK",
+                    "data": {
+                        "exchange": safe_cfg,
+                        "client": client_kind,
+                        "market_type": market_type,
+                        "egress_ip": egress_ip,
+                        "balance": balance,
+                    },
+                }
+
+            last_failure = None
+            for market_type in market_candidates:
+                result = _probe(market_type)
+                if result.get("success"):
+                    if not explicit_market_type and len(market_candidates) > 1:
+                        result["message"] = f"Connection OK ({market_type})"
+                    return result
+                last_failure = result
+
+            if last_failure and not explicit_market_type and len(market_candidates) > 1:
+                tried = "/".join(market_candidates)
+                last_failure["message"] = f"{last_failure.get('message')}. Tried market_type={tried}"
+            return last_failure or {"success": False, "message": "Connection failed", "data": None}
+
+        except Exception as e:
+            logger.error("test_exchange_connection_failed", error=str(e))
+            return {"success": False, "message": f"Connection failed: {e}", "data": None}
 
 
 def _strategy_to_dict(strategy: StrategyModel) -> dict[str, Any]:

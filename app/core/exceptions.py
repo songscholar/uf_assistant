@@ -81,6 +81,30 @@ class OrderError(TradingError):
         self.code = "ORDER_ERROR"
 
 
+class PositionError(TradingError):
+    """持仓错误"""
+
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__(message, details=details)
+        self.code = "POSITION_ERROR"
+
+
+class CredentialError(TradingError):
+    """凭证错误"""
+
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__(message, details=details)
+        self.code = "CREDENTIAL_ERROR"
+
+
+class ExchangeConnectionError(TradingError):
+    """交易所连接错误"""
+
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__(message, details=details)
+        self.code = "EXCHANGE_CONNECTION_ERROR"
+
+
 class StrategyError(AssistantException):
     """策略错误"""
     

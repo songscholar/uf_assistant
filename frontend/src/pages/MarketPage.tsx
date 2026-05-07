@@ -23,7 +23,12 @@ function IndexCard({ index }: { index: MarketIndex }) {
       )}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-text-secondary">{index.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text-secondary">{index.name}</span>
+          {index.market && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-hover text-text-tertiary">{index.market}</span>
+          )}
+        </div>
         {isUp ? (
           <TrendingUp className="w-4 h-4 text-success" />
         ) : (
@@ -201,7 +206,7 @@ export default function MarketPage() {
           <Activity className="w-5 h-5 text-accent" />
           大盘指数
         </h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {indices.length > 0 ? (
             indices.map((index) => <IndexCard key={index.symbol} index={index} />)
           ) : (

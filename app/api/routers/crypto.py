@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("/crypto/price")
 async def price(
     symbol: str = Query(..., description="交易对，如 BTC/USDT 或 BTC"),
-    exchange: str = Query("binance", description="交易所"),
+    exchange: str = Query("gate", description="交易所"),
 ):
     """获取虚拟货币价格"""
     try:
@@ -30,7 +30,7 @@ async def price(
 @router.get("/crypto/ticker")
 async def ticker(
     symbol: str = Query(..., description="交易对"),
-    exchange: str = Query("binance", description="交易所"),
+    exchange: str = Query("gate", description="交易所"),
 ):
     """获取行情摘要"""
     try:
@@ -43,7 +43,7 @@ async def ticker(
 @router.get("/crypto/top")
 async def top(
     limit: int = Query(20, ge=1, le=100),
-    exchange: str = Query("binance", description="交易所"),
+    exchange: str = Query("gate", description="交易所"),
 ):
     """获取市值排行"""
     try:
@@ -58,7 +58,7 @@ async def ohlcv(
     symbol: str = Query(..., description="交易对"),
     timeframe: str = Query("1d", description="周期: 1m/5m/15m/1h/4h/1d"),
     limit: int = Query(100, ge=1, le=500),
-    exchange: str = Query("binance", description="交易所"),
+    exchange: str = Query("gate", description="交易所"),
 ):
     """获取 K 线数据"""
     try:

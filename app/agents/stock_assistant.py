@@ -214,10 +214,14 @@ class StockAssistantAgent:
     @property
     def llm(self) -> LangChainLlmAdapter:
         return self._llm
-    
+
     @property
     def memory(self) -> MemoryManager | None:
         return self._memory
+
+    def set_provider(self, provider: str) -> None:
+        """切换 LLM 提供商"""
+        self._llm.provider = provider
     
     def _build_config(self) -> dict[str, Any]:
         """构建 RunnableConfig"""
@@ -234,6 +238,7 @@ class StockAssistantAgent:
         user_input: str,
         conversation_id: str | None = None,
         user_id: str = "default",
+        provider: str | None = None,
     ) -> dict[str, Any]:
         """
         对话接口
@@ -250,6 +255,10 @@ class StockAssistantAgent:
                 "tools_used": list[dict],
             }
         """
+        # 切换 provider（如果指定）
+        if provider:
+            self._llm.provider = provider
+
         # 初始化/获取会话
         if self._memory:
             if not conversation_id:

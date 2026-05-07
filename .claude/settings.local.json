@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm run *)",
+      "Bash(lsof -ti:5173)",
+      "Bash(xargs kill -9)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/rain-effect.js)",
+      "Skill(gstack)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}\" http://localhost:5173/resources/%E%8%AF%94%B1%B8%B4%E5%A4%B4.png)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}\" \"http://localhost:5173/resources/橘子洲头.png\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:5173/resources/\")",
+      "Bash(python3 *)",
+      "Bash(curl *)",
+      "Bash(npx tsc *)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-review-read)",
+      "Bash(lsof -ti:8000)",
+      "Bash(pip install *)",
+      "Bash(uvicorn app.api.main:app --reload --port 8000)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(nohup npm run dev)",
+      "Bash(echo \"Frontend PID: $!\")",
+      "Bash(pip show *)",
+      "Bash(conda env *)",
+      "Bash(conda run *)",
+      "Bash(pkill -f \"uvicorn\")",
+      "Bash(iconv -f GBK -t UTF-8)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "Bash(pip list *)",
+      "Bash(echo \"exit: $?\")"
+    ]
+  }
+}

@@ -47,6 +47,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="用户消息", min_length=1, max_length=4000)
     conversation_id: str | None = Field(None, description="会话 ID（新会话留空）")
     user_id: str = Field("default", description="用户标识")
+    provider: str | None = Field(None, description="LLM 提供商名称")
 
 
 class ChatResponse(BaseModel):
@@ -73,6 +74,14 @@ class ConversationDetailResponse(BaseModel):
 # 接口
 # =============================================================================
 
+@router.get("/providers")
+async def list_providers():
+    """获取可用的 LLM 提供商列表"""
+    agent = _get_agent()
+    providers = agent.llm.llm_service.list_providers()
+    return {"providers": providers}
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -87,6 +96,7 @@ async def chat(request: ChatRequest):
             user_input=request.message,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
+            provider=request.provider,
         )
         return ChatResponse(**result)
     except Exception as exc:

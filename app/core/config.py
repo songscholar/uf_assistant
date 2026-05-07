@@ -96,7 +96,7 @@ class ReflectionSettings(BaseSettings):
 class UsdtPaymentSettings(BaseSettings):
     """USDT-TRC20 支付配置"""
     model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_USDT_", extra="ignore")
-    
+
     pay_enabled: bool = Field(default=False, description="是否启用 USDT 支付")
     chain: str = Field(default="TRC20", description="链类型")
     trc20_xpub: str = Field(default="", description="TRC20 观察钱包 xpub")
@@ -107,6 +107,38 @@ class UsdtPaymentSettings(BaseSettings):
     order_expire_minutes: int = Field(default=30, description="订单过期时间(分钟)")
     worker_poll_interval: int = Field(default=30, description="后台轮询间隔(秒)")
     debug_reconcile_log: str = Field(default="info", description="USDT 对账日志级别: none/error/warn/info/debug")
+
+
+class AuthSettings(BaseSettings):
+    """用户认证配置"""
+    model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_AUTH_", extra="ignore")
+
+    secret_key: str = Field(default="uf-assistant-secret-change-me", description="JWT 签名密钥")
+    jwt_algorithm: str = Field(default="HS256", description="JWT 算法")
+    jwt_expire_days: int = Field(default=7, description="JWT 有效期(天)")
+    single_user_mode: bool = Field(default=False, description="单用户模式（跳过数据库认证）")
+    admin_user: str = Field(default="admin", description="单用户模式 / 默认管理员用户名")
+    admin_password: str = Field(default="123456", description="单用户模式 / 默认管理员密码")
+    registration_enabled: bool = Field(default=True, description="是否开放注册")
+    turnstile_site_key: str = Field(default="", description="Cloudflare Turnstile 站点密钥")
+    turnstile_secret_key: str = Field(default="", description="Cloudflare Turnstile 密钥")
+    # OAuth
+    google_client_id: str = Field(default="", description="Google OAuth Client ID")
+    google_client_secret: str = Field(default="", description="Google OAuth Client Secret")
+    github_client_id: str = Field(default="", description="GitHub OAuth Client ID")
+    github_client_secret: str = Field(default="", description="GitHub OAuth Client Secret")
+    oauth_state_ttl_minutes: int = Field(default=20, description="OAuth state 有效期(分钟)")
+    # Email
+    smtp_host: str = Field(default="", description="SMTP 服务器地址")
+    smtp_port: int = Field(default=587, description="SMTP 端口")
+    smtp_user: str = Field(default="", description="SMTP 用户名")
+    smtp_password: str = Field(default="", description="SMTP 密码")
+    smtp_from: str = Field(default="", description="发件人地址")
+    smtp_use_tls: bool = Field(default=True, description="SMTP 是否使用 TLS")
+    email_code_expire_minutes: int = Field(default=10, description="邮箱验证码有效期(分钟)")
+    # Credits
+    credits_register_bonus: float = Field(default=100, description="注册赠送积分")
+    credits_referral_bonus: float = Field(default=50, description="邀请赠送积分")
 
 
 class AppSettings(BaseSettings):
@@ -136,6 +168,7 @@ class AppSettings(BaseSettings):
     usdt: UsdtPaymentSettings = Field(default_factory=UsdtPaymentSettings)
     reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
     
     @property
     def log_dir_path(self) -> Path:

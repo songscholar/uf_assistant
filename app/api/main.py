@@ -23,6 +23,35 @@ from .agent import router as agent_router
 logger = get_logger("app.api.main")
 
 
+def _ensure_admin_user() -> None:
+    """非单用户模式下，如果 uf_users 表为空则自动创建管理员账户。"""
+    settings = get_settings()
+    if settings.auth.single_user_mode:
+        return
+    from app.auth.models import User, get_auth_db_session
+    session = get_auth_db_session()
+    try:
+        count = session.query(User).count()
+        if count > 0:
+            return
+        from app.auth.password import hash_password
+        admin = User(
+            username=settings.auth.admin_user,
+            password_hash=hash_password(settings.auth.admin_password),
+            email=f"{settings.auth.admin_user}@localhost",
+            role="admin",
+            status="active",
+        )
+        session.add(admin)
+        session.commit()
+        logger.info("admin_user_created", username=settings.auth.admin_user)
+    except Exception as exc:
+        session.rollback()
+        logger.error("admin_user_creation_failed", error=str(exc))
+    finally:
+        session.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
@@ -44,6 +73,20 @@ async def lifespan(app: FastAPI):
     from app.trading.models import init_trading_tables
     init_trading_tables()
     logger.info("trading_tables_initialized")
+
+    # 初始化认证模块数据库表
+    from app.auth.models import init_auth_tables
+    init_auth_tables()
+    logger.info("auth_tables_initialized")
+
+    # 自动创建管理员账户（非单用户模式且 users 表为空时）
+    _ensure_admin_user()
+
+    # 注册认证路由
+    from app.api.routers.auth import router as auth_router
+    from app.api.routers.user import router as user_router
+    app.include_router(auth_router, prefix="/api/v1", tags=["认证"])
+    app.include_router(user_router, prefix="/api/v1", tags=["用户管理"])
 
     # 启动反射 Worker（如启用）
     from app.services.reflection import start_reflection_worker

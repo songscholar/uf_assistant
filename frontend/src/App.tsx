@@ -7,8 +7,12 @@ import StockPage from '@/pages/StockPage'
 import StrategyPage from '@/pages/StrategyPage'
 import TradingPage from '@/pages/TradingPage'
 import CryptoPage from '@/pages/CryptoPage'
+import LoginPage from '@/pages/LoginPage'
+import RegisterPage from '@/pages/RegisterPage'
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
 import RainCanvas from '@/components/effects/RainCanvas'
 import { useThemeStore } from '@/stores/themeStore'
+import { useAuthStore } from '@/stores/authStore'
 import { useEffect } from 'react'
 
 function ThemeInitializer() {
@@ -32,7 +36,12 @@ function ThemeInitializer() {
 
 export default function App() {
   const { theme } = useThemeStore()
+  const { loadFromStorage } = useAuthStore()
   const isRain = theme === 'rain'
+
+  useEffect(() => {
+    loadFromStorage()
+  }, [loadFromStorage])
 
   return (
     <BrowserRouter>
@@ -41,7 +50,9 @@ export default function App() {
       {isRain && <div className="rain-vignette" />}
       <div className="relative z-10">
         <Routes>
-          <Route element={<MainLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/market" element={<MarketPage />} />
             <Route path="/stock/:symbol" element={<StockPage />} />

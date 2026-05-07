@@ -12,6 +12,7 @@ from typing import Any
 from app.core.cache import ensure_cache
 from app.core.exceptions import StockDataError
 from app.core.logging import get_logger
+from app.tools import eastmoney_api
 
 logger = get_logger("app.tools.stock_data")
 
@@ -91,46 +92,17 @@ def get_stock_info(symbol: str) -> str:
 # 实时行情（从缓存过滤）
 # =============================================================================
 
-def get_stock_realtime(symbol: str | None = None) -> str:
+def get_stock_realtime(symbol: str | None = None) -> str | dict:
     """
     获取股票实时行情
-    单只股票查询优先从全市场缓存过滤，避免重复拉取 5000+ 只数据
+    单只股票走东财直连 API（~130ms），无需拉取全市场数据
     """
     try:
         if symbol:
-            # 单只股票：从缓存过滤
-            df = ensure_cache("market:spot")
-            if df is None:
-                logger.warning("realtime_cache_miss_fallback", symbol=symbol)
-                ak = _get_ak()
-                df = ak.stock_zh_a_spot_em()
-
-            stock = df[df["代码"] == symbol]
-
-            if stock.empty:
-                return json.dumps({"error": f"未找到股票 {symbol}"}, ensure_ascii=False)
-
-            row = stock.iloc[0]
-            data = {
-                "symbol": symbol,
-                "name": row.get("名称"),
-                "price": row.get("最新价"),
-                "open": row.get("开盘价"),
-                "high": row.get("最高价"),
-                "low": row.get("最低价"),
-                "prev_close": row.get("昨收"),
-                "change": row.get("涨跌额"),
-                "change_pct": row.get("涨跌幅"),
-                "volume": row.get("成交量"),
-                "amount": row.get("成交额"),
-                "bid": row.get("买一"),
-                "ask": row.get("卖一"),
-                "pe_ttm": row.get("市盈率-动态"),
-                "pb": row.get("市净率"),
-                "market_cap": row.get("总市值"),
-                "turnover": row.get("换手率"),
-                "timestamp": datetime.now().isoformat(),
-            }
+            # 单只股票：东财直连（返回 dict，由 FastAPI 自动序列化）
+            data = eastmoney_api.get_stock_realtime(symbol)
+            logger.info("realtime_data_fetched", symbol=symbol, source="eastmoney")
+            return data
         else:
             # 市场概况：从缓存取指数
             df = ensure_cache("market:index")
@@ -149,7 +121,7 @@ def get_stock_realtime(symbol: str | None = None) -> str:
                 })
             data = {"market_overview": indices}
 
-        logger.info("realtime_data_fetched", symbol=symbol, cached=ensure_cache("market:spot") is not None)
+        logger.info("realtime_data_fetched", symbol=symbol)
         return json.dumps(data, ensure_ascii=False, default=str)
 
     except Exception as exc:

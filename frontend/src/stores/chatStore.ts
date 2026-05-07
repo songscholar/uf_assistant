@@ -2,6 +2,13 @@ import { create } from 'zustand'
 import type { Conversation, Message } from '@/types'
 import { chatApi } from '@/lib/api'
 
+interface Provider {
+  name: string
+  model: string
+  base_url: string
+  default: boolean
+}
+
 interface ChatState {
   conversations: Conversation[]
   currentConversationId: string | null
@@ -9,8 +16,12 @@ interface ChatState {
   isStreaming: boolean
   isLoading: boolean
   error: string | null
+  providers: Provider[]
+  selectedProvider: string | null
 
   loadConversations: () => Promise<void>
+  loadProviders: () => Promise<void>
+  setSelectedProvider: (provider: string) => void
   createConversation: () => Promise<string>
   switchConversation: (id: string) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
@@ -27,6 +38,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   isLoading: false,
   error: null,
+  providers: [],
+  selectedProvider: localStorage.getItem('selectedProvider') || null,
 
   loadConversations: async () => {
     try {
@@ -35,6 +48,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) {
       console.error('Failed to load conversations:', err)
     }
+  },
+
+  loadProviders: async () => {
+    try {
+      const res = await chatApi.getProviders()
+      const providers = res.data.providers || []
+      set({ providers })
+      // Auto-select default provider if none selected
+      const { selectedProvider } = get()
+      if (!selectedProvider && providers.length > 0) {
+        const defaultProvider = providers.find((p: Provider) => p.default) || providers[0]
+        set({ selectedProvider: defaultProvider.name })
+        localStorage.setItem('selectedProvider', defaultProvider.name)
+      }
+    } catch (err) {
+      console.error('Failed to load providers:', err)
+    }
+  },
+
+  setSelectedProvider: (provider: string) => {
+    set({ selectedProvider: provider })
+    localStorage.setItem('selectedProvider', provider)
   },
 
   createConversation: async () => {
@@ -95,7 +130,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ messages: [...get().messages, assistantMessage] })
 
     try {
-      const res = await chatApi.sendMessage(content, currentConversationId || undefined)
+      const { selectedProvider } = get()
+      const res = await chatApi.sendMessage(content, currentConversationId || undefined, selectedProvider || undefined)
       const answer = res.data.answer || '抱歉，我暂时无法回答这个问题。'
 
       set({

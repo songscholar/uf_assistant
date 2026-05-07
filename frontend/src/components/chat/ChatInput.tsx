@@ -10,7 +10,11 @@ interface ChatInputProps {
 export default function ChatInput({ onSend }: ChatInputProps) {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { isStreaming } = useChatStore()
+  const { isStreaming, providers, selectedProvider, loadProviders, setSelectedProvider } = useChatStore()
+
+  useEffect(() => {
+    loadProviders()
+  }, [])
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -41,18 +45,11 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         className={cn(
           'bg-bg-card border border-border rounded-2xl shadow-md',
           'transition-all duration-200',
-          'hover:shadow-lg focus-within:shadow-lg focus-within:border-accent'
+          'hover:shadow-lg focus-within:shadow-lg'
         )}
       >
-        {/* Toolbar */}
-        <div className="flex items-center gap-1 px-3 pt-2">
-          <ToolbarButton icon={<Paperclip className="w-4 h-4" />} label="附件" />
-          <ToolbarButton icon={<Globe className="w-3.5 h-3.5" />} label="联网搜索" />
-          <ToolbarButton icon={<Sparkles className="w-3.5 h-3.5" />} label="深度思考" />
-        </div>
-
         {/* Input */}
-        <div className="flex items-end gap-2 px-3 pb-3 pt-1">
+        <div className="px-3 pt-3">
           <textarea
             ref={textareaRef}
             value={content}
@@ -61,16 +58,37 @@ export default function ChatInput({ onSend }: ChatInputProps) {
             placeholder="给优富助手发送消息..."
             rows={1}
             className={cn(
-              'flex-1 resize-none bg-transparent text-text-primary text-[15px]',
-              'placeholder:text-text-tertiary outline-none',
-              'min-h-[40px] max-h-[200px] py-2'
+              'chat-input w-full resize-none bg-transparent text-text-primary text-[15px]',
+              'placeholder:text-text-tertiary outline-none border-none',
+              'min-h-[40px] max-h-[200px] py-1'
             )}
           />
+        </div>
+
+        {/* Bottom toolbar */}
+        <div className="flex items-center gap-1 px-3 pb-3 pt-1">
+          <ToolbarButton icon={<Paperclip className="w-4 h-4" />} label="附件" />
+          <ToolbarButton icon={<Globe className="w-3.5 h-3.5" />} label="联网搜索" />
+          <ToolbarButton icon={<Sparkles className="w-3.5 h-3.5" />} label="深度思考" />
+          <div className="flex-1" />
+          {providers.length > 0 && (
+            <select
+              value={selectedProvider || ''}
+              onChange={(e) => setSelectedProvider(e.target.value)}
+              className="bg-bg-secondary border border-border rounded-lg px-2 py-1 text-xs text-text-secondary hover:border-border-focus transition-colors duration-150 outline-none cursor-pointer"
+            >
+              {providers.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} ({p.model})
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isStreaming}
             className={cn(
-              'w-9 h-9 rounded-full flex items-center justify-center shrink-0 mb-0.5',
+              'w-9 h-9 rounded-full flex items-center justify-center shrink-0',
               'transition-all duration-150',
               content.trim() && !isStreaming
                 ? 'bg-accent text-white hover:scale-105 hover:shadow-md active:scale-95'

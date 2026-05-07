@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import get_current_user
 from app.core.config import get_settings
 from app.core.exceptions import BillingError
 from app.core.logging import get_logger
@@ -69,12 +70,12 @@ class VipSetRequest(BaseModel):
 # ------------------------------------------------------------------
 
 @router.get("/plans")
-async def get_membership_plans(user_id: str = Header(default="default")) -> dict[str, Any]:
+async def get_membership_plans(user: dict = Depends(get_current_user)) -> dict[str, Any]:
     """获取会员套餐配置 + 当前用户计费快照"""
     try:
         svc = get_billing_service()
         plans = svc.get_membership_plans()
-        billing_info = svc.get_user_billing_info(user_id)
+        billing_info = svc.get_user_billing_info(str(user["user_id"]))
         return {
             "code": "success",
             "data": {"plans": plans, "billing": billing_info},
@@ -85,10 +86,10 @@ async def get_membership_plans(user_id: str = Header(default="default")) -> dict
 
 
 @router.get("/credits")
-async def get_credits(user_id: str = Header(default="default")) -> dict[str, Any]:
+async def get_credits(user: dict = Depends(get_current_user)) -> dict[str, Any]:
     """获取用户积分余额与 VIP 状态"""
     svc = get_billing_service()
-    info = svc.get_user_billing_info(user_id)
+    info = svc.get_user_billing_info(str(user["user_id"]))
     return {
         "code": "success",
         "data": info,
@@ -97,13 +98,13 @@ async def get_credits(user_id: str = Header(default="default")) -> dict[str, Any
 
 @router.get("/credits/log")
 async def get_credits_log(
-    user_id: str = Header(default="default"),
+    user: dict = Depends(get_current_user),
     page: int = 1,
     page_size: int = 20,
 ) -> dict[str, Any]:
     """获取用户积分变动日志"""
     svc = get_billing_service()
-    logs = svc.get_credits_log(user_id, page=page, page_size=page_size)
+    logs = svc.get_credits_log(str(user["user_id"]), page=page, page_size=page_size)
     return {
         "code": "success",
         "data": logs,
@@ -112,13 +113,13 @@ async def get_credits_log(
 
 @router.get("/membership/orders")
 async def get_membership_orders(
-    user_id: str = Header(default="default"),
+    user: dict = Depends(get_current_user),
     page: int = 1,
     page_size: int = 20,
 ) -> dict[str, Any]:
     """获取用户会员购买订单"""
     svc = get_billing_service()
-    orders = svc.get_membership_orders(user_id, page=page, page_size=page_size)
+    orders = svc.get_membership_orders(str(user["user_id"]), page=page, page_size=page_size)
     return {
         "code": "success",
         "data": orders,
@@ -238,14 +239,14 @@ async def get_admin_metrics() -> dict[str, Any]:
 @router.post("/usdt/create")
 async def usdt_create_order(
     payload: UsdtCreateOrderRequest,
-    user_id: str = Header(default="default"),
+    user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """创建 USDT 支付订单（每单独立地址）"""
     plan = (payload.plan or "").strip().lower()
     if not plan:
         raise BillingError("missing_plan")
 
-    ok, msg, out = get_usdt_payment_service().create_order(user_id, plan)
+    ok, msg, out = get_usdt_payment_service().create_order(str(user["user_id"]), plan)
     if ok:
         return {"code": "success", "data": out}
     raise BillingError(msg, details=out)
@@ -254,11 +255,11 @@ async def usdt_create_order(
 @router.get("/usdt/order/{order_id}")
 async def usdt_get_order(
     order_id: int,
-    user_id: str = Header(default="default"),
+    user: dict = Depends(get_current_user),
     refresh: bool = True,
 ) -> dict[str, Any]:
     """获取 USDT 订单详情；默认刷新链上状态"""
-    ok, msg, out = get_usdt_payment_service().get_order(user_id, order_id, refresh=refresh)
+    ok, msg, out = get_usdt_payment_service().get_order(str(user["user_id"]), order_id, refresh=refresh)
     if ok:
         return {"code": "success", "data": out}
     raise BillingError(msg, details=out)
@@ -270,16 +271,17 @@ async def usdt_get_order(
 
 @router.get("/credits/stream")
 async def credits_stream(
-    user_id: str = Header(default="default"),
+    user: dict = Depends(get_current_user),
 ) -> StreamingResponse:
     """积分变动实时推送（SSE，每秒轮询）"""
+    uid = str(user["user_id"])
 
     async def event_generator():
         last_credits: float | None = None
         while True:
             try:
                 svc = get_billing_service()
-                info = svc.get_user_billing_info(user_id)
+                info = svc.get_user_billing_info(uid)
                 current: float = info["credits"]
                 if current != last_credits:
                     last_credits = current

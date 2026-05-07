@@ -112,6 +112,11 @@ class LlmService:
     @classmethod
     def from_env(cls, provider: str | None = None) -> "LlmService":
         """从环境变量创建 LLM 服务实例"""
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
         default = provider or os.getenv("STOCK_ASSISTANT_LLM_PROVIDER", "kimi").strip() or "kimi"
 
         providers: dict[str, LlmProviderConfig] = {}

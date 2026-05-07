@@ -283,6 +283,13 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
 }
 
+/* Chat textarea: no focus ring */
+textarea.chat-input:focus {
+  box-shadow: none !important;
+  border-color: transparent !important;
+  outline: none !important;
+}
+
 button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(200, 85, 61, 0.12);

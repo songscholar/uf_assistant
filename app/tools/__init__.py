@@ -6,6 +6,7 @@ from .crypto_data import get_crypto_ohlcv, get_crypto_price, get_crypto_ticker, 
 from .file_parser import detect_file_type, parse_file, parse_files
 from .market import get_longhu_bang, get_market_index, get_market_overview, get_northbound_flow, get_sector_hot  # noqa: F401
 from .stock_data import get_capital_flow, get_stock_financial, get_stock_history, get_stock_info, get_stock_realtime, search_stocks
+from .strategy_tools import STRATEGY_TOOLS
 from .trading import cancel_order, get_orders, get_portfolio, get_position, get_positions, submit_order
 
 # LangChain 工具注册表
@@ -37,6 +38,8 @@ ALL_TOOLS = [
     get_orders,
     cancel_order,
     get_portfolio,
+    # 策略引擎
+    *STRATEGY_TOOLS,
 ]
 
 __all__ = [
@@ -69,6 +72,8 @@ __all__ = [
     "get_orders",
     "cancel_order",
     "get_portfolio",
+    # strategy
+    "STRATEGY_TOOLS",
     # registry
     "ALL_TOOLS",
 ]

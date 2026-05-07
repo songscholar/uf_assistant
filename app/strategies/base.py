@@ -1,6 +1,11 @@
 """
 UF Stock Assistant — 策略基类
 定义所有交易策略的接口和公共行为
+
+支持双范式：
+- evaluate 模式：传统 4 个内置策略（MA/MACD/RSI/Bollinger）
+- IndicatorStrategy 模式：QuantDinger 风格指标代码（df['buy']/df['sell']）
+- ScriptStrategy 模式：事件驱动脚本（on_bar(ctx, bar)）
 """
 
 from __future__ import annotations
@@ -8,12 +13,32 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from app.core.constants import TrendDirection
 from app.core.logging import get_logger
 
 logger = get_logger("app.strategies.base")
+
+
+class TradeDirection(StrEnum):
+    """交易方向"""
+    LONG = "long"
+    SHORT = "short"
+    BOTH = "both"
+
+
+class SignalType(StrEnum):
+    """4-way 信号类型"""
+    OPEN_LONG = "open_long"
+    CLOSE_LONG = "close_long"
+    OPEN_SHORT = "open_short"
+    CLOSE_SHORT = "close_short"
+    ADD_LONG = "add_long"
+    ADD_SHORT = "add_short"
+    REDUCE_LONG = "reduce_long"
+    REDUCE_SHORT = "reduce_short"
 
 
 @dataclass

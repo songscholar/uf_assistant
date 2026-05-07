@@ -80,7 +80,36 @@ UF Stock Assistant 是一个基于 LangChain + LangGraph 的智能股票助手 A
            DeepSeek/Xiaomi)
 ```
 
-### 2.2 Agent 层 (`app/agents/`)
+### 2.2 认证层 (`app/auth/`)
+
+| 模块 | 职责 | 关键技术 |
+|------|------|---------|
+| `models.py` | 用户/验证码/OAuth/安全日志等 9 张表 | SQLAlchemy ORM，单例引擎，`init_auth_tables()` |
+| `password.py` | 密码哈希与验证 | bcrypt 12 轮，SHA-256 fallback，强度校验 |
+| `jwt_auth.py` | JWT 令牌生成/验证 | PyJWT HS256，7 天过期，token_version 失效机制 |
+| `dependencies.py` | FastAPI 认证依赖注入 | `get_current_user`、`require_admin`、`require_permission` |
+| `email_service.py` | 邮箱验证码 | 频率限制（1/60s），防暴力破解（5 次锁 30 分钟），SMTP+STARTTLS |
+| `security_service.py` | 安全基础设施 | IP 封锁、账户锁定、Turnstile 验证、审计日志 |
+| `oauth_service.py` | 第三方登录 | Google + GitHub OAuth 2.0，CSRF state 防护 |
+| `user_service.py` | 用户生命周期 | CRUD、认证、积分、VIP、密码管理、管理员自举 |
+
+**认证流程**：
+
+```
+登录请求 → IP 频率检查 → 账户锁定检查 → Turnstile 验证
+    → 用户名/密码验证 → JWT 生成 → 返回 token + user
+```
+
+**RBAC 权限映射**：
+
+```
+viewer → [dashboard, view]
+user   → [dashboard, view, indicator, backtest, strategy, portfolio]
+manager → [...user, settings]
+admin  → [...manager, user_manage, credentials]
+```
+
+### 2.3 Agent 层 (`app/agents/`)
 
 采用 **LangGraph 状态机** 架构：
 
