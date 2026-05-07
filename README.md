@@ -16,6 +16,8 @@
 - **对话历史**：上下文管理，自动压缩机制（超过 20 轮自动摘要）
 - **文件解析**：支持 PDF、DOCX、XLSX、TXT、图片 OCR
 - **多 LLM 支持**：Kimi、OpenAI、DeepSeek、Xiaomi 等提供商切换
+- **Agent Gateway**：为外部 AI Agent 提供标准化 API（Token 认证、Scope 权限、审计日志）
+- **MCP Server**：支持 Cursor / Claude Code / Codex 通过 MCP 协议调用（stdio / sse / streamable-http）
 
 ### 技术架构
 - **AI 框架**：LangChain + LangGraph（状态机 Agent）
@@ -444,6 +446,149 @@ files: <文件2>
 - 开发工作流规范
 - 日志与文档要求
 - 安全注意事项
+
+---
+
+## Agent Gateway（外部 AI Agent 接口）
+
+为 Cursor、Claude Code、Codex 等外部 AI Agent 提供标准化、安全可控的 API 访问能力。
+
+### 认证方式
+
+所有 Agent Gateway 端点需要 `Authorization: Bearer uf_agent_xxx` Header。
+
+### 签发 Agent Token
+
+```python
+from app.core.agent_auth import AgentAuthManager
+
+token = AgentAuthManager.issue_token(
+    name="cursor-mcp",
+    scopes=["R", "B"],          # Read + Backtest
+    markets=["A_SHARE"],
+    paper_only=True,
+)
+print(token)  # uf_agent_xxx（仅显示一次，务必保存）
+```
+
+### Scope 权限
+
+| Scope | 含义 | 默认 |
+|-------|------|------|
+| `R` | Read — 市场数据、持仓查询 | ✅ |
+| `W` | Write — 创建/修改策略 | ✅ |
+| `B` | Backtest — 策略执行、选股 | ✅ |
+| `N` | Notify — 通知/副作用 | ✅ |
+| `C` | Credentials — Token 管理（admin） | ❌ |
+| `T` | Trade — 下单/撤单 | ❌（默认 paper-only） |
+
+### 核心端点
+
+```http
+# 身份查询
+GET /api/agent/v1/whoami
+
+# 市场数据
+GET /api/agent/v1/markets/stocks/search?q=平安
+GET /api/agent/v1/markets/stocks/{symbol}/realtime
+GET /api/agent/v1/markets/stocks/{symbol}/history
+GET /api/agent/v1/markets/overview
+GET /api/agent/v1/markets/indices
+GET /api/agent/v1/markets/sectors
+
+# 策略（异步 Job，返回 job_id）
+POST /api/agent/v1/strategies/{key}/evaluate
+Idempotency-Key: unique-key-123
+
+# 查询 Job 状态
+GET /api/agent/v1/jobs/{job_id}
+
+# 交易（默认 paper-only）
+POST /api/agent/v1/trading/orders
+Idempotency-Key: unique-key-456
+
+# Kill Switch（取消所有未成交 paper orders）
+POST /api/agent/v1/trading/kill-switch
+
+# Paper Orders 查询
+GET /api/agent/v1/trading/paper-orders
+```
+
+### 错误响应格式
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "message": "Rate limit exceeded for this token",
+  "details": {"retriable": true},
+  "retriable": true
+}
+```
+
+### SSE 流式（支持断点续传）
+
+```http
+POST /api/agent/v1/chat/stream
+Last-Event-ID: evt_5
+```
+
+或
+
+```http
+POST /api/agent/v1/chat/stream?since=5
+```
+
+### OpenAPI 规范
+
+`docs/agent/agent-openapi.json`
+
+---
+
+## MCP Server
+
+支持通过 Model Context Protocol（MCP）为 IDE 助手提供工具调用能力。
+
+### 安装
+
+```bash
+cd mcp_server
+pip install -e .
+```
+
+### 配置（Cursor）
+
+```json
+{
+  "mcpServers": {
+    "uf-assistant": {
+      "command": "python",
+      "args": ["-m", "mcp_server.src.uf_assistant_mcp.server"],
+      "env": {
+        "UF_ASSISTANT_BASE_URL": "http://localhost:8000",
+        "UF_ASSISTANT_AGENT_TOKEN": "uf_agent_xxx",
+        "UF_ASSISTANT_MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
+
+### 暴露的 Tools
+
+| Tool | 类别 | 说明 |
+|------|------|------|
+| `uf_search_stocks` | R | 搜索 A 股 |
+| `uf_get_stock_realtime` | R | 个股实时行情 |
+| `uf_get_stock_history` | R | 历史 K 线 |
+| `uf_get_market_overview` | R | 市场概况 |
+| `uf_get_market_indices` | R | 大盘指数 |
+| `uf_get_sectors` | R | 板块热点 |
+| `uf_get_crypto_price` | R | 加密货币价格 |
+| `uf_chat` | R | AI 对话 |
+| `uf_run_strategy` | B | 策略执行 |
+| `uf_pick_stocks` | B | 智能选股 |
+
+**注意**：MCP Server  intentionally 不暴露交易工具。交易请直接使用 Agent Gateway REST API。
 
 ---
 

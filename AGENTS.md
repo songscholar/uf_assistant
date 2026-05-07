@@ -30,8 +30,11 @@
 | LLM 调用 | 自研 HTTP 客户端（参考 condex 项目），兼容 OpenAI 格式 |
 | API 服务 | FastAPI + Uvicorn |
 | 数据存储 | SQLite（开发）/ PostgreSQL（生产） |
-| 股票数据 | AKShare（A股） |
-| 虚拟货币 | CCXT |
+| 股票数据 | AKShare（A股）/ Eastmoney API（单股实时） |
+| 虚拟货币 | CCXT（Binance） |
+| Agent 认证 | SHA-256 Token + Scope + 白名单 + 速率限制 |
+| Agent 接口 | `/api/agent/v1/*`（REST + SSE） |
+| MCP Server | `mcp_server/`（stdio / sse / streamable-http） |
 | 日志 | structlog + 标准库 logging（JSON 结构化、文件轮转） |
 | 测试 | pytest + pytest-asyncio |
 | 部署 | Docker + docker-compose |
@@ -61,11 +64,20 @@
 │   ├── tools/                  # 工具层（股票/虚拟货币/文件解析等）
 │   ├── strategies/             # 交易策略模块
 │   │   └── builtin/            # 内置策略
-│   ├── memory/                 # 对话历史与上下文压缩
+│   ├── memory/                 # 对话历史、上下文压缩、Agent 数据模型
+│   │   ├── conversation.py     # 会话/消息 ORM
+│   │   ├── audit_log.py        # Agent 审计日志（自动脱敏）
+│   │   └── agent_models.py     # Agent Token / Job / Paper Order ORM
 │   ├── data/                   # 数据层
 │   │   └── providers/          # 数据提供者
 │   ├── api/                    # API 服务层
-│   │   └── routers/            # FastAPI 路由
+│   │   ├── routers/            # 人类面向 FastAPI 路由
+│   │   └── agent/              # Agent Gateway（机器面向）
+│   │       ├── __init__.py     # 认证 + whoami + admin + jobs
+│   │       ├── markets.py      # 市场数据（R scope）
+│   │       ├── chat.py         # 对话 + SSE 流式（R scope）
+│   │       ├── strategies.py   # 策略执行/选股（B scope，异步 Job）
+│   │       └── trading.py      # 交易/持仓/订单（T scope，paper-only）
 │   └── services/               # 业务服务层
 │
 ├── tests/                      # 测试目录
@@ -260,6 +272,14 @@ cp .env.example .env
 - **LLM 配置**：`{PROVIDER}_LLM_API_KEY`、`{PROVIDER}_LLM_MODEL`、`{PROVIDER}_LLM_BASE_URL`
 - **日志**：`STOCK_ASSISTANT_LOG_LEVEL`、`STOCK_ASSISTANT_LOG_JSON`
 - **数据库**：`STOCK_ASSISTANT_DATABASE_URL`
+- **Agent Gateway**：
+  - `STOCK_ASSISTANT_AGENT_LIVE_TRADING_ENABLED` — 是否允许 Agent 实盘交易（默认 false）
+  - `STOCK_ASSISTANT_AGENT_DEPLOYMENT_MODE` — 部署模式：`self`（默认）/ `saas` / `hosted` / `multitenant`
+- **MCP Server**：
+  - `UF_ASSISTANT_BASE_URL` — Agent Gateway 地址（默认 http://localhost:8000）
+  - `UF_ASSISTANT_AGENT_TOKEN` — Agent Token
+  - `UF_ASSISTANT_MCP_TRANSPORT` — 传输方式：`stdio`（默认）/ `sse` / `streamable-http`
+  - `UF_ASSISTANT_MCP_HOST` / `UF_ASSISTANT_MCP_PORT` — HTTP 传输绑定地址
 
 ---
 
@@ -296,13 +316,73 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 
 ---
 
+## Agent Gateway 使用指南
+
+### 签发 Token
+
+```python
+from app.core.agent_auth import AgentAuthManager
+
+token = AgentAuthManager.issue_token(
+    name="cursor-mcp",
+    scopes=["R", "B"],          # 读 + 回测
+    markets=["A_SHARE"],         # 只允许 A 股
+    instruments=["000001", "600000"],  # 只允许指定品种
+    paper_only=True,             # 仅模拟交易
+    rate_limit_per_min=60,
+)
+print(token)  # uf_agent_xxx（仅显示一次）
+```
+
+### 调用 Gateway
+
+```bash
+curl -H "Authorization: Bearer uf_agent_xxx" \
+     http://localhost:8000/api/agent/v1/markets/stocks/search?q=平安
+```
+
+### Scope 说明
+
+| Scope | 含义 | 端点示例 |
+|-------|------|---------|
+| `R` | Read | 市场数据、持仓查询 |
+| `W` | Write | 创建自定义策略 |
+| `B` | Backtest | 策略执行、选股（异步 Job） |
+| `N` | Notify | 通知/副作用 |
+| `C` | Credentials | Token 管理（admin） |
+| `T` | Trade | 下单/撤单（默认 paper-only） |
+
+### MCP Server 配置（Cursor）
+
+```json
+{
+  "mcpServers": {
+    "uf-assistant": {
+      "command": "python",
+      "args": ["-m", "mcp_server.src.uf_assistant_mcp.server"],
+      "env": {
+        "UF_ASSISTANT_BASE_URL": "http://localhost:8000",
+        "UF_ASSISTANT_AGENT_TOKEN": "uf_agent_xxx"
+      }
+    }
+  }
+}
+```
+
+---
+
 ## 安全注意事项
 
 1. **密钥管理**：API Key 只通过环境变量或 `.env` 注入，不要写进仓库文件
 2. **SQL 注入防护**：所有数据库查询使用参数化绑定
 3. **路径安全**：CLI 和 API 接收的路径参数应验证是否在预期目录内
 4. **交易安全**：下单功能默认使用模拟模式，真实交易需显式开启
-5. **日志脱敏**：日志中禁止输出 API Key、密码等敏感信息
+5. **Agent 交易安全**：
+   - Token 默认 `paper_only=true`
+   - SaaS 模式自动拒绝 T scope
+   - 实盘需 `AGENT_LIVE_TRADING_ENABLED=true` + token `paper_only=false`
+   - Kill Switch 可一键取消所有 agent paper orders
+6. **日志脱敏**：审计日志自动 redact password/secret/token/api_key 等敏感字段
 
 ---
 
