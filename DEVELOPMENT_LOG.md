@@ -512,3 +512,66 @@ fix: 市场行情接口超时优化（共享缓存+线程池+后台预加载）
 - FastAPI lifespan 启动后台预刷新任务，首次加载延迟 3s
 - 修复 tests/test_tools_market.py 原有断言 bug
 ```
+
+
+---
+
+## 2026-05-07 — 商业化计费系统迁移（来自 QuantDinger）
+
+### 变更摘要
+
+将 QuantDinger 的商业化能力迁移到 UF Stock Assistant，包括积分系统、会员订阅、USDT-TRC20 支付、计费扣减。全部代码按 UF Stock Assistant 的架构风格重新适配（FastAPI + SQLAlchemy ORM + SQLite + Pydantic Settings）。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/data/billing_models.py` | 计费数据模型：user_credits、credits_log、usdt_orders（SQLAlchemy ORM） |
+| `app/services/billing.py` | BillingService：积分余额、功能扣费、会员状态、积分日志 |
+| `app/services/usdt_payment.py` | UsdtPaymentService：TRC20 地址派生、订单管理、TronGrid 对账、后台 Worker |
+| `app/api/routers/billing.py` | FastAPI 计费路由：查询/管理/USDT 支付接口 |
+| `tests/test_billing.py` | 计费模块单元测试（15 个用例） |
+| `docs/business/BILLING.md` | 计费业务文档（规则/模型/API/运营/安全） |
+
+### 修改文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `app/core/config.py` | 新增 BillingSettings、MembershipSettings、UsdtPaymentSettings 三个嵌套配置类 |
+| `app/core/exceptions.py` | 新增 BillingError、InsufficientCreditsError、UsdtPaymentError |
+| `app/api/main.py` | 注册 billing 路由；lifespan 中启动/停止 UsdtOrderWorker |
+| `.env.example` | 新增计费、会员、USDT 支付全套环境变量模板 |
+
+### 技术决策
+
+1. **数据模型适配**：QuantDinger 使用 PostgreSQL + 原生 SQL cursor，迁移后统一使用 SQLAlchemy ORM，兼容 SQLite。user_id 从 int 改为 string，与 UF Stock Assistant 现有对话系统保持一致。
+
+2. **配置集成**：计费配置不单独读 `.env`，而是复用现有的 Pydantic Settings 体系，通过 `get_settings().billing/membership/usdt` 统一访问，支持环境变量前缀隔离。
+
+3. **USDT 支付 Worker**：在 FastAPI `lifespan` 中启动后台 daemon 线程，定期轮询 TronGrid API。Worker 内部遵循 QuantDinger 的安全设计——HTTP 调用在 DB 事务外执行，写操作使用短事务，避免 `idle in transaction`。
+
+4. **默认关闭**：`BILLING_ENABLED=false` / `USDT_PAY_ENABLED=false`，防止误开启导致用户体验受损。
+
+5. **xpub 地址派生**：保留 QuantDinger 的 bip_utils 地址派生逻辑，支持 account-level (m/44'/195'/0') 和 change-level (m/44'/195'/0'/0) 两种 xpub 格式。
+
+### 验证结果
+
+- ✅ 计费模块单元测试：15 passed（配置/积分/VIP/日志）
+- ✅ 全量测试：148 passed（新增 15 个，原有测试无 regression）
+- ✅ 语法检查：`python3 -m py_compile` 通过所有新增文件
+- ⚠️ 5 个既有失败与本次改动无关（`.env` 环境变量覆盖测试默认值 / 网络超时 / 现有代码函数缺失）
+
+### Git 提交
+
+```
+feat(billing): 迁移 QuantDinger 商业化计费系统
+
+- 新增计费数据模型（user_credits / credits_log / usdt_orders）
+- 新增 BillingService（积分扣减/充值/会员管理）
+- 新增 UsdtPaymentService（TRC20 独立地址 + TronGrid 自动对账）
+- 新增 FastAPI 计费路由（查询/管理/USDT 支付）
+- 集成 Pydantic Settings 配置体系（billing/membership/usdt）
+- 新增计费业务异常（BillingError / InsufficientCreditsError / UsdtPaymentError）
+- 新增计费模块单元测试（15 个用例全部通过）
+- 新增计费业务文档 docs/business/BILLING.md
+```

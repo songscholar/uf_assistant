@@ -115,3 +115,26 @@ class CompressionError(MemoryError):
     def __init__(self, message: str, details: dict | None = None) -> None:
         super().__init__(message, details=details)
         self.code = "COMPRESSION_ERROR"
+
+
+class BillingError(AssistantException):
+    """计费错误"""
+    
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__(message, code="BILLING_ERROR", details=details)
+
+
+class InsufficientCreditsError(BillingError):
+    """积分不足错误"""
+    
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__(message, details=details)
+        self.code = "INSUFFICIENT_CREDITS"
+
+
+class UsdtPaymentError(BillingError):
+    """USDT 支付错误"""
+    
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__(message, details=details)
+        self.code = "USDT_PAYMENT_ERROR"

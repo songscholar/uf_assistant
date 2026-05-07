@@ -17,7 +17,8 @@ from app.core.config import get_settings
 from app.core.exceptions import AssistantException
 from app.core.logging import get_logger, setup_logging
 
-from .routers import chat, crypto, market, stock, strategy, trading, upload
+from .routers import billing, chat, crypto, market, stock, strategy, trading, upload
+from .agent import router as agent_router
 
 logger = get_logger("app.api.main")
 
@@ -33,6 +34,12 @@ async def lifespan(app: FastAPI):
     refresh_task = start_background_refresh()
     logger.info("background_refresh_task_started")
 
+    # 启动 USDT 支付订单后台轮询（如启用）
+    from app.services.usdt_payment import get_usdt_order_worker
+    worker = get_usdt_order_worker()
+    worker.start()
+    logger.info("usdt_order_worker_started")
+
     yield
 
     # 关闭
@@ -42,6 +49,11 @@ async def lifespan(app: FastAPI):
         await refresh_task
     except asyncio.CancelledError:
         pass
+
+    # 停止 USDT worker
+    from app.services.usdt_payment import get_usdt_order_worker
+    get_usdt_order_worker().stop()
+
     logger.info("api_server_shutting_down")
 
 
@@ -126,6 +138,8 @@ app.include_router(crypto.router, prefix="/api/v1", tags=["虚拟货币"])
 app.include_router(trading.router, prefix="/api/v1", tags=["交易"])
 app.include_router(strategy.router, prefix="/api/v1", tags=["策略"])
 app.include_router(upload.router, prefix="/api/v1", tags=["文件上传"])
+app.include_router(billing.router, prefix="/api/v1", tags=["计费"])
+app.include_router(agent_router, prefix="/api", tags=["Agent Gateway"])
 
 
 @app.get("/health")
