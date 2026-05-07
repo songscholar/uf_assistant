@@ -89,6 +89,7 @@ class UsdtPaymentSettings(BaseSettings):
     confirm_seconds: int = Field(default=30, description="链上确认等待秒数")
     order_expire_minutes: int = Field(default=30, description="订单过期时间(分钟)")
     worker_poll_interval: int = Field(default=30, description="后台轮询间隔(秒)")
+    debug_reconcile_log: bool = Field(default=True, description="是否开启 USDT 对账调试日志")
 
 
 class AppSettings(BaseSettings):

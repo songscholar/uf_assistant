@@ -74,7 +74,19 @@
 | vip_is_lifetime | boolean | 是否终身会员 |
 | vip_monthly_credits_last_grant | datetime | 终身会员上次发积分时间 |
 
-### 3.2 credits_log（积分日志表）
+### 3.2 membership_orders（会员订单表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | int PK | 自增主键 |
+| user_id | string | 用户标识 |
+| plan | string | 套餐类型 |
+| price_usd | decimal(10,2) | 支付金额（USD） |
+| status | string | 状态（默认 paid） |
+| created_at | datetime | 创建时间 |
+| paid_at | datetime | 支付/确认时间 |
+
+### 3.3 credits_log（积分日志表）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -86,9 +98,10 @@
 | feature | string | 功能名（consume 时） |
 | reference_id | string | 关联 ID（订单号等） |
 | remark | text | 备注 |
+| operator_id | string | 操作人标识 |
 | created_at | datetime | 记录时间 |
 
-### 3.3 usdt_orders（USDT 订单表）
+### 3.4 usdt_orders（USDT 订单表）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -199,6 +212,9 @@ STOCK_ASSISTANT_MEMBERSHIP_LIFETIME_PRICE_USD=499
 STOCK_ASSISTANT_USDT_PAY_ENABLED=true
 STOCK_ASSISTANT_USDT_TRC20_XPUB=your-xpub-here
 STOCK_ASSISTANT_USDT_TRONGRID_API_KEY=your-key-here
+
+# USDT 调试（启用后将对账日志写入文件，便于排查链上匹配问题）
+STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG=true
 ```
 
 ---

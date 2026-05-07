@@ -99,6 +99,7 @@ class TestVip:
         ok, msg, data = billing_svc.purchase_membership(user_id, "monthly")
         assert ok is True
         assert data["plan"] == "monthly"
+        assert "order_id" in data
         is_vip, expires = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
         assert expires is not None
@@ -109,6 +110,42 @@ class TestVip:
         assert ok is True
         is_vip, expires = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
+
+    def test_purchase_lifetime_auto_grant_first_month(self, billing_svc: BillingService) -> None:
+        """终身会员首次购买应立即发放首月积分"""
+        user_id = _random_user()
+        ok, msg, data = billing_svc.purchase_membership(user_id, "lifetime")
+        assert ok is True
+        info = billing_svc.get_user_billing_info(user_id)
+        # 默认 lifetime_monthly_credits = 800
+        assert info["credits"] == 800.0
+
+    def test_lifetime_auto_grant_after_due(self, billing_svc: BillingService) -> None:
+        """模拟 35 天后查询 VIP 状态，应自动补发月度积分"""
+        from datetime import datetime, timedelta, timezone
+        from decimal import Decimal
+        from app.services.billing import BillingStore
+        from app.data.billing_models import UserCreditsModel
+
+        user_id = _random_user()
+        billing_svc.purchase_membership(user_id, "lifetime")
+        initial_credits = billing_svc.get_user_credits(user_id)
+        assert initial_credits == 800
+
+        # 手动将 last_grant 回退 35 天
+
+        session = BillingStore.get_session()
+        row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
+        assert row is not None
+        row.vip_monthly_credits_last_grant = datetime.now(timezone.utc) - timedelta(days=35)
+        session.commit()
+        session.close()
+
+        # 再次查询 VIP 状态，触发自动补发
+        billing_svc.get_user_vip_status(user_id)
+        new_credits = billing_svc.get_user_credits(user_id)
+        # 补发 1 个周期 = 800
+        assert new_credits == 1600
 
     def test_set_vip_revoke(self, billing_svc: BillingService) -> None:
         user_id = _random_user()
@@ -133,6 +170,19 @@ class TestCreditsLog:
         logs = billing_svc.get_credits_log(user_id)
         assert logs["total"] == 2
         assert len(logs["items"]) == 2
+
+
+class TestMembershipOrders:
+    def test_get_membership_orders(self, billing_svc: BillingService) -> None:
+        user_id = _random_user()
+        billing_svc.purchase_membership(user_id, "monthly")
+        billing_svc.purchase_membership(user_id, "yearly")
+        orders = billing_svc.get_membership_orders(user_id)
+        assert orders["total"] == 2
+        assert len(orders["items"]) == 2
+        plans = [o["plan"] for o in orders["items"]]
+        assert "monthly" in plans
+        assert "yearly" in plans
 
 
 class TestBillingInfo:

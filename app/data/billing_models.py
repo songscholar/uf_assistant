@@ -55,6 +55,25 @@ class CreditsLogModel(Base):
     )
 
 
+class MembershipOrderModel(Base):
+    """会员购买订单表"""
+    __tablename__ = "membership_orders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    plan = Column(String(20), nullable=False)
+    price_usd = Column(Numeric(10, 2), default=0)
+    credits_granted = Column(Integer, default=0)
+    status = Column(String(20), default="paid")
+    fulfillment_ref = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    paid_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_membership_orders_user_id", "user_id"),
+    )
+
+
 class UsdtOrderModel(Base):
     """USDT-TRC20 支付订单表"""
     __tablename__ = "usdt_orders"

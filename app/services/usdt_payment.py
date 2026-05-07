@@ -42,7 +42,7 @@ class UsdtPaymentService:
             "usdt_trc20_contract": (s.trc20_contract or "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t").strip(),
             "confirm_seconds": s.confirm_seconds,
             "order_expire_minutes": s.order_expire_minutes,
-            "debug_reconcile_log": True,
+            "debug_reconcile_log": s.debug_reconcile_log,
             "trongrid_page_limit": min(200, max(1, 200)),
             "trongrid_max_pages": max(1, min(20, 5)),
         }

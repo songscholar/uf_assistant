@@ -20,6 +20,7 @@ from app.core.logging import get_logger
 from app.data.billing_models import (
     Base,
     CreditsLogModel,
+    MembershipOrderModel,
     UserCreditsModel,
 )
 
@@ -275,13 +276,12 @@ class BillingService:
     # ------------------------------------------------------------------
 
     def get_user_vip_status(self, user_id: str) -> Tuple[bool, Optional[datetime]]:
-        """获取用户 VIP 状态"""
+        """获取用户 VIP 状态（终身会员会自动检查并补发月度积分）"""
         try:
             session = BillingStore.get_session()
             row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
-            session.close()
-
             if not row or not row.vip_expires_at:
+                session.close()
                 return False, None
 
             expires_at = row.vip_expires_at
@@ -292,10 +292,79 @@ class BillingService:
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-            return expires_at > now, expires_at
+            is_vip = expires_at > now
+
+            # 终身会员月度积分自动补发
+            if is_vip and row.vip_is_lifetime:
+                self._grant_lifetime_monthly_credits_if_due(session, row, now)
+
+            session.close()
+            return is_vip, expires_at
         except Exception as e:
             logger.error(f"get_user_vip_status failed: {e}")
             return False, None
+
+    def _grant_lifetime_monthly_credits_if_due(
+        self,
+        session,
+        row: UserCreditsModel,
+        now: datetime,
+    ) -> None:
+        """检查终身会员是否到月度积分发放时间，若到则补发（最多 6 个月）。"""
+        try:
+            plans = self.get_membership_plans()
+            monthly_credits = int(plans.get("lifetime", {}).get("credits_monthly") or 0)
+            if monthly_credits <= 0:
+                return
+
+            last_grant = row.vip_monthly_credits_last_grant
+            if isinstance(last_grant, str) and last_grant:
+                try:
+                    last_grant = datetime.fromisoformat(last_grant.replace("Z", "+00:00"))
+                except Exception:
+                    last_grant = None
+            if last_grant and last_grant.tzinfo is None:
+                last_grant = last_grant.replace(tzinfo=timezone.utc)
+
+            # 首次不补发（购买时已发放），但需设置 last_grant
+            if not last_grant:
+                row.vip_monthly_credits_last_grant = now
+                row.updated_at = now
+                session.commit()
+                return
+
+            delta_days = int((now - last_grant).total_seconds() // 86400)
+            periods = delta_days // 30
+            if periods <= 0:
+                return
+            if periods > 6:
+                periods = 6
+
+            total = monthly_credits * periods
+            old_credits = Decimal(str(row.credits or 0))
+            new_balance = old_credits + Decimal(str(total))
+            row.credits = new_balance
+            row.vip_monthly_credits_last_grant = now
+            row.updated_at = now
+
+            log = CreditsLogModel(
+                user_id=row.user_id,
+                action="membership_monthly",
+                amount=total,
+                balance_after=new_balance,
+                remark=f"Lifetime membership monthly credits x{periods} (auto-grant)",
+                reference_id="",
+            )
+            session.add(log)
+            session.commit()
+            logger.info(
+                f"User {row.user_id} lifetime auto-granted {total} credits x{periods}, "
+                f"balance: {new_balance}"
+            )
+        except Exception:
+            # Best-effort; never break caller
+            session.rollback()
+            logger.warning(f"Auto-grant lifetime credits failed for {row.user_id}", exc_info=True)
 
     def get_membership_plans(self) -> Dict[str, Any]:
         """获取会员套餐配置"""
@@ -370,6 +439,27 @@ class BillingService:
 
             order_ref = fulfillment_ref or f"billing:{user_id}:{int(now.timestamp())}"
 
+            # 创建会员订单记录
+            plan_info = plans[plan]
+            credits_granted = 0
+            if plan in ("monthly", "yearly"):
+                credits_granted = int(plan_info.get("credits_once") or 0)
+            else:
+                credits_granted = int(plan_info.get("credits_monthly") or 0)
+
+            order = MembershipOrderModel(
+                user_id=user_id,
+                plan=plan,
+                price_usd=Decimal(str(plan_info.get("price_usd") or 0)),
+                credits_granted=credits_granted,
+                status="paid",
+                fulfillment_ref=order_ref,
+                paid_at=now,
+            )
+            session.add(order)
+            session.flush()
+            order_id = order.id
+
             if plan in ("monthly", "yearly"):
                 credits_once = int(plans[plan].get("credits_once") or 0)
                 if credits_once > 0:
@@ -418,6 +508,7 @@ class BillingService:
 
             return True, "success", {
                 "plan": plan,
+                "order_id": order_id,
                 "vip_expires_at": vip_expires_at.isoformat() if vip_expires_at else None,
             }
         except Exception as e:
@@ -515,6 +606,58 @@ class BillingService:
             }
         except Exception as e:
             logger.error(f"get_credits_log failed: {e}")
+            return {"items": [], "total": 0, "page": 1, "page_size": page_size, "total_pages": 0}
+        finally:
+            session.close()
+
+    def get_membership_orders(
+        self,
+        user_id: str,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """获取用户会员购买订单"""
+        offset = (page - 1) * page_size
+        session = BillingStore.get_session()
+        try:
+            total = session.query(MembershipOrderModel).filter_by(user_id=user_id).count()
+            rows = (
+                session.query(MembershipOrderModel)
+                .filter_by(user_id=user_id)
+                .order_by(MembershipOrderModel.created_at.desc())
+                .offset(offset)
+                .limit(page_size)
+                .all()
+            )
+
+            items = []
+            for r in rows:
+                dt = r.created_at
+                created_at_str = None
+                if dt:
+                    if getattr(dt, "tzinfo", None) is not None:
+                        created_at_str = dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+                    else:
+                        created_at_str = dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+                items.append({
+                    "id": r.id,
+                    "plan": r.plan,
+                    "price_usd": float(r.price_usd),
+                    "credits_granted": r.credits_granted,
+                    "status": r.status,
+                    "fulfillment_ref": r.fulfillment_ref,
+                    "created_at": created_at_str,
+                })
+
+            return {
+                "items": items,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total + page_size - 1) // page_size,
+            }
+        except Exception as e:
+            logger.error(f"get_membership_orders failed: {e}")
             return {"items": [], "total": 0, "page": 1, "page_size": page_size, "total_pages": 0}
         finally:
             session.close()

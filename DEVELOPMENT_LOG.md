@@ -708,3 +708,53 @@ feat: Agent Gateway + MCP Server 完整实现
 - 双重安全：paper-only by default + AGENT_LIVE_TRADING_ENABLED 开关
 - 修复 fetch_longhu_bang 命名不一致
 ```
+
+---
+
+## 2026-05-07 — 商业化计费系统补充（终身会员自动补发 + 会员订单表 + operator_id）
+
+### 变更摘要
+
+补充迁移 QuantDinger 商业化计费系统的剩余逻辑：
+1. **终身会员月度积分自动补发**：`_grant_lifetime_monthly_credits_if_due()` 在 `get_user_vip_status()` 中自动触发，每 30 天检查一次，最多补发 6 个月。
+2. **`membership_orders` 独立表**：`purchase_membership()` 现在会写入 `membership_orders` 表，支持按用户分页查询。
+3. **`operator_id` 审计字段**：`add_credits`、`set_credits`、`set_vip` 新增 `operator_id` 参数，用于记录管理员操作人。
+4. **USDT 调试日志配置**：新增 `STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG` 环境变量，控制是否将链上对账日志写入文件。
+
+### 新增/修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/services/billing.py` | `purchase_membership()` 创建 `MembershipOrderModel` 并返回 `order_id`；`get_user_vip_status()` 自动触发终身会员补发；`_grant_lifetime_monthly_credits_if_due()` 新增；`operator_id` 参数透传 |
+| `app/data/billing_models.py` | `MembershipOrderModel` 新增 `credits_granted`、`fulfillment_ref` 字段 |
+| `app/core/config.py` | `UsdtPaymentSettings` 新增 `debug_reconcile_log` 字段 |
+| `tests/test_billing.py` | 新增 3 个测试：终身会员首月发放、35 天后自动补发、`get_membership_orders` 查询 |
+| `docs/business/BILLING.md` | 补充 `membership_orders` 表说明、`operator_id` 字段、USDT 调试配置 |
+| `.env.example` | 新增 `STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG=true` |
+
+### 技术决策
+
+1. **自动补发时机**：在 `get_user_vip_status()` 中触发（best-effort，异常不抛错），因为用户每次查询余额或状态都会走这里，无需额外定时任务。
+2. **补发上限**：最多 6 个月，防止因长期未访问导致一次性发放过多积分。
+3. **首次购买立即发放**：终身会员 `purchase_membership()` 时立即发放首月积分并设置 `last_grant`，避免用户购买后首次查询时被视为“首次”而不发放。
+
+### 验证结果
+
+- ✅ 计费模块单元测试：**18 passed**（新增 3 个，原有 15 个无 regression）
+- ✅ `test_purchase_lifetime_auto_grant_first_month`：终身会员购买后积分 = 800
+- ✅ `test_lifetime_auto_grant_after_due`：35 天后查询触发补发，积分 = 1600
+- ✅ `test_get_membership_orders`：购买 2 次后查询返回 2 条订单
+
+### Git 提交
+
+```
+feat(billing): 补充终身会员自动补发、会员订单表、operator_id 审计
+
+- purchase_membership() 创建 MembershipOrderModel 记录，返回 order_id
+- get_user_vip_status() 自动触发 _grant_lifetime_monthly_credits_if_due()
+- 终身会员月度积分自动补发（最多6个月），首次购买立即发放
+- add_credits/set_credits/set_vip 新增 operator_id 参数
+- UsdtPaymentSettings 新增 debug_reconcile_log 配置
+- 计费文档补充 membership_orders / operator_id / USDT 调试说明
+- 测试覆盖：18 passed（新增3个终身会员和订单查询用例）
+```
