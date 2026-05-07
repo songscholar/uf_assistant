@@ -5,7 +5,7 @@ UF Stock Assistant — JWT 认证
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import jwt
 
@@ -19,8 +19,8 @@ def generate_token(user_id: int, username: str, role: str, token_version: int) -
     """Generate JWT token."""
     settings = get_settings()
     payload = {
-        "exp": datetime.utcnow() + timedelta(days=settings.auth.jwt_expire_days),
-        "iat": datetime.utcnow(),
+        "exp": datetime.now(UTC) + timedelta(days=settings.auth.jwt_expire_days),
+        "iat": datetime.now(UTC),
         "sub": username,
         "user_id": user_id,
         "role": role,

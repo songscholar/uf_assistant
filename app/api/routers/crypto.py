@@ -4,14 +4,15 @@ UF Stock Assistant — 虚拟货币接口
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.tools.crypto_data import get_crypto_ohlcv, get_crypto_price, get_crypto_ticker, list_top_cryptos
 
 logger = get_logger("app.api.crypto")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/crypto/price")

@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.config import settings
 from app.core.constants import OrderStatus, OrderSide
 
 
@@ -100,3 +101,38 @@ class ExchangeBackend(ABC):
         Returns:
             至少包含 {last, bid, ask, ...}
         """
+
+
+class BackendRouter:
+    """根据 market_type 返回对应后端实例"""
+
+    @staticmethod
+    def create(market_type: str) -> ExchangeBackend:
+        """创建指定市场的交易后端实例"""
+        from app.trading.backends.crypto_backend import CryptoBackend
+        from app.trading.backends.a_share_backend import AShareBackend
+        from app.trading.backends.us_stock_backend import USStockBackend
+        from app.trading.backends.ibkr_backend import IBKRBackend
+
+        mt = (market_type or "").lower().strip()
+
+        if mt in ("crypto", "cryptocurrency"):
+            return CryptoBackend()
+        elif mt in ("a_share", "ashare", "cn", "china"):
+            return AShareBackend()
+        elif mt in ("us_stock", "usstock", "us", "america"):
+            return USStockBackend()
+        elif mt == "ibkr":
+            if not settings.local_broker.allowed:
+                raise RuntimeError("Local desktop brokers (IBKR) are not allowed in this deployment.")
+            return IBKRBackend()
+        else:
+            raise ValueError(f"Unsupported market_type: {market_type}")
+
+    @staticmethod
+    def supported_markets() -> list[str]:
+        """返回支持的市场类型列表"""
+        base = ["crypto", "a_share", "us_stock"]
+        if settings.local_broker.allowed:
+            base.append("ibkr")
+        return base

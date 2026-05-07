@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
+from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.tools.stock_data import (
     get_capital_flow,
@@ -22,7 +23,7 @@ from app.tools.stock_data import (
 
 logger = get_logger("app.api.stock")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # AKShare 请求超时（秒）— 全量数据拉取较慢，设为 20 秒
 AKSHARE_TIMEOUT = 20.0

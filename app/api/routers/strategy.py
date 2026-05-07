@@ -12,9 +12,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.services.market_analyzer import MarketAnalyzer
 from app.services.stock_picker import StockPicker
@@ -31,7 +32,7 @@ from app.strategies.strategy_service import (
 
 logger = get_logger("app.api.strategy")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 class StrategyEvaluateRequest(BaseModel):

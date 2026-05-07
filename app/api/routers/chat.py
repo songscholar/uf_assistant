@@ -6,16 +6,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.agents.stock_assistant import StockAssistantAgent
+from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.memory.manager import MemoryManager
 
 logger = get_logger("app.api.chat")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # 全局实例
 _agent: StockAssistantAgent | None = None
@@ -105,11 +106,11 @@ async def chat(request: ChatRequest):
 
 
 @router.get("/conversations", response_model=ConversationListResponse)
-async def list_conversations(user_id: str = "default", limit: int = 20):
+async def list_conversations(user: dict = Depends(get_current_user), limit: int = 20):
     """获取用户会话列表"""
     try:
         memory = _get_memory()
-        conversations = memory.list_conversations(user_id=user_id, limit=limit)
+        conversations = memory.list_conversations(user_id=str(user["user_id"]), limit=limit)
         return ConversationListResponse(conversations=conversations)
     except Exception as exc:
         logger.error("list_conversations_error", error=str(exc))
@@ -158,11 +159,11 @@ async def delete_conversation(conversation_id: str):
 
 
 @router.post("/conversations")
-async def create_conversation(user_id: str = "default", title: str | None = None):
+async def create_conversation(user: dict = Depends(get_current_user), title: str | None = None):
     """创建新会话"""
     try:
         memory = _get_memory()
-        conversation_id = memory.create_conversation(user_id=user_id, title=title)
+        conversation_id = memory.create_conversation(user_id=str(user["user_id"]), title=title)
         return {
             "conversation_id": conversation_id,
             "message": "会话创建成功",

@@ -9,6 +9,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import app
+from app.auth.dependencies import get_current_user
+
+# Override auth dependency so tests don't need real JWT tokens
+def _mock_user():
+    return {"user_id": 1, "username": "testuser", "role": "admin"}
+
+app.dependency_overrides[get_current_user] = _mock_user
 
 client = TestClient(app)
 

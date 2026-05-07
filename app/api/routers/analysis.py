@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import get_current_user
 from app.core.exceptions import AssistantException
 from app.core.logging import get_logger
 from app.services.analysis_memory import AnalysisMemoryService
@@ -17,7 +18,7 @@ from app.services.ai_calibration import AICalibrationService
 
 logger = get_logger("app.api.routers.analysis")
 
-router = APIRouter(prefix="/analysis", tags=["AI 分析记忆"])
+router = APIRouter(prefix="/analysis", tags=["AI 分析记忆"], dependencies=[Depends(get_current_user)])
 
 
 # ------------------------------------------------------------------
@@ -39,13 +40,13 @@ class CalibrationQuery(BaseModel):
 
 @router.get("/history")
 async def get_analysis_history(
-    user_id: str = Header(default="default"),
+    user: dict = Depends(get_current_user),
     page: int = 1,
     page_size: int = 20,
 ) -> dict[str, Any]:
     """获取用户分析历史"""
     svc = AnalysisMemoryService()
-    data = svc.get_history(user_id=user_id, page=page, page_size=page_size)
+    data = svc.get_history(user_id=str(user["user_id"]), page=page, page_size=page_size)
     return {"code": "success", "data": data}
 
 

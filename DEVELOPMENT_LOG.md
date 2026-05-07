@@ -1397,3 +1397,54 @@ QuantDinger → UF Stock Assistant 回测引擎迁移完整闭环。
 ### 测试验证
 - 新增测试：13 passed
 - 全量测试：457 passed, 3 failed（环境变量冲突，非本改动引入）
+
+---
+
+## 2025-05-06 — 阶段 3：原生交易所客户端（全部 12 个）
+
+### 改动目标
+将 QuantDinger 的全部 12 个原生交易所客户端迁移到 UF Stock Assistant：
+Binance (Futures+Spot), OKX, Bitget (Mix+Spot), Bybit, Coinbase, Kraken (Spot+Futures),
+KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
+
+### 涉及文件
+- **新建** `app/strategies/live_trading/binance.py` — Binance USDT-M Futures（1,035 行）
+- **新建** `app/strategies/live_trading/binance_spot.py` — Binance Spot（716 行）
+- **新建** `app/strategies/live_trading/bitget.py` — Bitget Mix USDT Futures（1,083 行）
+- **新建** `app/strategies/live_trading/bitget_spot.py` — Bitget Spot（597 行）
+- **新建** `app/strategies/live_trading/bybit.py` — Bybit（746 行）
+- **新建** `app/strategies/live_trading/coinbase_exchange.py` — Coinbase Exchange（208 行）
+- **新建** `app/strategies/live_trading/deepcoin.py` — Deepcoin（738 行）
+- **新建** `app/strategies/live_trading/gate.py` — Gate Spot + USDT Futures（591 行）
+- **新建** `app/strategies/live_trading/htx.py` — HTX（798 行）
+- **新建** `app/strategies/live_trading/kraken.py` — Kraken Spot（192 行）
+- **新建** `app/strategies/live_trading/kraken_futures.py` — Kraken Futures（222 行）
+- **新建** `app/strategies/live_trading/kucoin.py` — KuCoin Spot + Futures（537 行）
+- **新建** `app/strategies/live_trading/okx.py` — OKX（864 行）
+
+### 改动方案
+1. 直接复制 QuantDinger 原始代码
+2. 批量替换 import 路径：`app.services.live_trading` → `app.strategies.live_trading`
+3. 批量替换 logger：`app.utils.logger` → `app.core.logging`
+4. IBKR/MT5 lazy import 保持原样（模块不存在时优雅报错）
+
+### 交易所特有逻辑一览
+| 交易所 | 特有逻辑 |
+|--------|---------|
+| Binance Futures | broker_id (HBpUbQjT)、hedge_mode 检测、时间同步重试、filter 缓存 |
+| Binance Spot | broker_id (A2NAPZAC)、spot filter、-2015 权限错误提示 |
+| OKX | broker_code、simulated_trading header、合约数量转换 (ctVal) |
+| Bybit | broker_referer (Ri001020)、hedge_mode、recv_window (12s)、时间同步 |
+| Bitget Mix | channel_api_code (qvz9x)、hedge_mode、合约转换、feeDetail 解析 |
+| Bitget Spot | channel_api_code、BUY market 用 quote amount |
+| Gate Spot/Futures | channel_id (dinger)、合约单位转换 (quanto_multiplier) |
+| KuCoin | API v2 签名、合约乘数 (multiplier)、dealSize 转换 |
+| Coinbase | sandbox、Base64(HMAC-SHA256) 签名 |
+| Kraken Spot | XBT↔BTC 映射、userref 客户端订单 ID |
+| Kraken Futures | PF_ 前缀合约、demo-futures 测试网 |
+| HTX | broker_id (AA7b890547)、统一账户检测、双 URL (spot/futures) |
+| Deepcoin | ISO 8601 时间、appid (200103) |
+
+### 测试验证
+- 13 个交易所模块全部导入成功
+- 全量测试：517 passed, 3 failed（环境变量冲突，非本改动引入）

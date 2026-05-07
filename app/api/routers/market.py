@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
+from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.tools.market import (
     get_longhu_bang,
@@ -21,7 +22,7 @@ from app.tools.market import (
 
 logger = get_logger("app.api.market")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # AKShare 请求超时（秒）
 AKSHARE_TIMEOUT = 20.0

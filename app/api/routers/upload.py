@@ -9,14 +9,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.tools.file_parser import parse_file
 
 logger = get_logger("app.api.upload")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.post("/upload")

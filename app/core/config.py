@@ -109,6 +109,17 @@ class UsdtPaymentSettings(BaseSettings):
     debug_reconcile_log: str = Field(default="info", description="USDT 对账日志级别: none/error/warn/info/debug")
 
 
+class LocalBrokerSettings(BaseSettings):
+    """本地桌面券商配置（IBKR / MT5）"""
+    model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_LOCAL_BROKER_", extra="ignore")
+
+    allowed: bool = Field(default=False, description="是否允许使用本地桌面券商（TWS/MT5）")
+    ibkr_default_host: str = Field(default="127.0.0.1", description="IBKR TWS 默认主机")
+    ibkr_default_port: int = Field(default=7497, description="IBKR TWS 默认端口")
+    ibkr_default_client_id: int = Field(default=1, description="IBKR TWS 默认 Client ID")
+    ibkr_readonly: bool = Field(default=False, description="IBKR 只读模式")
+
+
 class AuthSettings(BaseSettings):
     """用户认证配置"""
     model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_AUTH_", extra="ignore")
@@ -169,6 +180,7 @@ class AppSettings(BaseSettings):
     reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    local_broker: LocalBrokerSettings = Field(default_factory=LocalBrokerSettings)
     
     @property
     def log_dir_path(self) -> Path:

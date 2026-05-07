@@ -4,9 +4,10 @@ UF Stock Assistant — 交易接口（支持模拟 + 实盘）
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import get_current_user
 from app.core.constants import MarketType, TradingMode
 from app.core.logging import get_logger
 from app.tools.trading import (
@@ -20,7 +21,7 @@ from app.tools.trading import (
 
 logger = get_logger("app.api.trading")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 # ── 模拟交易接口（保持兼容） ─────────────────────────────────────────────────
