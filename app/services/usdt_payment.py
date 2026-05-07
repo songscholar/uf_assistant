@@ -27,6 +27,13 @@ class UsdtPaymentService:
 
     _schema_ensured: bool = False
 
+    _RECONCILE_LOG_LEVELS = {"none": 0, "error": 1, "warn": 2, "info": 3, "debug": 4}
+
+    @classmethod
+    def _reconcile_log_allowed(cls, cfg_level: str, min_level: str) -> bool:
+        """判断对账日志是否允许输出（cfg_level >= min_level）"""
+        return cls._RECONCILE_LOG_LEVELS.get(cfg_level, 3) >= cls._RECONCILE_LOG_LEVELS.get(min_level, 3)
+
     def __init__(self) -> None:
         self.billing = get_billing_service()
         BillingStore.ensure_tables()
@@ -42,7 +49,7 @@ class UsdtPaymentService:
             "usdt_trc20_contract": (s.trc20_contract or "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t").strip(),
             "confirm_seconds": s.confirm_seconds,
             "order_expire_minutes": s.order_expire_minutes,
-            "debug_reconcile_log": s.debug_reconcile_log,
+            "debug_reconcile_log": (s.debug_reconcile_log or "info").strip().lower(),
             "trongrid_page_limit": min(200, max(1, 200)),
             "trongrid_max_pages": max(1, min(20, 5)),
         }
@@ -318,12 +325,15 @@ class UsdtPaymentService:
             return
 
         tx, chain_note = self._find_trc20_usdt_incoming(address, amount, row.created_at)
+        log_level = cfg.get("debug_reconcile_log", "info")
+
         if not tx and chain_note and (
             chain_note.startswith("trongrid_http=") or chain_note.startswith("trongrid_request_error:")
         ):
-            logger.warning("USDT reconcile TronGrid error order_id=%s %s", order_id, chain_note)
+            if self._reconcile_log_allowed(log_level, "warn"):
+                logger.warning("USDT reconcile TronGrid error order_id=%s %s", order_id, chain_note)
 
-        if cfg.get("debug_reconcile_log"):
+        if self._reconcile_log_allowed(log_level, "info"):
             logger.info(
                 "USDT reconcile scan order_id=%s status=%s amount=%s addr=%s note=%s",
                 order_id,

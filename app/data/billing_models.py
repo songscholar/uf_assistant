@@ -69,6 +69,7 @@ class MembershipOrderModel(Base):
     fulfillment_ref = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     paid_at = Column(DateTime, nullable=True)
+    refunded_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("idx_membership_orders_user_id", "user_id"),
@@ -91,6 +92,7 @@ class UsdtOrderModel(Base):
     paid_at = Column(DateTime, nullable=True)
     confirmed_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
+    refunded_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

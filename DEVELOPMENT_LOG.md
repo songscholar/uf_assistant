@@ -994,3 +994,50 @@ feat(billing): P1 改进 — 终身会员永不过期、订单去重、注册赠
 - 新增 credits_expires_at 字段，支持积分过期自动清零
 - 测试覆盖：35 passed（新增10个）
 ```
+
+---
+
+## 2026-05-07 — 计费系统 P2 改进（日志级别、运营数据、撤销、SSE）
+
+### 变更摘要
+
+完成四项低优先级改进：
+1. **USDT 对账日志级别制**：`debug_reconcile_log` 从 `bool` 改为 `none`/`error`/`warn`/`info`/`debug` 五级
+2. **运营数据接口**：`GET /api/v1/billing/admin/metrics` 返回用户数、VIP 数、套餐统计、USDT 订单状态、积分消耗 Top 功能
+3. **退款/撤销机制**：`POST /api/v1/billing/membership/revoke` 撤销 VIP（不清除积分）；订单表新增 `refunded_at` 字段
+4. **积分变动实时推送**：`GET /api/v1/billing/credits/stream` SSE 端点，每秒轮询余额变化并推送
+
+### 新增/修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/core/config.py` | `UsdtPaymentSettings.debug_reconcile_log` 改为 `str` 类型 |
+| `app/services/usdt_payment.py` | 新增 `_reconcile_log_allowed` 级别判断方法；日志输出按级别过滤 |
+| `app/services/billing.py` | 新增 `get_admin_metrics()`、`revoke_membership()`；导入 `func` 和 `UsdtOrderModel` |
+| `app/api/routers/billing.py` | 新增 `/admin/metrics`（管理）、`/membership/revoke`（管理）、`/credits/stream`（SSE）端点 |
+| `app/data/billing_models.py` | `MembershipOrderModel` / `UsdtOrderModel` 新增 `refunded_at` |
+| `tests/test_billing.py` | 新增 8 个测试：日志级别 3 个 + 运营数据 1 个 + 撤销 3 个 + SSE 1 个 |
+| `.env.example` | `USDT_DEBUG_RECONCILE_LOG` 改为 `info` |
+| `docs/business/BILLING.md` | 补充 P2 改进的 API 文档 |
+
+### 验证结果
+
+- ✅ 计费模块单元测试：**43 passed**（新增 8 个，原有 35 个无 regression）
+- ✅ `test_log_level_none` / `test_log_level_info` / `test_log_level_debug`：级别判断正确
+- ✅ `test_metrics_endpoint`：运营数据接口返回正确结构
+- ✅ `test_revoke_membership`：撤销后 VIP 状态清除
+- ✅ `test_revoke_non_vip`：非 VIP 用户撤销返回 `"not_vip"`
+- ✅ `test_credits_stream_media_type`：SSE 端点路由配置正确
+
+### Git 提交
+
+```
+feat(billing): P2 改进 — 日志级别制、运营数据、撤销、SSE 推送
+
+- USDT debug_reconcile_log 改为 none/error/warn/info/debug 五级
+- 新增 GET /admin/metrics 运营数据接口
+- 新增 POST /membership/revoke 撤销会员接口
+- 新增 GET /credits/stream SSE 实时推送
+- membership_orders / usdt_orders 新增 refunded_at 字段
+- 测试覆盖：43 passed（新增8个）
+```

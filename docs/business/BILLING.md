@@ -180,6 +180,39 @@
 - `"lifetime"`：设置为终身会员（永不过期）
 - `null`：取消 VIP
 
+#### POST /api/v1/billing/membership/revoke
+撤销用户 VIP 会员身份（不清除积分）。
+
+**Headers**：`X-Admin-Key: your-key`
+**Body**：`{ user_id, remark }`
+
+#### GET /api/v1/billing/admin/metrics
+获取运营数据指标（需管理员权限）。
+
+**Headers**：`X-Admin-Key: your-key`
+
+**响应**：
+```json
+{
+  "code": "success",
+  "data": {
+    "users": { "total": 100, "vip": 20 },
+    "membership_orders": { "monthly": 10, "yearly": 5, "lifetime": 2 },
+    "usdt_orders": { "pending": 3, "paid": 2, "confirmed": 8, "expired": 1 },
+    "top_consumed_features": [
+      { "feature": "ai_analysis", "count": 50, "total_credits": -500 }
+    ]
+  }
+}
+```
+
+#### GET /api/v1/billing/credits/stream
+积分变动实时推送（SSE，每秒轮询）。
+
+**Headers**：`user-id: default`
+
+**事件类型**：`credits_changed`
+
 ### 4.3 USDT 支付接口
 
 #### POST /api/v1/billing/usdt/create

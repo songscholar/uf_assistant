@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, Optional, Tuple
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
@@ -22,6 +22,7 @@ from app.data.billing_models import (
     CreditsLogModel,
     MembershipOrderModel,
     UserCreditsModel,
+    UsdtOrderModel,
 )
 
 logger = get_logger("app.services.billing")
@@ -773,6 +774,117 @@ class BillingService:
         except Exception as e:
             logger.error(f"get_membership_orders failed: {e}")
             return {"items": [], "total": 0, "page": 1, "page_size": page_size, "total_pages": 0}
+        finally:
+            session.close()
+
+    def revoke_membership(self, user_id: str, remark: str = "") -> Tuple[bool, str]:
+        """撤销用户 VIP 会员身份（不清除积分，仅撤销会员状态）"""
+        session = BillingStore.get_session()
+        try:
+            row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
+            if not row:
+                session.close()
+                return False, "not_vip"
+
+            was_vip = row.vip_is_lifetime
+            if not was_vip and row.vip_expires_at:
+                expires_at = row.vip_expires_at
+                if isinstance(expires_at, str):
+                    try:
+                        expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    except Exception:
+                        expires_at = None
+                if expires_at and expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at and expires_at > datetime.now(timezone.utc):
+                    was_vip = True
+            if not was_vip:
+                session.close()
+                return False, "user_not_vip"
+
+            row.vip_expires_at = None
+            row.vip_is_lifetime = False
+            row.vip_plan = ""
+            row.updated_at = datetime.now(timezone.utc)
+
+            log = CreditsLogModel(
+                user_id=user_id,
+                action="membership_revoke",
+                amount=0,
+                balance_after=row.credits,
+                remark=remark or "Membership revoked by admin",
+            )
+            session.add(log)
+            session.commit()
+
+            logger.info(f"User {user_id} membership revoked")
+            return True, "success"
+        except Exception as e:
+            session.rollback()
+            logger.error(f"revoke_membership failed: {e}")
+            return False, str(e)
+        finally:
+            session.close()
+
+    def get_admin_metrics(self) -> Dict[str, Any]:
+        """获取运营数据指标（管理员）"""
+        session = BillingStore.get_session()
+        try:
+            # 用户统计
+            total_users = session.query(UserCreditsModel).count()
+            vip_users = session.query(UserCreditsModel).filter(
+                UserCreditsModel.vip_is_lifetime == True
+            ).count()
+            vip_users += session.query(UserCreditsModel).filter(
+                UserCreditsModel.vip_is_lifetime == False,
+                UserCreditsModel.vip_expires_at > datetime.now(timezone.utc)
+            ).count()
+
+            # 套餐购买统计
+            plan_counts = {}
+            for plan in ("monthly", "yearly", "lifetime"):
+                plan_counts[plan] = session.query(MembershipOrderModel).filter_by(plan=plan).count()
+
+            # USDT 订单统计
+            usdt_status_counts = {}
+            for status in ("pending", "paid", "confirmed", "expired"):
+                usdt_status_counts[status] = session.query(UsdtOrderModel).filter_by(status=status).count()
+
+            # 积分消耗 Top 功能
+            top_features = (
+                session.query(
+                    CreditsLogModel.feature,
+                    func.count(CreditsLogModel.id).label("count"),
+                    func.sum(CreditsLogModel.amount).label("total_amount"),
+                )
+                .filter(CreditsLogModel.action == "consume")
+                .filter(CreditsLogModel.feature.isnot(None))
+                .group_by(CreditsLogModel.feature)
+                .order_by(func.count(CreditsLogModel.id).desc())
+                .limit(5)
+                .all()
+            )
+
+            return {
+                "users": {
+                    "total": total_users,
+                    "vip": vip_users,
+                },
+                "membership_orders": plan_counts,
+                "usdt_orders": usdt_status_counts,
+                "top_consumed_features": [
+                    {"feature": f[0], "count": f[1], "total_credits": float(f[2] or 0)}
+                    for f in top_features
+                ],
+            }
+        except Exception as e:
+            logger.error(f"get_admin_metrics failed: {e}")
+            return {
+                "users": {"total": 0, "vip": 0},
+                "membership_orders": {},
+                "usdt_orders": {},
+                "top_consumed_features": [],
+            }
         finally:
             session.close()
 

@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -197,6 +201,36 @@ async def set_vip(payload: VipSetRequest) -> dict[str, Any]:
     }
 
 
+class MembershipRevokeRequest(BaseModel):
+    user_id: str = Field(..., description="用户 ID")
+    remark: str = Field(default="", description="备注")
+
+
+@router.post("/membership/revoke", dependencies=[Depends(require_admin)])
+async def revoke_membership(payload: MembershipRevokeRequest) -> dict[str, Any]:
+    """撤销用户 VIP 会员身份（不清除积分）"""
+    svc = get_billing_service()
+    ok, msg = svc.revoke_membership(
+        user_id=payload.user_id,
+        remark=payload.remark,
+    )
+    if not ok:
+        raise BillingError(msg)
+    return {"code": "success", "data": {"revoked": True}}
+
+
+# ------------------------------------------------------------------
+# 运营数据（管理员）
+# ------------------------------------------------------------------
+
+@router.get("/admin/metrics", dependencies=[Depends(require_admin)])
+async def get_admin_metrics() -> dict[str, Any]:
+    """获取计费系统运营指标"""
+    svc = get_billing_service()
+    metrics = svc.get_admin_metrics()
+    return {"code": "success", "data": metrics}
+
+
 # ------------------------------------------------------------------
 # USDT 支付
 # ------------------------------------------------------------------
@@ -228,3 +262,35 @@ async def usdt_get_order(
     if ok:
         return {"code": "success", "data": out}
     raise BillingError(msg, details=out)
+
+
+# ------------------------------------------------------------------
+# 实时推送（SSE）
+# ------------------------------------------------------------------
+
+@router.get("/credits/stream")
+async def credits_stream(
+    user_id: str = Header(default="default"),
+) -> StreamingResponse:
+    """积分变动实时推送（SSE，每秒轮询）"""
+
+    async def event_generator():
+        last_credits: float | None = None
+        while True:
+            try:
+                svc = get_billing_service()
+                info = svc.get_user_billing_info(user_id)
+                current: float = info["credits"]
+                if current != last_credits:
+                    last_credits = current
+                    yield f"event: credits_changed\ndata: {json.dumps(info)}\n\n"
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"credits_stream error: {e}")
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+                await asyncio.sleep(5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+    )

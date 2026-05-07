@@ -449,3 +449,79 @@ class TestCreditsExpiry:
         ok, msg = billing_svc.check_and_consume(user_id, "ai_analysis")
         assert ok is False
         assert "insufficient_credits" in msg
+
+
+class TestReconcileLogLevel:
+    def test_log_level_none(self) -> None:
+        from app.services.usdt_payment import UsdtPaymentService
+        assert UsdtPaymentService._reconcile_log_allowed("none", "info") is False
+        assert UsdtPaymentService._reconcile_log_allowed("none", "error") is False
+
+    def test_log_level_info(self) -> None:
+        from app.services.usdt_payment import UsdtPaymentService
+        assert UsdtPaymentService._reconcile_log_allowed("info", "info") is True
+        assert UsdtPaymentService._reconcile_log_allowed("info", "warn") is True
+        assert UsdtPaymentService._reconcile_log_allowed("info", "debug") is False
+
+    def test_log_level_debug(self) -> None:
+        from app.services.usdt_payment import UsdtPaymentService
+        assert UsdtPaymentService._reconcile_log_allowed("debug", "debug") is True
+        assert UsdtPaymentService._reconcile_log_allowed("debug", "info") is True
+
+
+class TestAdminMetrics:
+    def test_metrics_endpoint(self, billing_svc: BillingService) -> None:
+        """运营数据接口返回正确结构"""
+        user_id = _random_user()
+        billing_svc.purchase_membership(user_id, "monthly")
+        billing_svc.check_and_consume(user_id, "ai_analysis", reference_id="r1")
+
+        response = client.get("/api/v1/billing/admin/metrics", headers={"X-Admin-Key": "test-admin-key"})
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "users" in data
+        assert "membership_orders" in data
+        assert "usdt_orders" in data
+        assert "top_consumed_features" in data
+        assert data["users"]["total"] >= 1
+
+
+class TestMembershipRevoke:
+    def test_revoke_membership(self, billing_svc: BillingService) -> None:
+        """撤销会员后 VIP 状态清除"""
+        user_id = _random_user()
+        billing_svc.purchase_membership(user_id, "monthly")
+        is_vip, _ = billing_svc.get_user_vip_status(user_id)
+        assert is_vip is True
+
+        ok, msg = billing_svc.revoke_membership(user_id)
+        assert ok is True
+        is_vip, _ = billing_svc.get_user_vip_status(user_id)
+        assert is_vip is False
+
+    def test_revoke_non_vip(self, billing_svc: BillingService) -> None:
+        """撤销非 VIP 用户应失败"""
+        user_id = _random_user()
+        ok, msg = billing_svc.revoke_membership(user_id)
+        assert ok is False
+        assert "not_vip" in msg
+
+    def test_revoke_endpoint(self, billing_svc: BillingService) -> None:
+        """管理接口撤销会员"""
+        user_id = _random_user()
+        billing_svc.purchase_membership(user_id, "monthly")
+
+        response = client.post("/api/v1/billing/membership/revoke", json={
+            "user_id": user_id,
+            "remark": "test revoke",
+        }, headers={"X-Admin-Key": "test-admin-key"})
+        assert response.status_code == 200
+        assert response.json()["data"]["revoked"] is True
+
+
+class TestCreditsStream:
+    def test_credits_stream_media_type(self) -> None:
+        """SSE 端点路由配置正确（通过检查路由表而非实际请求）"""
+        from app.api.main import app
+        routes = [r.path for r in app.routes]
+        assert "/api/v1/billing/credits/stream" in routes
