@@ -104,6 +104,7 @@ async def _audit_log_request(
 
 # ─────────────────────────── sub-routers ───────────────────────────
 
+from .backtests import router as backtests_router
 from .markets import router as markets_router
 from .chat import router as chat_router
 from .strategies import router as strategies_router
@@ -111,6 +112,7 @@ from .trading import router as trading_router
 
 router = APIRouter(prefix="/agent/v1")
 
+router.include_router(backtests_router, tags=["Agent-回测"])
 router.include_router(markets_router, prefix="/markets", tags=["Agent-市场"])
 router.include_router(chat_router, prefix="/chat", tags=["Agent-对话"])
 router.include_router(strategies_router, prefix="/strategies", tags=["Agent-策略"])

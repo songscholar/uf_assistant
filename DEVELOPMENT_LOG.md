@@ -1041,3 +1041,152 @@ feat(billing): P2 改进 — 日志级别制、运营数据、撤销、SSE 推�
 - membership_orders / usdt_orders 新增 refunded_at 字段
 - 测试覆盖：43 passed（新增8个）
 ```
+
+---
+
+## 2026-05-07 — QuantDinger 策略引擎完整移植
+
+### 变更摘要
+
+将 QuantDinger 的完整策略引擎移植到 UF Stock Assistant，支持双范式策略（IndicatorStrategy + ScriptStrategy）、完整回测引擎、实盘交易执行器、交易所适配层等。
+
+### 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/strategies/models.py` | 207 | SQLAlchemy 模型：策略、指标、持仓、交易、挂单、回测运行、权益曲线、日志、通知（10 张表） |
+| `app/core/safe_exec.py` | 472 | 安全代码执行沙箱：白名单 builtins、受限 import、AST+regex 双重验证、超时控制 |
+| `app/strategies/script_runtime.py` | 190 | 脚本运行时：ScriptBar、ScriptPosition、StrategyScriptContext、compile handlers |
+| `app/strategies/indicator_params.py` | 216 | 参数解析：@strategy 注解解析、@param 声明解析、参数合并 |
+| `app/strategies/code_quality.py` | 205 | 代码质量检测：17 种启发式检查（结构、风控、参数使用等） |
+| `app/strategies/backtest.py` | 2241 | 回测引擎：K 线缓存、指标执行沙箱、信号标准化（4-way）、交易模拟（SL/TP/追踪止损/仓位管理）、多时间框架回测、指标计算（夏普/最大回撤/胜率/盈亏比） |
+| `app/strategies/builtin_indicators.py` | 203 | 4 个内置指标示例：RSI 边缘触发、双均线金叉死叉、MACD 柱穿零轴、布林带触及 |
+| `app/strategies/trading_executor.py` | 1428 | 实盘交易执行器：守护线程/策略、信号队列+去重、服务端风控（SL/TP/追踪）、持仓状态机 |
+| `app/strategies/exchange_client.py` | 566 | 交易所适配层：CCXT 实现（支持 9 个交易所）、模拟股票客户端、统一工厂方法 |
+| `app/strategies/pending_order_worker.py` | 263 | 挂单 Worker：后台轮询 pending_orders 表、执行订单、更新持仓 |
+| `app/strategies/portfolio_monitor.py` | 254 | 持仓监控：实时价格同步、未实现盈亏计算、highest/lowest 价格追踪 |
+| `app/strategies/notifier.py` | 273 | 信号通知：Telegram/Email/Webhook 三种渠道、NotifierManager 统一调度 |
+| `app/tools/strategy_tools.py` | 214 | LangChain 工具：run_backtest、verify_strategy_code、analyze_code_quality、execute_indicator、start/stop_strategy、list_strategy_indicators |
+| `tests/test_safe_exec.py` | 186 | 安全沙箱测试：30 个用例 |
+| `tests/test_script_runtime.py` | 235 | 脚本运行时测试：28 个用例 |
+| `tests/test_indicator_params.py` | 176 | 参数解析测试：26 个用例 |
+| `tests/test_backtest.py` | 753 | 回测引擎测试：53 个用例（指标函数、缓存、信号标准化、交易模拟、集成测试） |
+| `tests/test_code_quality.py` | 248 | 代码质量测试：22 个用例 |
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `app/strategies/base.py` | 新增 TradeDirection、SignalType 枚举（4-way 信号格式） |
+| `app/strategies/registry.py` | 新增 IndicatorCodeRegistry（指标代码注册表） |
+| `app/strategies/__init__.py` | 新增导出项 |
+| `app/api/routers/strategy.py` | 新增 13 个 API 端点（回测、验证、质量检测、参数解析、指标执行、启停、持仓/交易/权益/日志查询） |
+| `app/tools/__init__.py` | 注册 STRATEGY_TOOLS 到 ALL_TOOLS |
+
+### 核心架构
+
+```
+双范式策略引擎
+├── IndicatorStrategy（df['buy']/df['sell'] 数据帧模式）
+│   ├── 指标代码沙箱执行（safe_exec）
+│   ├── @param 参数声明 + @strategy 风控注解
+│   └── 内置指标示例（RSI/MA/MACD/Bollinger）
+├── ScriptStrategy（on_bar(ctx, bar) 事件驱动模式）
+│   ├── ScriptBar / ScriptPosition / StrategyScriptContext
+│   └── 编译沙箱执行
+├── 回测引擎（BacktestService）
+│   ├── 信号标准化（buy/sell → open_long/close_long/open_short/close_short）
+│   ├── 交易模拟（next_bar_open 时机、SL/TP/追踪止损、仓位管理）
+│   ├── 多时间框架回测（信号 TF + 执行 TF）
+│   └── 指标计算（夏普比率、最大回撤、胜率、盈亏比）
+├── 实盘执行器（TradingExecutor）
+│   ├── 守护线程/策略
+│   ├── 信号队列 + 去重 + 过期
+│   ├── 服务端风控（SL/TP/追踪止损）
+│   └── 持仓状态机（flat/long/short）
+├── 交易所适配（ExchangeClient）
+│   ├── CCXTExchangeClient（加密货币，9 个交易所）
+│   └── SimulatedStockClient（A 股模拟）
+└── 辅助模块
+    ├── PendingOrderWorker（挂单执行）
+    ├── PortfolioMonitor（持仓监控）
+    └── NotifierManager（信号通知）
+```
+
+### API 新增端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/strategies/backtest` | POST | 运行回测 |
+| `/strategies/verify-code` | POST | 验证策略代码语法 |
+| `/strategies/code-quality` | POST | 代码质量检测 |
+| `/strategies/parse-params` | POST | 解析 @param/@strategy 注解 |
+| `/strategies/indicator/execute` | POST | 执行指标获取信号 |
+| `/strategies/indicators` | GET | 列出所有内置指标 |
+| `/strategies/indicators/{name}` | GET | 获取指标详情（含代码） |
+| `/strategies/start` | POST | 启动策略实盘运行 |
+| `/strategies/stop` | POST | 停止策略 |
+| `/strategies/positions` | GET | 获取策略持仓 |
+| `/strategies/trades` | GET | 获取交易记录 |
+| `/strategies/equity-curve` | GET | 获取回测权益曲线 |
+| `/strategies/logs` | GET | 获取策略运行日志 |
+
+### 测试覆盖
+
+```
+tests/test_safe_exec.py       — 30 passed
+tests/test_script_runtime.py  — 28 passed
+tests/test_indicator_params.py — 26 passed
+tests/test_backtest.py        — 53 passed
+tests/test_code_quality.py    — 22 passed
+─────────────────────────────────────
+合计：208 passed, 0 failed
+```
+
+### 技术决策
+
+1. **数据库适配**：QuantDinger 用 PostgreSQL raw SQL，UF 用 SQLAlchemy + SQLite。所有 DB 操作改用 ORM。
+2. **数据源适配**：QuantDinger 用 DataSourceFactory，UF 用 AKShare（A 股）+ CCXT（加密货币）。回测引擎的 `_fetch_kline_data` 适配两种数据源。
+3. **IndicatorCaller 移除**：QuantDinger 通过 DB 调用其他指标，UF 无此表。移除 IndicatorCaller，改用代码内 `call_indicator()` 递归调用。
+4. **交易所适配**：不移植 IBKR/MT5，聚焦 A 股（模拟）+ 加密货币（CCXT）。
+5. **4-way 信号格式**：buy/sell 标准化为 open_long/close_long/open_short/close_short，支持做空和双向交易。
+6. **风控参数语义**：止损/止盈百分比基于保证金 PnL，除以杠杆转为价格阈值。
+
+```
+
+---
+
+## 2025-05-06 — Agent Gateway 回测端点补充
+
+### 改动目标
+将 QuantDinger 风格的 Agent Gateway 回测端点补充到现有回测引擎上，
+使 Agent（class B scope）可以通过 API 提交异步回测任务。
+
+### 涉及文件
+- `app/api/agent/backtests.py` — 新增，Agent 回测提交端点（POST /agent/v1/backtests）
+- `app/api/agent/__init__.py` — 注册 backtests_router
+
+### 改动方案
+1. **新建 `backtests.py`**：
+   - 使用现有的 `BacktestService.run()` 执行回测（与人类 UI 结果一致）
+   - 支持 `Idempotency-Key` 防止重复提交（复用 `AgentAuthManager.with_idempotency`）
+   - 支持 markets/instruments 白名单检查
+   - 支持 rate limit headers
+   - 请求体兼容 QuantDinger 的字段命名（snake_case + camelCase 别名）
+   - 复用 `AgentAuthManager.submit_job / update_job` 管理任务生命周期
+   - 返回 `job_id` + `status` + `result`，前端可直接轮询 `/jobs/{job_id}`
+
+2. **注册路由**：在 `app/api/agent/__init__.py` 中 `include_router(backtests_router)`
+
+### 测试验证
+- 路由列表确认：`POST /api/agent/v1/backtests` 已成功注册
+- 全量测试：`386 passed, 3 failed`（3 个失败均为本地 `.env` `LLM_PROVIDER=xiaomi` 与测试期望 `kimi` 冲突，非本改动引入）
+
+### 迁移状态
+- ✅ BacktestService（K线缓存、指标执行、交易模拟、绩效计算）— 已有
+- ✅ 数据模型（StrategyModel, IndicatorModel, BacktestRun, BacktestTrade, BacktestEquityPoint）— 已有
+- ✅ 脚本运行时（ScriptBar, ScriptPosition, StrategyScriptContext）— 已有
+- ✅ 人类 API（/api/v1/strategies/backtest）— 已有
+- ✅ **Agent Gateway 异步回测（POST /api/agent/v1/backtests）— 本次补充**
+
+QuantDinger → UF Stock Assistant 回测引擎迁移完整闭环。
