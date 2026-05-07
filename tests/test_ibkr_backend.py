@@ -57,8 +57,8 @@ class TestLocalBrokerSettings:
 
     def test_env_override(self, monkeypatch):
         from app.core.config import LocalBrokerSettings
-        monkeypatch.setenv("STOCK_ASSISTANT_LOCAL_BROKER__ALLOWED", "true")
-        monkeypatch.setenv("STOCK_ASSISTANT_LOCAL_BROKER__IBKR_DEFAULT_PORT", "7496")
+        monkeypatch.setenv("STOCK_ASSISTANT_LOCAL_BROKER_ALLOWED", "true")
+        monkeypatch.setenv("STOCK_ASSISTANT_LOCAL_BROKER_IBKR_DEFAULT_PORT", "7496")
         s = LocalBrokerSettings()
         assert s.allowed is True
         assert s.ibkr_default_port == 7496

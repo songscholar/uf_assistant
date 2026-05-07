@@ -39,6 +39,29 @@
   - API 端点：`/api/v1/analysis/history`, `/stats`, `/feedback`, `/similar`, `/calibration/{market}`
   - 单元测试：10 个用例覆盖存储、查询、反馈、校准、阈值预测
 
+- **原生交易所客户端（完整迁移自 QuantDinger）**
+  - 12 个交易所原生 REST 客户端（非 CCXT 封装），共 ~7,300 行交易所特有逻辑
+  - Binance（Futures + Spot）：broker ID、hedge mode、时间同步、filter 缓存（LOT_SIZE/PRICE_FILTER/MARKET_LOT_SIZE）
+  - OKX：broker_code、simulated_trading header、合约数量转换（ctVal）
+  - Bybit：broker_referer、hedge_mode、recv_window、时间同步重试
+  - Bitget（Mix + Spot）：channel_api_code、hedge_mode、合约转换、feeDetail 解析
+  - Gate（Spot + Futures）：channel_id、quanto_multiplier 合约单位转换
+  - KuCoin（Spot + Futures）：API v2 签名、合约乘数（multiplier）、dealSize 转换
+  - Coinbase Exchange：sandbox、Base64(HMAC-SHA256) 签名
+  - Kraken（Spot + Futures）：XBT↔BTC 映射、userref、PF_ 前缀合约
+  - HTX：broker_id、统一账户检测、双 URL（spot/futures）
+  - Deepcoin：ISO 8601 时间、appid
+  - 基础设施：`BaseRestClient`（统一 REST）、`create_client` 工厂、`symbol` 标准化、`records` 持仓快照、`execution` 信号分发
+  - IBKR / MT5 支持：lazy import，本机 TWS/Gateway / MT5 终端连接
+
+- **策略服务增强（迁移自 QuantDinger）**
+  - `batch_create_strategies()`：批量创建策略 + group_id 分组，支持多 symbol 同时创建
+  - `get_exchange_symbols()`：按交易所获取交易对，支持直接 REST / CCXT fallback / IBKR / MT5
+  - `_compute_runtime_metrics()`：策略运行时指标（已实现 PnL / 未实现 PnL / 权益）
+  - `_build_bot_display()`：网格/马丁/趋势/DCA bot 的前端展示配置
+  - `exchange_execution.py`：凭据解析（credential_id → 查 DB 取 API Key），支持 demo/testnet 检测
+  - 新增端点：`POST /strategies/batch`、`POST /strategies/exchange-symbols`、`GET /strategies/{id}/runtime-metrics`
+
 - **回测引擎（完整迁移自 QuantDinger）**
   - `BacktestService`：K 线缓存（TTL+LRU）、指标执行、交易模拟、绩效计算
   - 双范式策略回测：Indicator 模式（df['buy']/df['sell']）+ Script 模式（on_bar 事件驱动）

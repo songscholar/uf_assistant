@@ -1448,3 +1448,40 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 ### 测试验证
 - 13 个交易所模块全部导入成功
 - 全量测试：517 passed, 3 failed（环境变量冲突，非本改动引入）
+
+
+---
+
+## 2026-05-07 — 阶段 P4：IBKR 客户端迁移（美股）
+
+### 改动目标
+将 QuantDinger 的 IBKR 桌面券商客户端（`ib_insync` + TWS/Gateway）迁移到 UF Stock Assistant，适配 async `ExchangeBackend` ABC。
+
+### 涉及文件
+- **新建** `app/trading/backends/ibkr_backend.py` — `IBKRBackend` 类（async 包装 `ib_insync` 同步 API）
+- **修改** `app/core/config.py` — 新增 `LocalBrokerSettings`（`STOCK_ASSISTANT_LOCAL_BROKER_*` 环境变量）
+- **修改** `app/trading/backends/__init__.py` — `BackendRouter` 注册 `ibkr` 市场 + SaaS 拦截
+- **修改** `pyproject.toml` — 添加 `asyncio_mode = "auto"`
+- **新建** `tests/test_ibkr_backend.py` — 19 个测试用例
+
+### 改动方案
+1. **async 适配**：`ib_insync` 是同步 API，所有方法内部用 `asyncio.to_thread()` 包装
+2. **lazy import**：`ib_insync` 不在项目依赖中，首次使用时报 `ImportError` 并提示安装
+3. **SaaS 拦截**：`BackendRouter.create("ibkr")` 先检查 `settings.local_broker.allowed`，SaaS 模式默认拒绝
+4. **Symbol 归一化**：`_normalize_symbol()` 将系统代码映射为 IB `Stock(symbol, "SMART", "USD")`
+5. **订单类型**：支持 `market` / `limit`，其他类型抛 `ValueError`
+6. **状态映射**：IB 状态 `Filled` → `filled`，`Cancelled`/`ApiCancelled`/`Inactive` → `rejected`，其余 → `submitted`
+7. **按需导入**：`BackendRouter.create()` 将各后端 import 延迟到对应分支，避免 `ccxt` PyO3 初始化问题在 IBKR 测试中被触发
+
+### 配置项
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `STOCK_ASSISTANT_LOCAL_BROKER_ALLOWED` | `false` | 是否允许本地桌面券商 |
+| `STOCK_ASSISTANT_LOCAL_BROKER_IBKR_DEFAULT_HOST` | `127.0.0.1` | TWS 主机 |
+| `STOCK_ASSISTANT_LOCAL_BROKER_IBKR_DEFAULT_PORT` | `7497` | TWS 端口 |
+| `STOCK_ASSISTANT_LOCAL_BROKER_IBKR_DEFAULT_CLIENT_ID` | `1` | Client ID |
+| `STOCK_ASSISTANT_LOCAL_BROKER_IBKR_READONLY` | `false` | 只读模式 |
+
+### 测试验证
+- 新增测试：`tests/test_ibkr_backend.py` **19 passed**
+- 全量测试：**536 passed, 3 failed**（`.env` 中 `LLM_PROVIDER=xiaomi` 导致的预存环境变量冲突，非本改动引入）

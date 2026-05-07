@@ -166,9 +166,12 @@ admin  → [...manager, user_manage, credentials]
 │  on_bar(ctx, bar) 脚本       │  SL/TP/追踪止损/仓位管理          │
 │  ctx.buy()/ctx.sell()        │  多时间框架 / 夏普 / 最大回撤     │
 ├─────────────────────────────────────────────────────────────────┤
-│  实盘执行器（TradingExecutor）│  交易所适配（ExchangeClient）     │
-│  守护线程/策略               │  CCXT（9 个交易所）               │
-│  信号队列 + 服务端风控       │  SimulatedStockClient（A 股）     │
+│  实盘执行器（TradingExecutor）│  交易所适配（双模式）              │
+│  守护线程/策略               │  CCXT 统一接口（快速启动）         │
+│  信号队列 + 服务端风控       │  原生客户端（精细控制）            │
+│                             │  Binance/OKX/Bybit/Bitget/Gate    │
+│                             │  KuCoin/Kraken/HTX/Deepcoin       │
+│                             │  Coinbase + IBKR + MT5            │
 ├─────────────────────────────────────────────────────────────────┤
 │  辅助模块                                                     │
 │  PendingOrderWorker │ PortfolioMonitor │ NotifierManager        │
@@ -180,6 +183,33 @@ admin  → [...manager, user_manage, credentials]
 - `StrategyRegistry`：管理 evaluate 模式策略（MA/MACD/RSI/Bollinger）
 - `IndicatorCodeRegistry`：管理指标代码（name, code, @param, @strategy）
 - 单例模式，支持 key 和中文名称映射
+
+**原生交易所客户端**（`app/strategies/live_trading/`）:
+
+| 交易所 | 文件 | 市场 | 特有逻辑 |
+|--------|------|------|---------|
+| Binance Futures | `binance.py` | USDT-M | broker_id、hedge_mode、时间同步、filter 缓存 |
+| Binance Spot | `binance_spot.py` | Spot | broker_id、spot filter、-2015 权限提示 |
+| OKX | `okx.py` | Swap/Spot | broker_code、simulated_trading、ctVal 合约转换 |
+| Bybit | `bybit.py` | Linear/Spot | broker_referer、hedge_mode、recv_window、时间同步 |
+| Bitget Mix | `bitget.py` | USDT Futures | channel_api_code、hedge_mode、合约转换 |
+| Bitget Spot | `bitget_spot.py` | Spot | channel_api_code |
+| Gate Spot | `gate.py` | Spot | channel_id |
+| Gate Futures | `gate.py` | USDT Futures | channel_id、quanto_multiplier 合约转换 |
+| KuCoin Spot | `kucoin.py` | Spot | API v2 签名 |
+| KuCoin Futures | `kucoin.py` | Futures | API v2 签名、multiplier 合约乘数 |
+| Coinbase | `coinbase_exchange.py` | Spot | sandbox、Base64-HMAC-SHA256 |
+| Kraken Spot | `kraken.py` | Spot | XBT↔BTC、userref |
+| Kraken Futures | `kraken_futures.py` | Futures | PF_ 前缀合约 |
+| HTX | `htx.py` | Spot/Swap | broker_id、统一账户检测、双 URL |
+| Deepcoin | `deepcoin.py` | Swap | ISO 8601 时间、appid |
+
+基础设施：
+- `base.py`：`BaseRestClient`（统一 REST + SSL verify 配置）
+- `factory.py`：`create_client()` 工厂 + demo 模式检测 + IBKR/MT5 lazy import
+- `symbols.py`：14 个 symbol 标准化函数（处理 :USDT 后缀、XBT↔BTC、大小写）
+- `records.py`：本地 DB 持仓快照（加权平均成本、平仓盈亏计算）
+- `execution.py`：8-way 信号 → 交易所特定下单参数分发
 
 **安全沙箱**（`app/core/safe_exec.py`）：
 - 白名单 builtins（~50 个安全函数）
@@ -227,7 +257,7 @@ admin  → [...manager, user_manage, credentials]
 | `market.py` | 5 | 市场数据查询 |
 | `crypto.py` | 4 | 虚拟货币查询 |
 | `trading.py` | 5 | 模拟交易操作 |
-| `strategy.py` | 5 | 策略执行/选股/自定义 |
+| `strategy.py` | 22 | 策略执行/选股/自定义/回测/批量创建/交易对查询/运行时指标 |
 | `upload.py` | 2 | 文件上传/解析 |
 | `billing.py` | 8 | 计费/会员/USDT 支付 |
 | `analysis.py` | 6 | AI 分析记忆（历史/统计/反馈/校准配置） |
