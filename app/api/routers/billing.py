@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
 from app.core.exceptions import BillingError
 from app.core.logging import get_logger
 from app.services.billing import get_billing_service
@@ -18,6 +19,25 @@ from app.services.usdt_payment import get_usdt_payment_service
 logger = get_logger("app.api.routers.billing")
 
 router = APIRouter(prefix="/billing", tags=["计费"])
+
+
+# ------------------------------------------------------------------
+# Admin auth dependency
+# ------------------------------------------------------------------
+
+def require_admin(x_admin_key: str = Header(default="")) -> None:
+    """管理接口认证：校验 X-Admin-Key Header"""
+    expected = (get_settings().billing.admin_api_key or "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="admin_api_key_not_configured",
+        )
+    if x_admin_key.strip() != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid_admin_key",
+        )
 
 
 # ------------------------------------------------------------------
@@ -86,11 +106,26 @@ async def get_credits_log(
     }
 
 
+@router.get("/membership/orders")
+async def get_membership_orders(
+    user_id: str = Header(default="default"),
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    """获取用户会员购买订单"""
+    svc = get_billing_service()
+    orders = svc.get_membership_orders(user_id, page=page, page_size=page_size)
+    return {
+        "code": "success",
+        "data": orders,
+    }
+
+
 # ------------------------------------------------------------------
 # 管理接口（积分调整、VIP 设置）
 # ------------------------------------------------------------------
 
-@router.post("/credits/add")
+@router.post("/credits/add", dependencies=[Depends(require_admin)])
 async def add_credits(payload: CreditsAdjustRequest) -> dict[str, Any]:
     """增加用户积分（管理员）"""
     svc = get_billing_service()
@@ -108,7 +143,7 @@ async def add_credits(payload: CreditsAdjustRequest) -> dict[str, Any]:
     }
 
 
-@router.post("/credits/set")
+@router.post("/credits/set", dependencies=[Depends(require_admin)])
 async def set_credits(payload: CreditsAdjustRequest) -> dict[str, Any]:
     """设置用户积分（管理员直接设置）"""
     svc = get_billing_service()
@@ -125,7 +160,7 @@ async def set_credits(payload: CreditsAdjustRequest) -> dict[str, Any]:
     }
 
 
-@router.post("/vip/set")
+@router.post("/vip/set", dependencies=[Depends(require_admin)])
 async def set_vip(payload: VipSetRequest) -> dict[str, Any]:
     """设置用户 VIP 状态（管理员）"""
     from datetime import datetime

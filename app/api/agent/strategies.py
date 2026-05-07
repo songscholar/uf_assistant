@@ -1,6 +1,10 @@
 """
 UF Stock Assistant — Agent Gateway 策略端点
 提供策略列表、执行、选股、回测接口
+
+参考 QuantDinger 设计：
+  - 策略执行返回 job_id（异步模式）
+  - W/B 类端点强制要求 Idempotency-Key
 """
 
 from __future__ import annotations
@@ -8,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -20,7 +24,7 @@ from app.services.stock_picker import StockPicker
 from app.strategies.base import BaseStrategy
 from app.strategies.registry import StrategyRegistry
 
-from . import require_scope
+from . import require_scope, _inject_rate_limit
 
 logger = get_logger("app.api.agent.strategies")
 
@@ -54,9 +58,11 @@ async def _call_with_timeout(func, *args, **kwargs):
 
 @router.get("/list")
 async def agent_strategy_list(
-    _record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
+    request: Request,
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
 ):
     """获取可用策略列表"""
+    _inject_rate_limit(request, record)
     try:
         registry = StrategyRegistry()
         strategies = registry.list_strategies()
@@ -77,7 +83,7 @@ async def agent_strategy_list(
 
 
 # =============================================================================
-# 策略执行
+# 策略执行（异步 Job 模式）
 # =============================================================================
 
 class StrategyEvaluateRequest(BaseModel):
@@ -88,31 +94,55 @@ class StrategyEvaluateRequest(BaseModel):
 
 @router.post("/{strategy_key}/evaluate")
 async def agent_strategy_evaluate(
+    request: Request,
     strategy_key: str,
-    request: StrategyEvaluateRequest,
+    body: StrategyEvaluateRequest,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     record: AgentTokenRecord = Depends(require_scope(AgentScope.BACKTEST)),
 ):
-    """执行策略分析"""
-    _check_instrument(record, request.symbol)
+    """
+    执行策略分析（异步 Job）
+
+    返回 job_id，通过 GET /api/agent/v1/jobs/{job_id} 查询结果。
+    W/B 类端点建议提供 Idempotency-Key 避免重复提交。
+    """
+    _inject_rate_limit(request, record)
+    _check_instrument(record, body.symbol)
+
+    # 幂等性检查
+    with AgentAuthManager.with_idempotency("strategy_eval", idempotency_key) as existing:
+        if existing:
+            return {"duplicate": True, "job_id": existing["job_id"], "previous": existing}
+
+    # 提交 Job
+    job_id = AgentAuthManager.submit_job(
+        kind="strategy_eval",
+        request={"strategy_key": strategy_key, "symbol": body.symbol, "params": body.params},
+        idempotency_key=idempotency_key,
+    )
+
+    # 立即执行（简化版：无独立 worker，直接在当前请求中执行）
+    AgentAuthManager.update_job(job_id, status="running")
     try:
         registry = StrategyRegistry()
         strategy_cls = registry.get(strategy_key)
         if not strategy_cls:
+            AgentAuthManager.update_job(job_id, status="failed", error=f"策略不存在: {strategy_key}")
             raise HTTPException(status_code=404, detail=f"策略不存在: {strategy_key}")
 
-        strategy = strategy_cls(**request.params)
+        strategy = strategy_cls(**body.params)
 
         # 获取历史数据
         from app.tools.stock_data import get_stock_history
-        history_json = await _call_with_timeout(get_stock_history, request.symbol, limit=100)
+        history_json = await _call_with_timeout(get_stock_history, body.symbol, limit=100)
         import json
         history_data = json.loads(history_json).get("data", [])
 
-        result = strategy.evaluate(request.symbol, history_data)
+        result = strategy.evaluate(body.symbol, history_data)
 
-        return {
+        result_dict = {
             "strategy": strategy.name,
-            "symbol": request.symbol,
+            "symbol": body.symbol,
             "signal": {
                 "direction": result.signal.direction if result.signal else None,
                 "confidence": result.signal.confidence if result.signal else 0,
@@ -120,15 +150,20 @@ async def agent_strategy_evaluate(
             } if result.signal else None,
             "data": result.data,
         }
+
+        AgentAuthManager.update_job(job_id, status="completed", result=result_dict)
+        return {"job_id": job_id, "status": "completed", "result": result_dict}
+
     except HTTPException:
         raise
     except Exception as exc:
         logger.error("agent_strategy_evaluate_error", strategy=strategy_key, error=str(exc))
+        AgentAuthManager.update_job(job_id, status="failed", error=str(exc)[:500])
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 # =============================================================================
-# 智能选股
+# 智能选股（异步 Job 模式）
 # =============================================================================
 
 class StockPickRequest(BaseModel):
@@ -141,24 +176,49 @@ class StockPickRequest(BaseModel):
 
 @router.post("/pick")
 async def agent_stock_pick(
-    request: StockPickRequest,
+    request: Request,
+    body: StockPickRequest,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     record: AgentTokenRecord = Depends(require_scope(AgentScope.BACKTEST)),
 ):
-    """基于策略条件筛选股票"""
+    """基于策略条件筛选股票（异步 Job）"""
+    _inject_rate_limit(request, record)
+
     # 检查所有候选品种是否在白名单内
-    for sym in request.symbols:
+    for sym in body.symbols:
         _check_instrument(record, sym)
+
+    # 幂等性检查
+    with AgentAuthManager.with_idempotency("stock_pick", idempotency_key) as existing:
+        if existing:
+            return {"duplicate": True, "job_id": existing["job_id"], "previous": existing}
+
+    job_id = AgentAuthManager.submit_job(
+        kind="stock_pick",
+        request={
+            "strategy_key": body.strategy_key,
+            "symbols": body.symbols,
+            "params": body.params,
+            "min_confidence": body.min_confidence,
+        },
+        idempotency_key=idempotency_key,
+    )
+
+    AgentAuthManager.update_job(job_id, status="running")
     try:
         picker = StockPicker()
         results = picker.pick(
-            strategy_key=request.strategy_key,
-            symbols=request.symbols,
-            params=request.params,
-            min_confidence=request.min_confidence,
+            strategy_key=body.strategy_key,
+            symbols=body.symbols,
+            params=body.params,
+            min_confidence=body.min_confidence,
         )
-        return {"results": results}
+        result_dict = {"results": results}
+        AgentAuthManager.update_job(job_id, status="completed", result=result_dict)
+        return {"job_id": job_id, "status": "completed", "result": result_dict}
     except Exception as exc:
         logger.error("agent_stock_pick_error", error=str(exc))
+        AgentAuthManager.update_job(job_id, status="failed", error=str(exc)[:500])
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -177,18 +237,20 @@ class StockScreenRequest(BaseModel):
 
 @router.post("/screen")
 async def agent_stock_screen(
-    request: StockScreenRequest,
-    _record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
+    request: Request,
+    body: StockScreenRequest,
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
 ):
     """根据条件快速筛选股票"""
+    _inject_rate_limit(request, record)
     try:
         picker = StockPicker()
         results = picker.screen(
-            min_price=request.min_price,
-            max_price=request.max_price,
-            min_change_pct=request.min_change_pct,
-            max_change_pct=request.max_change_pct,
-            limit=request.limit,
+            min_price=body.min_price,
+            max_price=body.max_price,
+            min_change_pct=body.min_change_pct,
+            max_change_pct=body.max_change_pct,
+            limit=body.limit,
         )
         return {"results": results}
     except Exception as exc:

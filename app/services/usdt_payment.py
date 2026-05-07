@@ -217,6 +217,7 @@ class UsdtPaymentService:
             headers["TRON-PRO-API-KEY"] = cfg["trongrid_key"]
 
         target = int((amount_usdt * Decimal("1000000")).to_integral_value())
+        min_acceptable = int(target * Decimal("0.95"))  # 允许 5% 容差
 
         min_ts = None
         ct_parsed = self._coerce_utc_datetime(created_at)
@@ -259,7 +260,7 @@ class UsdtPaymentService:
                             before_order += 1
                             continue
                         val = int(it.get("value") or 0)
-                        if val < target:
+                        if val < min_acceptable:
                             underpaid += 1
                             continue
                         return it, f"ok pages={pages_fetched} scanned={total_scanned}"

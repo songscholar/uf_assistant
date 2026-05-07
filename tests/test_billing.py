@@ -10,7 +10,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from fastapi.testclient import TestClient
+
+from app.api.main import app
+from app.core.config import reload_settings
 from app.services.billing import BillingService, BillingStore, get_billing_service
+
+client = TestClient(app)
 
 
 def _random_user() -> str:
@@ -20,11 +26,24 @@ def _random_user() -> str:
 @pytest.fixture(autouse=True)
 def _billing_env(monkeypatch):
     """为计费测试设置隔离环境，不影响其他测试模块"""
-    monkeypatch.setenv("STOCK_ASSISTANT_DATABASE_URL", "sqlite:///:memory:")
+    import tempfile
+    db_path = tempfile.mktemp(suffix=".db")
+    monkeypatch.setenv("STOCK_ASSISTANT_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("STOCK_ASSISTANT_BILLING_ENABLED", "true")
+    monkeypatch.setenv("STOCK_ASSISTANT_BILLING_ADMIN_API_KEY", "test-admin-key")
+    # 清除配置缓存，确保新环境变量生效
+    reload_settings()
     # 重置单例和表
     BillingStore._engine = None
     BillingStore._session_factory = None
+    BillingStore.ensure_tables()
+    yield
+    # 清理临时数据库文件
+    import os
+    try:
+        os.unlink(db_path)
+    except Exception:
+        pass
 
 
 @pytest.fixture
@@ -193,3 +212,111 @@ class TestBillingInfo:
         assert info["credits"] == 100.0
         assert info["is_vip"] is False
         assert "feature_costs" in info
+
+
+class TestAdminAuth:
+    def test_add_credits_without_key(self, billing_svc: BillingService) -> None:
+        """无 X-Admin-Key 应返回 503（admin_api_key 未配置时不应出现，但 fixture 已配置）"""
+        # 临时清空 admin key
+        import os
+        old_key = os.environ.get("STOCK_ASSISTANT_BILLING_ADMIN_API_KEY")
+        os.environ["STOCK_ASSISTANT_BILLING_ADMIN_API_KEY"] = ""
+        reload_settings()
+
+        response = client.post("/api/v1/billing/credits/add", json={
+            "user_id": _random_user(),
+            "amount": 100,
+        })
+        assert response.status_code == 503
+        assert "admin_api_key_not_configured" in response.json()["detail"]
+
+        if old_key:
+            os.environ["STOCK_ASSISTANT_BILLING_ADMIN_API_KEY"] = old_key
+        else:
+            os.environ.pop("STOCK_ASSISTANT_BILLING_ADMIN_API_KEY", None)
+        reload_settings()
+
+    def test_add_credits_with_wrong_key(self, billing_svc: BillingService) -> None:
+        """错误的 X-Admin-Key 应返回 401"""
+        response = client.post("/api/v1/billing/credits/add", json={
+            "user_id": _random_user(),
+            "amount": 100,
+        }, headers={"X-Admin-Key": "wrong-key"})
+        assert response.status_code == 401
+        assert "invalid_admin_key" in response.json()["detail"]
+
+    def test_add_credits_with_correct_key(self, billing_svc: BillingService) -> None:
+        """正确的 X-Admin-Key 应正常执行"""
+        user_id = _random_user()
+        response = client.post("/api/v1/billing/credits/add", json={
+            "user_id": user_id,
+            "amount": 100,
+        }, headers={"X-Admin-Key": "test-admin-key"})
+        assert response.status_code == 200
+        assert response.json()["code"] == "success"
+        assert billing_svc.get_user_credits(user_id) == 100
+
+    def test_set_vip_with_correct_key(self, billing_svc: BillingService) -> None:
+        """设置 VIP 管理接口认证通过"""
+        user_id = _random_user()
+        response = client.post("/api/v1/billing/vip/set", json={
+            "user_id": user_id,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+        }, headers={"X-Admin-Key": "test-admin-key"})
+        assert response.status_code == 200
+        assert response.json()["code"] == "success"
+
+
+class TestCreditsIdempotency:
+    def test_consume_idempotent_with_reference_id(self, billing_svc: BillingService) -> None:
+        """同一 reference_id 的扣费应只执行一次"""
+        user_id = _random_user()
+        billing_svc.add_credits(user_id, 100)
+
+        ok1, msg1 = billing_svc.check_and_consume(
+            user_id, "ai_analysis", reference_id="req-001"
+        )
+        assert ok1 is True
+        assert msg1 == "consumed"
+        assert billing_svc.get_user_credits(user_id) == 90
+
+        ok2, msg2 = billing_svc.check_and_consume(
+            user_id, "ai_analysis", reference_id="req-001"
+        )
+        assert ok2 is True
+        assert msg2 == "already_consumed"
+        # 积分不应再次扣减
+        assert billing_svc.get_user_credits(user_id) == 90
+
+    def test_consume_different_reference_ids(self, billing_svc: BillingService) -> None:
+        """不同 reference_id 应分别扣费"""
+        user_id = _random_user()
+        billing_svc.add_credits(user_id, 100)
+
+        ok1, _ = billing_svc.check_and_consume(
+            user_id, "ai_analysis", reference_id="req-001"
+        )
+        assert ok1 is True
+
+        ok2, _ = billing_svc.check_and_consume(
+            user_id, "ai_analysis", reference_id="req-002"
+        )
+        assert ok2 is True
+        assert billing_svc.get_user_credits(user_id) == 80
+
+    def test_consume_empty_reference_id_no_idempotency(self, billing_svc: BillingService) -> None:
+        """reference_id 为空时不做幂等检查"""
+        user_id = _random_user()
+        billing_svc.add_credits(user_id, 100)
+
+        ok1, _ = billing_svc.check_and_consume(
+            user_id, "ai_analysis", reference_id=""
+        )
+        assert ok1 is True
+
+        ok2, _ = billing_svc.check_and_consume(
+            user_id, "ai_analysis", reference_id=""
+        )
+        assert ok2 is True
+        # 两次都扣费了
+        assert billing_svc.get_user_credits(user_id) == 80

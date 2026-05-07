@@ -183,13 +183,27 @@ class BillingService:
         feature: str,
         reference_id: str = "",
     ) -> Tuple[bool, str]:
-        """检查并消耗积分"""
+        """检查并消耗积分（reference_id 非空时幂等去重）"""
         if not self.is_billing_enabled():
             return True, "billing_disabled"
 
         cost = self.get_feature_cost(feature)
         if cost <= 0:
             return True, "free_feature"
+
+        # 幂等去重：同一 reference_id 的扣费只执行一次
+        if reference_id:
+            session_check = BillingStore.get_session()
+            try:
+                existing = (
+                    session_check.query(CreditsLogModel)
+                    .filter_by(user_id=user_id, action="consume", reference_id=reference_id)
+                    .first()
+                )
+                if existing:
+                    return True, "already_consumed"
+            finally:
+                session_check.close()
 
         credits = self.get_user_credits(user_id)
         if credits < cost:

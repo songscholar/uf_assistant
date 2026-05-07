@@ -51,6 +51,7 @@ class AgentSettings(BaseSettings):
     token_ttl_hours: int = Field(default=720, description="Agent Token 有效期(小时)，默认30天")
     audit_log_retention_days: int = Field(default=90, description="审计日志保留天数")
     sse_heartbeat_interval: int = Field(default=5, description="SSE 心跳间隔(秒)")
+    deployment_mode: str = Field(default="self", description="部署模式: self / saas / hosted / multitenant")
 
 
 class BillingSettings(BaseSettings):
@@ -62,6 +63,7 @@ class BillingSettings(BaseSettings):
     cost_ai_code_gen: int = Field(default=30, description="AI 代码生成单次消耗积分")
     credits_register_bonus: int = Field(default=100, description="注册赠送积分")
     credits_referral_bonus: int = Field(default=50, description="邀请赠送积分")
+    admin_api_key: str = Field(default="", description="管理接口 API Key（X-Admin-Key 校验用）")
 
 
 class MembershipSettings(BaseSettings):

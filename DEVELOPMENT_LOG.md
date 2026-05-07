@@ -812,3 +812,50 @@ feat(agent): 对齐 QuantDinger 参考设计 Phase 1
 - 新增 /whoami 和 /admin/tokens 生命周期管理端点
 - MCP Server: 移除交易工具，只暴露 R/B 类，与参考设计一致
 ```
+
+---
+
+## 2026-05-07 — 计费系统 P0 安全改进
+
+### 变更摘要
+
+修复计费系统的三个高优先级安全问题：
+1. **管理接口加认证**：`/credits/add`、`/credits/set`、`/vip/set` 新增 `X-Admin-Key` Header 校验
+2. **扣费幂等去重**：`check_and_consume` 传入非空 `reference_id` 时，同一 `user_id + reference_id` 只扣一次
+3. **USDT 金额匹配容差**：链上对账允许 5% 容差，覆盖 dust 差异
+
+### 新增/修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/core/config.py` | `BillingSettings` 新增 `admin_api_key` |
+| `app/api/routers/billing.py` | 新增 `require_admin` 依赖，管理端点加 `Depends(require_admin)` |
+| `app/services/billing.py` | `check_and_consume` 新增幂等去重逻辑 |
+| `app/services/usdt_payment.py` | `_find_trc20_usdt_incoming` 允许 5% 金额容差 |
+| `app/api/agent/strategies.py` | 修复缺失的 `Header` 导入（已有 bug） |
+| `app/api/agent/chat.py` | 修复缺失的 `Header` 导入（已有 bug） |
+| `tests/test_billing.py` | 新增 7 个测试：管理接口认证 4 个 + 幂等去重 3 个 |
+| `.env.example` | 新增 `STOCK_ASSISTANT_BILLING_ADMIN_API_KEY` |
+| `docs/business/BILLING.md` | 补充管理接口认证、幂等去重、USDT 容差说明 |
+
+### 验证结果
+
+- ✅ 计费模块单元测试：**25 passed**（新增 7 个，原有 18 个无 regression）
+- ✅ `test_add_credits_without_key`：未配置 admin key 返回 503
+- ✅ `test_add_credits_with_wrong_key`：错误 key 返回 401
+- ✅ `test_add_credits_with_correct_key`：正确 key 正常执行
+- ✅ `test_consume_idempotent_with_reference_id`：同一 reference_id 第二次返回 already_consumed
+- ✅ `test_consume_different_reference_ids`：不同 reference_id 分别扣费
+- ✅ `test_consume_empty_reference_id_no_idempotency`：空 reference_id 不做幂等检查
+
+### Git 提交
+
+```
+feat(billing): P0 安全改进 — 管理接口认证、扣费幂等、USDT 容差
+
+- 管理接口 /credits/add /credits/set /vip/set 新增 X-Admin-Key 认证
+- check_and_consume 新增 reference_id 幂等去重
+- USDT 链上对账允许 5% 金额容差
+- 修复 app/api/agent/{strategies,chat}.py 缺失 Header 导入
+- 测试覆盖：25 passed（新增7个）
+```

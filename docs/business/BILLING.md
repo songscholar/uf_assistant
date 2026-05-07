@@ -30,6 +30,7 @@
 - 消耗为 0 的功能免费
 - 积分不足时拒绝服务，返回 `INSUFFICIENT_CREDITS` 错误
 - 每次扣费记录到 `credits_log` 表
+- **幂等去重**：`check_and_consume` 传入非空 `reference_id` 时，同一 `user_id + reference_id` 的扣费只执行一次，防止网络重试导致重复扣费
 
 ### 2.2 会员套餐
 
@@ -56,7 +57,7 @@
 
 **安全规则**：
 - 订单 30 分钟未支付自动过期
-- 链上匹配要求：目标地址 + 金额 ≥ 订单金额 + 区块时间 ≥ 订单创建时间
+- 链上匹配要求：目标地址 + 金额 ≥ 订单金额 × 95% + 区块时间 ≥ 订单创建时间（允许 5% 容差，覆盖 dust 差异）
 - 幂等确认：已确认的订单不会重复激活会员
 
 ---
@@ -148,21 +149,28 @@
 
 **Query**：`page`, `page_size`
 
-### 4.2 管理接口
+### 4.2 管理接口（需 X-Admin-Key 认证）
+
+所有管理接口需要在 Header 中携带 `X-Admin-Key`，值等于 `.env` 中的 `STOCK_ASSISTANT_BILLING_ADMIN_API_KEY`。
+- 未配置 `ADMIN_API_KEY` → 返回 `503 admin_api_key_not_configured`
+- Key 不匹配 → 返回 `401 invalid_admin_key`
 
 #### POST /api/v1/billing/credits/add
 增加用户积分。
 
+**Headers**：`X-Admin-Key: your-key`
 **Body**：`{ user_id, amount, remark }`
 
 #### POST /api/v1/billing/credits/set
 设置用户积分（覆盖）。
 
+**Headers**：`X-Admin-Key: your-key`
 **Body**：`{ user_id, amount, remark }`
 
 #### POST /api/v1/billing/vip/set
 设置 VIP 状态。
 
+**Headers**：`X-Admin-Key: your-key`
 **Body**：`{ user_id, expires_at, remark }`
 
 ### 4.3 USDT 支付接口
@@ -215,6 +223,9 @@ STOCK_ASSISTANT_USDT_TRONGRID_API_KEY=your-key-here
 
 # USDT 调试（启用后将对账日志写入文件，便于排查链上匹配问题）
 STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG=true
+
+# 管理接口 API Key（X-Admin-Key 校验用，留空则管理接口返回 503）
+STOCK_ASSISTANT_BILLING_ADMIN_API_KEY=change-me-in-production
 ```
 
 ---
@@ -243,8 +254,11 @@ STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG=true
 ## 7. 安全与风控
 
 1. **默认关闭**：所有商业化功能默认关闭，防止误开启
-2. **积分非负**：set_credits 拒绝负数，扣费前检查余额
-3. **USDT 地址隔离**：每单独立地址，防止混淆和重放
-4. **幂等确认**：已确认订单不会重复激活会员
-5. **订单过期**：30 分钟未支付自动过期，防止地址长期被占
-6. **xpub 安全**：仅使用观察钱包 xpub，私钥不触碰服务器
+2. **管理接口认证**：`/credits/add`、`/credits/set`、`/vip/set` 需 `X-Admin-Key`，未配置则不可用
+3. **积分非负**：set_credits 拒绝负数，扣费前检查余额
+4. **扣费幂等**：同一 `reference_id` 的扣费只执行一次，防止网络重试导致重复扣费
+5. **USDT 地址隔离**：每单独立地址，防止混淆和重放
+6. **USDT 金额容差**：链上匹配允许 5% 容差，覆盖 dust 差异和小幅波动
+7. **幂等确认**：已确认订单不会重复激活会员
+8. **订单过期**：30 分钟未支付自动过期，防止地址长期被占
+9. **xpub 安全**：仅使用观察钱包 xpub，私钥不触碰服务器
