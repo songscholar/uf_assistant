@@ -102,6 +102,13 @@
   - 辅助端点：代码验证、质量评分、参数解析、指标执行
   - 回测模型：StrategyModel / IndicatorModel / BacktestRun / BacktestTrade / BacktestEquityPoint
 
+- **前端补充未调用 API 接口**
+  - MarketPage：新增「龙虎榜」数据表格，调用 `marketApi.getLonghu()`
+  - StockPage：新增「财务」Tab，调用 `stockApi.getFinancial()` 展示营收/净利润
+  - StrategyPage：改造「选股器」为策略选股(`pick`) / 条件筛选(`screen`) 双模式 Tab，新增「AI 生成策略」面板调用 `strategyApi.createCustom()`
+  - TradingPage：凭证管理面板新增「编辑」功能，调用 `credentialsApi.update()` 支持修改名称/API Key/启用状态
+  - 前端类型定义：补充 StrategyListItem / BacktestResult / EquityPoint / Indicator / StrategyPositionItem / StrategyTrade / RuntimeMetrics / CodeQuality 等策略引擎类型
+
 ### Changed
 - `app/core/config.py`：新增 BillingSettings、MembershipSettings、UsdtPaymentSettings、AgentSettings.deployment_mode、ReflectionSettings、**LocalBrokerSettings**（`STOCK_ASSISTANT_LOCAL_BROKER_*` 环境变量，控制 IBKR/MT5 桌面券商开关）
 - `app/trading/backends/__init__.py`：`BackendRouter` 按需导入各后端，避免 ccxt PyO3 初始化污染 IBKR/MT5 测试

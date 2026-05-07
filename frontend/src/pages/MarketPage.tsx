@@ -8,6 +8,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Clock,
+  BarChart3,
+  Swords,
 } from 'lucide-react'
 import { marketApi } from '@/lib/api'
 import type { MarketIndex, SectorData } from '@/types'
@@ -106,6 +108,8 @@ export default function MarketPage() {
   const [indices, setIndices] = useState<MarketIndex[]>([])
   const [sectors, setSectors] = useState<SectorData[]>([])
   const [northbound, setNorthbound] = useState<any>(null)
+  const [overview, setOverview] = useState<any>(null)
+  const [longhu, setLonghu] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [dataSource, setDataSource] = useState<'live' | 'demo' | 'unknown'>('unknown')
@@ -119,10 +123,12 @@ export default function MarketPage() {
     setError('')
 
     try {
-      const [indicesRes, sectorsRes, northboundRes] = await Promise.all([
+      const [indicesRes, sectorsRes, northboundRes, overviewRes, longhuRes] = await Promise.all([
         marketApi.getIndices(),
         marketApi.getSectors(),
         marketApi.getNorthbound().catch(() => ({ data: null })),
+        marketApi.getOverview().catch(() => ({ data: null })),
+        marketApi.getLonghu().catch(() => ({ data: null })),
       ])
 
       const idxData = indicesRes.data || {}
@@ -131,6 +137,8 @@ export default function MarketPage() {
       setIndices(idxData.indices || [])
       setSectors(secData.sectors || [])
       setNorthbound(northboundRes.data)
+      setOverview(overviewRes.data)
+      setLonghu(longhuRes.data)
 
       // 只要任一接口是 demo，就标记为 demo
       const isDemo = idxData.source === 'demo' || secData.source === 'demo'
@@ -163,6 +171,8 @@ export default function MarketPage() {
       </div>
     )
   }
+
+  const summary = overview?.summary || {}
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -199,6 +209,30 @@ export default function MarketPage() {
             系统每 30 秒会自动重试获取真实数据。
           </div>
         </div>
+      )}
+
+      {/* Market Overview */}
+      {overview && (
+        <section className="mb-6">
+          <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-accent" />
+            市场概况
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: '上涨', value: summary.up || 0, color: 'text-success', bg: 'bg-success/10' },
+              { label: '下跌', value: summary.down || 0, color: 'text-danger', bg: 'bg-danger/10' },
+              { label: '平盘', value: summary.flat || 0, color: 'text-text-secondary', bg: 'bg-bg-hover' },
+              { label: '涨停', value: summary.limit_up || 0, color: 'text-success', bg: 'bg-success/10' },
+              { label: '跌停', value: summary.limit_down || 0, color: 'text-danger', bg: 'bg-danger/10' },
+            ].map((item) => (
+              <div key={item.label} className={cn('border border-border rounded-xl p-4 card-hover', item.bg)}>
+                <div className="text-xs text-text-tertiary mb-1">{item.label}</div>
+                <div className={cn('text-2xl font-bold', item.color)}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <section className="mb-6">
@@ -262,6 +296,52 @@ export default function MarketPage() {
           )}
         </section>
       </div>
+
+      {/* 龙虎榜 */}
+      <section className="mt-6 bg-bg-card border border-border rounded-xl p-4 card-hover">
+        <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
+          <Swords className="w-5 h-5 text-accent" />
+          龙虎榜
+          {longhu?.date && (
+            <span className="text-xs text-text-tertiary font-normal">{longhu.date}</span>
+          )}
+        </h2>
+        {longhu?.data?.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border-light text-text-tertiary">
+                  <th className="text-left py-2 px-3 font-medium">代码</th>
+                  <th className="text-left py-2 px-3 font-medium">名称</th>
+                  <th className="text-right py-2 px-3 font-medium">收盘价</th>
+                  <th className="text-right py-2 px-3 font-medium">涨跌幅</th>
+                  <th className="text-left py-2 px-3 font-medium">上榜原因</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-light">
+                {longhu.data.map((item: any, i: number) => {
+                  const isUp = (item.change_pct ?? 0) >= 0
+                  return (
+                    <tr key={i} className="hover:bg-bg-hover transition-all duration-200">
+                      <td className="py-2.5 px-3 text-text-primary font-mono">{item.symbol}</td>
+                      <td className="py-2.5 px-3 text-text-primary">{item.name}</td>
+                      <td className="py-2.5 px-3 text-right text-text-primary">{item.close_price?.toFixed ? item.close_price.toFixed(2) : item.close_price}</td>
+                      <td className={cn('py-2.5 px-3 text-right font-medium', isUp ? 'text-success' : 'text-danger')}>
+                        {isUp ? '+' : ''}{item.change_pct?.toFixed ? item.change_pct.toFixed(2) : item.change_pct}%
+                      </td>
+                      <td className="py-2.5 px-3 text-text-secondary max-w-xs truncate" title={item.reason}>
+                        {item.reason}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-text-tertiary text-sm">暂无龙虎榜数据</div>
+        )}
+      </section>
     </div>
   )
 }

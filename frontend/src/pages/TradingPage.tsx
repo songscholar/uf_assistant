@@ -14,7 +14,7 @@ import { tradingApi, liveTradingApi } from '@/lib/api'
 import type { Order, Position, Portfolio, LiveOrder, LivePosition, PnLSummary } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
 
-type TradingTab = 'order' | 'positions' | 'orders' | 'credentials'
+type TradingTab = 'order' | 'positions' | 'orders' | 'trades' | 'credentials'
 type TradingMode = 'mock' | 'live'
 type MarketFilter = 'crypto' | 'a_share' | 'us_stock'
 
@@ -31,6 +31,7 @@ export default function TradingPage() {
   // Live state
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveOrders, setLiveOrders] = useState<LiveOrder[]>([])
+  const [liveTrades, setLiveTrades] = useState<any[]>([])
   const [pnl, setPnl] = useState<PnLSummary | null>(null)
   const [balance, setBalance] = useState<Record<string, number>>({})
   const [syncing, setSyncing] = useState(false)
@@ -65,14 +66,18 @@ export default function TradingPage() {
 
   const fetchLiveData = useCallback(async () => {
     try {
-      const [ordersRes, positionsRes, pnlRes] = await Promise.all([
+      const [ordersRes, positionsRes, pnlRes, balanceRes, tradesRes] = await Promise.all([
         liveTradingApi.getOrders({ market: marketFilter, limit: 50 }),
         liveTradingApi.getPositions(marketFilter),
         liveTradingApi.getPnL(marketFilter),
+        liveTradingApi.getBalance(marketFilter).catch(() => ({ data: null })),
+        liveTradingApi.getTrades({ market: marketFilter, limit: 50 }).catch(() => ({ data: null })),
       ])
       setLiveOrders(ordersRes.data?.orders || [])
       setLivePositions(positionsRes.data?.positions || [])
       setPnl(pnlRes.data || null)
+      setBalance(balanceRes.data?.balance || {})
+      setLiveTrades(tradesRes.data?.trades || [])
     } catch {
       // silent
     }
@@ -271,7 +276,10 @@ export default function TradingPage() {
           { key: 'order' as const, label: '下单', icon: ArrowUpDown },
           { key: 'positions' as const, label: '持仓', icon: Package },
           { key: 'orders' as const, label: '订单', icon: ListOrdered },
-          ...(mode === 'live' ? [{ key: 'credentials' as const, label: '凭证管理', icon: Settings }] : []),
+          ...(mode === 'live' ? [
+            { key: 'trades' as const, label: '成交', icon: ArrowUpDown },
+            { key: 'credentials' as const, label: '凭证管理', icon: Settings },
+          ] : []),
         ].map((tab) => (
           <button
             key={tab.key}
@@ -473,6 +481,48 @@ export default function TradingPage() {
         </div>
       )}
 
+      {/* Trades (live mode only) */}
+      {activeTab === 'trades' && mode === 'live' && (
+        <div className="bg-bg-card border border-border rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-bg-secondary text-text-secondary text-xs">
+                {['时间', '市场', '代码', '方向', '成交价格', '数量', '手续费'].map((h) => (
+                  <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-light">
+              {liveTrades.map((trade, i) => (
+                <tr key={i} className="hover:bg-bg-hover transition-colors duration-150">
+                  <td className="px-4 py-3 text-text-secondary text-xs">
+                    {trade.timestamp ? new Date(trade.timestamp).toLocaleString('zh-CN') : '--'}
+                  </td>
+                  <td className="px-4 py-3 text-text-secondary">{trade.market || marketFilter}</td>
+                  <td className="px-4 py-3 text-text-primary font-medium">{trade.symbol}</td>
+                  <td className="px-4 py-3">
+                    <span className={cn(
+                      'px-2 py-0.5 rounded text-xs font-medium',
+                      trade.side === 'buy' ? 'bg-success-bg text-success' : 'bg-danger-bg text-danger'
+                    )}>
+                      {trade.side === 'buy' ? '买入' : '卖出'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-text-primary">{trade.price?.toFixed ? trade.price.toFixed(4) : trade.price}</td>
+                  <td className="px-4 py-3 text-right text-text-primary">{trade.quantity}</td>
+                  <td className="px-4 py-3 text-right text-text-secondary">{trade.fee?.toFixed ? trade.fee.toFixed(4) : trade.fee || '--'}</td>
+                </tr>
+              ))}
+              {liveTrades.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无成交记录</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Credentials (live mode only) */}
       {activeTab === 'credentials' && mode === 'live' && (
         <CredentialsPanel />
@@ -500,6 +550,9 @@ function CredentialsPanel() {
   const [form, setForm] = useState({ market: 'crypto', name: '', api_key: '', api_secret: '', exchange: 'gate' })
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', api_key: '', api_secret: '', is_active: true })
+  const [updating, setUpdating] = useState(false)
 
   const fetchCredentials = async () => {
     try {
@@ -557,6 +610,33 @@ function CredentialsPanel() {
       fetchCredentials()
     } catch {
       // silent
+    }
+  }
+
+  const startEdit = (cred: any) => {
+    setEditingId(cred.id)
+    setEditForm({
+      name: cred.name || '',
+      api_key: '',
+      api_secret: '',
+      is_active: cred.is_active !== false,
+    })
+  }
+
+  const handleUpdate = async (id: string) => {
+    setUpdating(true)
+    try {
+      const { credentialsApi } = await import('@/lib/api')
+      const payload: Record<string, unknown> = { name: editForm.name, is_active: editForm.is_active }
+      if (editForm.api_key) payload.api_key = editForm.api_key
+      if (editForm.api_secret) payload.api_secret = editForm.api_secret
+      await credentialsApi.update(id, payload)
+      setEditingId(null)
+      fetchCredentials()
+    } catch {
+      // silent
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -669,27 +749,96 @@ function CredentialsPanel() {
           </thead>
           <tbody className="divide-y divide-border-light">
             {credentials.map((cred) => (
-              <tr key={cred.id} className="hover:bg-bg-hover transition-colors duration-150">
-                <td className="px-4 py-3 text-text-primary">{cred.market}</td>
-                <td className="px-4 py-3 text-text-primary">{cred.name}</td>
-                <td className="px-4 py-3 text-text-secondary font-mono text-xs">{cred.api_key_masked}</td>
-                <td className="px-4 py-3">
-                  <span className={cn(
-                    'px-2 py-0.5 rounded text-xs font-medium',
-                    cred.is_active ? 'bg-success-bg text-success' : 'bg-gray-500/10 text-gray-500'
-                  )}>
-                    {cred.is_active ? '启用' : '禁用'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => handleDelete(cred.id)}
-                    className="text-xs text-danger hover:underline"
-                  >
-                    删除
-                  </button>
-                </td>
-              </tr>
+              <>
+                <tr key={cred.id} className="hover:bg-bg-hover transition-colors duration-150">
+                  <td className="px-4 py-3 text-text-primary">{cred.market}</td>
+                  <td className="px-4 py-3 text-text-primary">{cred.name}</td>
+                  <td className="px-4 py-3 text-text-secondary font-mono text-xs">{cred.api_key_masked}</td>
+                  <td className="px-4 py-3">
+                    <span className={cn(
+                      'px-2 py-0.5 rounded text-xs font-medium',
+                      cred.is_active ? 'bg-success-bg text-success' : 'bg-gray-500/10 text-gray-500'
+                    )}>
+                      {cred.is_active ? '启用' : '禁用'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => startEdit(cred)}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        onClick={() => handleDelete(cred.id)}
+                        className="text-xs text-danger hover:underline"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {editingId === cred.id && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-3 bg-bg-secondary/50">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs text-text-tertiary mb-1 block">名称</label>
+                          <input
+                            value={editForm.name}
+                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                            className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-text-tertiary mb-1 block">API Key (留空则不修改)</label>
+                          <input
+                            value={editForm.api_key}
+                            onChange={(e) => setEditForm({ ...editForm, api_key: e.target.value })}
+                            placeholder="新 API Key"
+                            className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-text-tertiary mb-1 block">API Secret (留空则不修改)</label>
+                          <input
+                            type="password"
+                            value={editForm.api_secret}
+                            onChange={(e) => setEditForm({ ...editForm, api_secret: e.target.value })}
+                            placeholder="新 API Secret"
+                            className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 mt-3">
+                        <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editForm.is_active}
+                            onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked })}
+                            className="accent-accent"
+                          />
+                          启用
+                        </label>
+                        <button
+                          onClick={() => handleUpdate(cred.id)}
+                          disabled={updating}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:opacity-90 transition-all disabled:opacity-50"
+                        >
+                          {updating ? '保存中...' : '保存'}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-bg-hover text-text-secondary hover:bg-bg-active transition-all"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
             {credentials.length === 0 && (
               <tr>

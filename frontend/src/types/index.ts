@@ -174,3 +174,182 @@ export interface TradeRecord {
   fee: number;
   timestamp: string;
 }
+
+// ── 策略引擎类型 ──────────────────────────────────────────────────────────
+
+export interface StrategyListItem {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  created_at: string;
+}
+
+export interface BacktestRequest {
+  code: string;
+  symbol: string;
+  params?: Record<string, unknown>;
+}
+
+export interface BacktestResult {
+  total_return: number;
+  max_drawdown: number;
+  sharpe_ratio: number;
+  win_rate: number;
+  total_trades: number;
+  equity_curve: EquityPoint[];
+  trades?: StrategyTrade[];
+}
+
+export interface EquityPoint {
+  timestamp: string;
+  equity: number;
+}
+
+export interface StrategyPositionItem {
+  id: number;
+  strategy_id: string;
+  symbol: string;
+  side: string;
+  size: number;
+  entry_price: number;
+  highest_price?: number;
+  lowest_price?: number;
+  unrealized_pnl: number;
+  updated_at: string;
+}
+
+export interface StrategyTrade {
+  id: string;
+  symbol: string;
+  side: string;
+  price: number;
+  quantity: number;
+  pnl: number;
+  timestamp: string;
+}
+
+export interface StrategyLog {
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+export interface Indicator {
+  name: string;
+  category: string;
+  description: string;
+}
+
+export interface RuntimeMetrics {
+  strategy_id: string;
+  uptime: number;
+  ticks_processed: number;
+  signals_generated: number;
+  last_tick_at: string;
+}
+
+export interface CodeQuality {
+  score: number;
+  issues: string[];
+  suggestions: string[];
+}
+
+export interface ParseParamsResult {
+  params: Array<{ name: string; type: string; default: unknown; description: string }>;
+}
+
+// ── 分析历史类型 ──────────────────────────────────────────────────────────
+
+export interface AnalysisRecord {
+  id: string;
+  symbol: string;
+  signal: string;
+  confidence: number;
+  summary: string;
+  created_at: string;
+}
+
+export interface AnalysisStats {
+  total_analyses: number;
+  avg_confidence: number;
+  signal_distribution: Record<string, number>;
+}
+
+// ── 会员/积分类型 ─────────────────────────────────────────────────────────
+
+export interface BillingPlan {
+  id: string;
+  name: string;
+  price: number;
+  credits: number;
+  features: string[];
+  popular?: boolean;
+}
+
+export interface CreditBalance {
+  balance: number;
+  total_earned: number;
+  total_spent: number;
+}
+
+export interface CreditLog {
+  id: string;
+  amount: number;
+  type: string;
+  description: string;
+  created_at: string;
+}
+
+export interface MembershipInfo {
+  level: string;
+  expires_at: string;
+  benefits: string[];
+}
+
+export interface UsdtPayment {
+  address: string;
+  amount: number;
+  qr_code: string;
+  status: string;
+}
+
+// ── 个人中心类型 ──────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  username: string;
+  email: string;
+  avatar: string;
+  created_at: string;
+}
+
+export interface NotificationSettings {
+  email_enabled: boolean;
+  telegram_enabled: boolean;
+  browser_enabled: boolean;
+}
+
+export interface ChartTemplate {
+  id: string;
+  name: string;
+  config: Record<string, unknown>;
+  is_default: boolean;
+}
+
+// ── 管理后台类型 ──────────────────────────────────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  credits: number;
+  is_vip: boolean;
+  created_at: string;
+  last_login_at: string;
+}
+
+export interface AdminUserDetail extends AdminUser {
+  login_count: number;
+  credits_history: CreditLog[];
+}
