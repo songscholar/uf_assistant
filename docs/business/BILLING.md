@@ -38,12 +38,13 @@
 |------|----------|---------|--------|
 | 月付 | 19.9 | 500 | 30 天 |
 | 年付 | 199 | 8000 | 365 天 |
-| 终身 | 499 | 800/月 | 100 年（按月发放） |
+| 终身 | 499 | 800/月 | 永不过期（按月发放） |
 
 **规则**：
 - 月付/年付支持**叠加**：新购买时从当前 VIP 过期时间往后延长
-- 终身会员首次立即发放首月积分，之后每 30 天自动发放
+- 终身会员无过期时间（`vip_expires_at = null`），首次立即发放首月积分，之后每 30 天自动发放
 - 会员购买记录到 `credits_log` 表
+- USDT 支付确认的会员激活不重复写入 `membership_orders`（`usdt_orders` 已代表实际订单）
 
 ### 2.3 USDT-TRC20 支付
 
@@ -74,6 +75,7 @@
 | vip_plan | string | 当前套餐 monthly/yearly/lifetime |
 | vip_is_lifetime | boolean | 是否终身会员 |
 | vip_monthly_credits_last_grant | datetime | 终身会员上次发积分时间 |
+| credits_expires_at | datetime | 积分过期时间（null 表示永不过期） |
 
 ### 3.2 membership_orders（会员订单表）
 
@@ -172,6 +174,11 @@
 
 **Headers**：`X-Admin-Key: your-key`
 **Body**：`{ user_id, expires_at, remark }`
+
+`expires_at` 支持：
+- ISO 格式字符串：设置具体过期时间
+- `"lifetime"`：设置为终身会员（永不过期）
+- `null`：取消 VIP
 
 ### 4.3 USDT 支付接口
 

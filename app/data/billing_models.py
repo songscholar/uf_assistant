@@ -31,6 +31,7 @@ class UserCreditsModel(Base):
     vip_plan = Column(String(20), default="")
     vip_is_lifetime = Column(Boolean, default=False)
     vip_monthly_credits_last_grant = Column(DateTime, nullable=True)
+    credits_expires_at = Column(DateTime, nullable=True)  # 积分过期时间（None 表示永不过期）
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -63,6 +63,7 @@ class BillingSettings(BaseSettings):
     cost_ai_code_gen: int = Field(default=30, description="AI 代码生成单次消耗积分")
     credits_register_bonus: int = Field(default=100, description="注册赠送积分")
     credits_referral_bonus: int = Field(default=50, description="邀请赠送积分")
+    credits_expiry_days: int = Field(default=0, description="积分有效期（天），0 表示永不过期")
     admin_api_key: str = Field(default="", description="管理接口 API Key（X-Admin-Key 校验用）")
 
 

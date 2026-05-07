@@ -401,6 +401,7 @@ class UsdtPaymentService:
             ok, msg, _ = self.billing.purchase_membership(
                 user_id,
                 plan,
+                record_membership_order=False,
                 fulfillment_ref=f"usdt_order:{order_id}",
             )
             logger.info(f"USDT activate membership: order={order_id} user={user_id} plan={plan} ok={ok} msg={msg}")

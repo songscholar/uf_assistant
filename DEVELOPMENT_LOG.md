@@ -940,3 +940,57 @@ feat(agent): 完全对齐 QuantDinger 参考设计
 - OpenAPI 3.0 规范（docs/agent/agent-openapi.json）
 - MCP Server 移除交易工具，只暴露 R/B 类
 ```
+
+---
+
+## 2026-05-07 — 计费系统 P1 改进（终身会员、订单去重、注册赠送、积分过期）
+
+### 变更摘要
+
+完成四项中优先级改进：
+1. **终身会员真正永不过期**：`vip_expires_at = null` + `vip_is_lifetime = true`，替代 "100 年后过期" 的 hack
+2. **`membership_orders` 去重控制**：恢复 `record_membership_order` 参数，USDT 支付确认时不重复写入
+3. **注册赠送积分**：新用户首次查询积分时自动创建记录并赠送注册积分
+4. **积分过期机制**：`credits_expiry_days > 0` 时，过期积分自动清零并记录日志
+
+### 新增/修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/services/billing.py` | `get_user_vip_status` 支持 `None` 永不过期；`purchase_membership` 终身会员设 `None`；`set_vip` 支持 `is_lifetime`；`get_user_credits` 新用户自动赠送 + 过期检查；`add_credits` 更新过期时间；`_expire_credits_if_due` 新增 |
+| `app/api/routers/billing.py` | `/vip/set` 支持 `"lifetime"` 作为 `expires_at` |
+| `app/services/usdt_payment.py` | USDT 确认流程传 `record_membership_order=False` |
+| `app/data/billing_models.py` | `UserCreditsModel` 新增 `credits_expires_at` |
+| `app/core/config.py` | `BillingSettings` 新增 `credits_expiry_days` |
+| `tests/test_billing.py` | 新增 10 个测试：终身会员 3 个 + 注册赠送 2 个 + 订单去重 2 个 + 积分过期 3 个 |
+| `.env.example` | 新增 `CREDITS_EXPIRY_DAYS` |
+| `docs/business/BILLING.md` | 补充终身会员、订单去重、注册赠送、积分过期说明 |
+
+### 技术决策
+
+1. **终身会员过期语义**：`vip_expires_at = null` 表示永不过期，查询时 `vip_is_lifetime` 优先判断。API 层 `"lifetime"` 字符串映射到 Service 层 `is_lifetime=True`。
+2. **注册赠送触发时机**：放在 `get_user_credits` 中（首次查询时自动创建），因为几乎所有操作都会先查余额，延迟创建避免空表膨胀。
+3. **积分过期简化版**：所有积分共享同一个 `credits_expires_at`，每次 `add_credits` 刷新过期时间。不够精确（无法区分不同批次积分的过期时间），但实现简单，满足 MVP 需求。
+4. **membership_orders 去重**：参考原 QuantDinger 设计，USDT 支付确认时传 `record_membership_order=False`，避免一张支付产生两条订单记录。
+
+### 验证结果
+
+- ✅ 计费模块单元测试：**35 passed**（新增 10 个，原有 25 个无 regression）
+- ✅ `test_purchase_lifetime_no_expiry`：终身会员 `get_user_vip_status` 返回 `(True, None)`
+- ✅ `test_set_vip_lifetime`：`set_vip(..., is_lifetime=True)` 生效
+- ✅ `test_new_user_gets_register_bonus`：新用户自动获得 100 积分
+- ✅ `test_purchase_without_order_record`：`record_membership_order=False` 不写入订单
+- ✅ `test_credits_expired_auto_zero`：过期积分自动清零
+
+### Git 提交
+
+```
+feat(billing): P1 改进 — 终身会员永不过期、订单去重、注册赠送、积分过期
+
+- 终身会员 vip_expires_at = null，替代 100 年后过期的 hack
+- purchase_membership 新增 record_membership_order 参数
+- USDT 确认流程不重复写入 membership_orders
+- 新用户首次查询积分自动赠送注册积分
+- 新增 credits_expires_at 字段，支持积分过期自动清零
+- 测试覆盖：35 passed（新增10个）
+```

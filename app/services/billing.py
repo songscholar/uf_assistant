@@ -32,6 +32,9 @@ DEFAULT_BILLING_CONFIG: Dict[str, Any] = {
     "enabled": False,
     "cost_ai_analysis": 10,
     "cost_ai_code_gen": 30,
+    "credits_register_bonus": 0,
+    "credits_referral_bonus": 0,
+    "credits_expiry_days": 0,
 }
 
 FEATURE_NAMES: Dict[str, str] = {
@@ -120,17 +123,73 @@ class BillingService:
     # ------------------------------------------------------------------
 
     def get_user_credits(self, user_id: str) -> Decimal:
-        """获取用户积分余额"""
+        """获取用户积分余额（新用户自动创建记录并赠送注册积分；过期积分自动清零）"""
         try:
             session = BillingStore.get_session()
             row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
-            session.close()
             if row:
+                # 检查积分是否过期
+                self._expire_credits_if_due(session, row)
+                session.close()
                 return Decimal(str(row.credits or 0))
-            return Decimal("0")
+
+            # 新用户：创建记录并赠送注册积分
+            bonus = self.get_billing_config().get("credits_register_bonus", 0)
+            new_row = UserCreditsModel(user_id=user_id, credits=Decimal(str(bonus)))
+            session.add(new_row)
+            session.commit()
+
+            if bonus > 0:
+                log = CreditsLogModel(
+                    user_id=user_id,
+                    action="register_bonus",
+                    amount=bonus,
+                    balance_after=bonus,
+                    remark="Register bonus",
+                )
+                session.add(log)
+                session.commit()
+                logger.info(f"User {user_id} registered with {bonus} bonus credits")
+
+            session.close()
+            return Decimal(str(bonus))
         except Exception as e:
             logger.error(f"get_user_credits failed: {e}")
             return Decimal("0")
+
+    def _expire_credits_if_due(self, session, row: UserCreditsModel) -> None:
+        """检查并处理积分过期（内部方法，需在 session 内调用）"""
+        expiry = row.credits_expires_at
+        if expiry is None:
+            return
+        if isinstance(expiry, str):
+            try:
+                expiry = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+            except Exception:
+                return
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        if expiry > now:
+            return
+
+        old_credits = Decimal(str(row.credits or 0))
+        if old_credits <= 0:
+            return
+
+        row.credits = Decimal("0")
+        row.updated_at = now
+        log = CreditsLogModel(
+            user_id=row.user_id,
+            action="expired",
+            amount=-float(old_credits),
+            balance_after=Decimal("0"),
+            remark=f"Credits expired (expiry={expiry.isoformat()})",
+        )
+        session.add(log)
+        session.commit()
+        logger.info(f"User {row.user_id} credits expired: {old_credits} -> 0")
 
     def add_credits(
         self,
@@ -156,6 +215,11 @@ class BillingService:
             new_balance = old_credits + Decimal(str(amount))
             row.credits = new_balance
             row.updated_at = datetime.now(timezone.utc)
+
+            # 更新积分过期时间
+            expiry_days = self.get_billing_config().get("credits_expiry_days", 0)
+            if expiry_days > 0:
+                row.credits_expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
 
             log = CreditsLogModel(
                 user_id=user_id,
@@ -290,11 +354,26 @@ class BillingService:
     # ------------------------------------------------------------------
 
     def get_user_vip_status(self, user_id: str) -> Tuple[bool, Optional[datetime]]:
-        """获取用户 VIP 状态（终身会员会自动检查并补发月度积分）"""
+        """获取用户 VIP 状态（终身会员会自动检查并补发月度积分）
+        
+        返回:
+            (is_vip, expires_at): expires_at 为 None 表示终身会员永不过期
+        """
         try:
             session = BillingStore.get_session()
             row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
-            if not row or not row.vip_expires_at:
+            if not row:
+                session.close()
+                return False, None
+
+            # 终身会员永不过期
+            if row.vip_is_lifetime:
+                now = datetime.now(timezone.utc)
+                self._grant_lifetime_monthly_credits_if_due(session, row, now)
+                session.close()
+                return True, None
+
+            if not row.vip_expires_at:
                 session.close()
                 return False, None
 
@@ -307,11 +386,6 @@ class BillingService:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
 
             is_vip = expires_at > now
-
-            # 终身会员月度积分自动补发
-            if is_vip and row.vip_is_lifetime:
-                self._grant_lifetime_monthly_credits_if_due(session, row, now)
-
             session.close()
             return is_vip, expires_at
         except Exception as e:
@@ -408,9 +482,15 @@ class BillingService:
         user_id: str,
         plan: str,
         *,
+        record_membership_order: bool = True,
         fulfillment_ref: str = "",
     ) -> Tuple[bool, str, Dict[str, Any]]:
-        """激活会员（VIP 日期 + 赠送积分）"""
+        """激活会员（VIP 日期 + 赠送积分）
+        
+        Args:
+            record_membership_order: 是否写入 membership_orders 表。
+                USDT 支付确认时应设为 False（usdt_orders 已代表实际订单）。
+        """
         plan = (plan or "").strip().lower()
         plans = self.get_membership_plans()
         if plan not in plans:
@@ -443,7 +523,7 @@ class BillingService:
                 days = int(plans[plan].get("duration_days") or (30 if plan == "monthly" else 365))
                 vip_expires_at = base_time + timedelta(days=days)
             else:
-                vip_expires_at = now + timedelta(days=365 * 100)
+                vip_expires_at = None  # 终身会员无过期时间
                 vip_is_lifetime = True
 
             row.vip_expires_at = vip_expires_at
@@ -452,27 +532,33 @@ class BillingService:
             row.updated_at = now
 
             order_ref = fulfillment_ref or f"billing:{user_id}:{int(now.timestamp())}"
+            order_id: int | None = None
 
-            # 创建会员订单记录
-            plan_info = plans[plan]
-            credits_granted = 0
-            if plan in ("monthly", "yearly"):
-                credits_granted = int(plan_info.get("credits_once") or 0)
+            if record_membership_order:
+                # 创建会员订单记录（内部调用/赠送场景）
+                plan_info = plans[plan]
+                credits_granted = 0
+                if plan in ("monthly", "yearly"):
+                    credits_granted = int(plan_info.get("credits_once") or 0)
+                else:
+                    credits_granted = int(plan_info.get("credits_monthly") or 0)
+
+                order = MembershipOrderModel(
+                    user_id=user_id,
+                    plan=plan,
+                    price_usd=Decimal(str(plan_info.get("price_usd") or 0)),
+                    credits_granted=credits_granted,
+                    status="paid",
+                    fulfillment_ref=order_ref,
+                    paid_at=now,
+                )
+                session.add(order)
+                session.flush()
+                order_id = order.id
             else:
-                credits_granted = int(plan_info.get("credits_monthly") or 0)
-
-            order = MembershipOrderModel(
-                user_id=user_id,
-                plan=plan,
-                price_usd=Decimal(str(plan_info.get("price_usd") or 0)),
-                credits_granted=credits_granted,
-                status="paid",
-                fulfillment_ref=order_ref,
-                paid_at=now,
-            )
-            session.add(order)
-            session.flush()
-            order_id = order.id
+                # USDT 支付场景：usdt_orders 已代表实际订单，不重复记录
+                ref = (fulfillment_ref or "").strip()
+                order_ref = ref if ref else f"usdt:{user_id}:{int(now.timestamp())}"
 
             if plan in ("monthly", "yearly"):
                 credits_once = int(plans[plan].get("credits_once") or 0)
@@ -537,8 +623,14 @@ class BillingService:
         user_id: str,
         expires_at: Optional[datetime],
         remark: str = "",
+        is_lifetime: bool = False,
     ) -> Tuple[bool, str]:
-        """设置用户 VIP 状态"""
+        """设置用户 VIP 状态
+        
+        Args:
+            expires_at: VIP 过期时间，None 表示取消 VIP（终身会员除外）
+            is_lifetime: 是否为终身会员，为 True 时 expires_at 应为 None
+        """
         session = BillingStore.get_session()
         try:
             row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
@@ -548,10 +640,18 @@ class BillingService:
                 session.flush()
 
             row.vip_expires_at = expires_at
+            row.vip_is_lifetime = is_lifetime
             row.updated_at = datetime.now(timezone.utc)
 
-            action = "vip_grant" if expires_at else "vip_revoke"
-            log_remark = remark or (f"VIP granted until {expires_at}" if expires_at else "VIP revoked")
+            if is_lifetime:
+                action = "vip_grant_lifetime"
+                log_remark = remark or "VIP granted (lifetime)"
+            elif expires_at:
+                action = "vip_grant"
+                log_remark = remark or f"VIP granted until {expires_at}"
+            else:
+                action = "vip_revoke"
+                log_remark = remark or "VIP revoked"
 
             audit = CreditsLogModel(
                 user_id=user_id,
@@ -563,7 +663,7 @@ class BillingService:
             session.add(audit)
             session.commit()
 
-            logger.info(f"User {user_id} VIP set to {expires_at}")
+            logger.info(f"User {user_id} VIP set to {expires_at} (lifetime={is_lifetime})")
             return True, "success"
         except Exception as e:
             session.rollback()

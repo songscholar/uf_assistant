@@ -162,27 +162,38 @@ async def set_credits(payload: CreditsAdjustRequest) -> dict[str, Any]:
 
 @router.post("/vip/set", dependencies=[Depends(require_admin)])
 async def set_vip(payload: VipSetRequest) -> dict[str, Any]:
-    """设置用户 VIP 状态（管理员）"""
+    """设置用户 VIP 状态（管理员）
+    
+    expires_at 支持：
+      - ISO 格式字符串：设置具体过期时间
+      - "lifetime"：设置为终身会员
+      - null：取消 VIP
+    """
     from datetime import datetime
 
     expires_at: datetime | None = None
+    is_lifetime = False
     if payload.expires_at:
-        try:
-            expires_at = datetime.fromisoformat(payload.expires_at.replace("Z", "+00:00"))
-        except Exception as exc:
-            raise BillingError(f"invalid_expires_at: {exc}")
+        if payload.expires_at.strip().lower() == "lifetime":
+            is_lifetime = True
+        else:
+            try:
+                expires_at = datetime.fromisoformat(payload.expires_at.replace("Z", "+00:00"))
+            except Exception as exc:
+                raise BillingError(f"invalid_expires_at: {exc}")
 
     svc = get_billing_service()
     ok, msg = svc.set_vip(
         user_id=payload.user_id,
         expires_at=expires_at,
         remark=payload.remark,
+        is_lifetime=is_lifetime,
     )
     if not ok:
         raise BillingError(msg)
     return {
         "code": "success",
-        "data": {"vip_expires_at": payload.expires_at},
+        "data": {"vip_expires_at": payload.expires_at, "is_lifetime": is_lifetime},
     }
 
 

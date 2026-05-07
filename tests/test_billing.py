@@ -31,6 +31,7 @@ def _billing_env(monkeypatch):
     monkeypatch.setenv("STOCK_ASSISTANT_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("STOCK_ASSISTANT_BILLING_ENABLED", "true")
     monkeypatch.setenv("STOCK_ASSISTANT_BILLING_ADMIN_API_KEY", "test-admin-key")
+    monkeypatch.setenv("STOCK_ASSISTANT_BILLING_CREDITS_REGISTER_BONUS", "100")
     # 清除配置缓存，确保新环境变量生效
     reload_settings()
     # 重置单例和表
@@ -66,7 +67,8 @@ class TestCredits:
     def test_get_user_credits_new_user(self, billing_svc: BillingService) -> None:
         user_id = _random_user()
         credits = billing_svc.get_user_credits(user_id)
-        assert credits == 0
+        # 默认注册赠送 100 积分
+        assert credits == 100
 
     def test_add_credits(self, billing_svc: BillingService) -> None:
         user_id = _random_user()
@@ -97,6 +99,8 @@ class TestCredits:
 
     def test_consume_insufficient(self, billing_svc: BillingService) -> None:
         user_id = _random_user()
+        # 先将积分设为 0，测试不足场景
+        billing_svc.set_credits(user_id, 0)
         ok, msg = billing_svc.check_and_consume(user_id, "ai_analysis")
         assert ok is False
         assert "insufficient_credits" in msg
@@ -320,3 +324,128 @@ class TestCreditsIdempotency:
         assert ok2 is True
         # 两次都扣费了
         assert billing_svc.get_user_credits(user_id) == 80
+
+
+class TestLifetimeMembership:
+    def test_purchase_lifetime_no_expiry(self, billing_svc: BillingService) -> None:
+        """终身会员 vip_expires_at 应为 None"""
+        user_id = _random_user()
+        ok, msg, data = billing_svc.purchase_membership(user_id, "lifetime")
+        assert ok is True
+        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        assert is_vip is True
+        assert expires is None
+
+    def test_set_vip_lifetime(self, billing_svc: BillingService) -> None:
+        """set_vip 支持设置为终身会员"""
+        user_id = _random_user()
+        ok, msg = billing_svc.set_vip(user_id, None, is_lifetime=True)
+        assert ok is True
+        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        assert is_vip is True
+        assert expires is None
+
+    def test_set_vip_revoke_clears_lifetime(self, billing_svc: BillingService) -> None:
+        """取消 VIP 应同时清除终身会员标记"""
+        user_id = _random_user()
+        billing_svc.set_vip(user_id, None, is_lifetime=True)
+        ok, msg = billing_svc.set_vip(user_id, None)
+        assert ok is True
+        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        assert is_vip is False
+
+
+class TestRegisterBonus:
+    def test_new_user_gets_register_bonus(self, billing_svc: BillingService) -> None:
+        """新用户首次查询积分应自动获得注册赠送积分"""
+        user_id = _random_user()
+        credits = billing_svc.get_user_credits(user_id)
+        # 默认 credits_register_bonus = 100
+        assert credits == 100
+
+    def test_register_bonus_logged(self, billing_svc: BillingService) -> None:
+        """注册赠送积分应记录到 credits_log"""
+        user_id = _random_user()
+        billing_svc.get_user_credits(user_id)
+        logs = billing_svc.get_credits_log(user_id)
+        assert logs["total"] == 1
+        assert logs["items"][0]["action"] == "register_bonus"
+        assert logs["items"][0]["amount"] == 100
+
+
+class TestMembershipOrderDeduplication:
+    def test_purchase_without_order_record(self, billing_svc: BillingService) -> None:
+        """record_membership_order=False 时不写入 membership_orders"""
+        user_id = _random_user()
+        ok, msg, data = billing_svc.purchase_membership(
+            user_id, "monthly", record_membership_order=False
+        )
+        assert ok is True
+        orders = billing_svc.get_membership_orders(user_id)
+        assert orders["total"] == 0
+
+    def test_purchase_with_order_record(self, billing_svc: BillingService) -> None:
+        """record_membership_order=True 时正常写入 membership_orders"""
+        user_id = _random_user()
+        ok, msg, data = billing_svc.purchase_membership(
+            user_id, "monthly", record_membership_order=True
+        )
+        assert ok is True
+        orders = billing_svc.get_membership_orders(user_id)
+        assert orders["total"] == 1
+
+
+class TestCreditsExpiry:
+    def test_credits_expired_auto_zero(self, billing_svc: BillingService) -> None:
+        """积分过期后自动清零"""
+        from app.services.billing import BillingStore
+        from app.data.billing_models import UserCreditsModel
+
+        user_id = _random_user()
+        billing_svc.add_credits(user_id, 100)
+        assert billing_svc.get_user_credits(user_id) == 100
+
+        # 手动将过期时间设为昨天
+        session = BillingStore.get_session()
+        row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
+        assert row is not None
+        row.credits_expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+        session.commit()
+        session.close()
+
+        # 再次查询应触发过期清零
+        credits = billing_svc.get_user_credits(user_id)
+        assert credits == 0
+
+        # 验证过期日志
+        logs = billing_svc.get_credits_log(user_id)
+        expired_logs = [l for l in logs["items"] if l["action"] == "expired"]
+        assert len(expired_logs) == 1
+        assert expired_logs[0]["amount"] == -100
+
+    def test_credits_not_expired(self, billing_svc: BillingService) -> None:
+        """积分未过期时保持正常"""
+        user_id = _random_user()
+        billing_svc.add_credits(user_id, 100)
+        credits = billing_svc.get_user_credits(user_id)
+        assert credits == 100
+
+    def test_consume_after_expiry(self, billing_svc: BillingService) -> None:
+        """积分过期后扣费应失败"""
+        from app.services.billing import BillingStore
+        from app.data.billing_models import UserCreditsModel
+
+        user_id = _random_user()
+        billing_svc.add_credits(user_id, 100)
+
+        # 手动将过期时间设为昨天
+        session = BillingStore.get_session()
+        row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
+        assert row is not None
+        row.credits_expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+        session.commit()
+        session.close()
+
+        ok, msg = billing_svc.check_and_consume(user_id, "ai_analysis")
+        assert ok is False
+        assert "insufficient_credits" in msg
