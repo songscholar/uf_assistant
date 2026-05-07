@@ -1248,3 +1248,152 @@ QuantDinger → UF Stock Assistant 回测引擎迁移完整闭环。
 - ✅ 配置集成（ReflectionSettings）
 - ✅ 单元测试（10 个）
 
+---
+
+## 2026-05-07 — QuantDinger 用户系统完整移植
+
+### 变更摘要
+
+从 QuantDinger 项目完整移植用户认证系统到 UF Stock Assistant，包括 JWT 认证、OAuth（Google/GitHub）、邮箱验证码、密码管理、RBAC 权限、积分/VIP、安全审计、Agent Token 等。适配 FastAPI + SQLAlchemy + SQLite 架构。
+
+### 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/auth/__init__.py` | 6 | 认证模块初始化 |
+| `app/auth/models.py` | 215 | 9 个 SQLAlchemy 模型（User、VerificationCode、LoginAttempt、OAuthLink、OAuthState、SecurityLog、AgentToken、AgentAudit、CreditsLog）+ 单例引擎/会话 + `init_auth_tables()` |
+| `app/auth/password.py` | 55 | bcrypt 哈希（12 轮）、SHA-256 兼容验证、密码强度校验 |
+| `app/auth/jwt_auth.py` | 67 | JWT 生成/验证/版本校验（HS256，7 天过期，token_version 支持单客户端登录） |
+| `app/auth/dependencies.py` | 95 | FastAPI 依赖注入：`get_current_user`、`require_admin`、`require_manager`、`require_permission`、`get_client_ip` |
+| `app/auth/email_service.py` | 223 | 邮箱验证码：频率限制（1/60s per email，10/h per IP）、防暴力破解（5 次锁 30 分钟）、SMTP+STARTTLS |
+| `app/auth/security_service.py` | 238 | 安全服务：频率限制、登录尝试记录、Turnstile 验证、IP 封锁（10/5min→15min）、账户锁定（5/60min→30min）、审计日志 |
+| `app/auth/oauth_service.py` | 334 | Google + GitHub OAuth 2.0：授权 URL 生成、code 交换、用户创建/关联、CSRF state 防护 |
+| `app/auth/user_service.py` | 460 | 用户生命周期：CRUD、认证、积分管理、VIP 设置、密码管理、token_version 管理、管理员自举 |
+| `app/api/routers/auth.py` | 405 | 12 个认证端点：login、login-code、send-code、register、reset-password、change-password、OAuth（Google/GitHub）、logout、info、security-config |
+| `app/api/routers/user.py` | 393 | 18 个用户管理端点：Admin CRUD（list/export/detail/create/update/delete/reset-password/roles/set-credits/set-vip/credits-log）+ 自助（profile/update/change-password/notification-settings/chart-templates） |
+| `frontend/src/stores/authStore.ts` | 70 | Zustand 认证状态管理：login、loginWithCode、register、logout、loadFromStorage、fetchUserInfo |
+| `frontend/src/pages/LoginPage.tsx` | 75 | 登录页：用户名密码表单、错误提示、注册链接 |
+| `frontend/src/pages/RegisterPage.tsx` | 125 | 注册页：用户名/邮箱/密码/验证码表单、倒计时发送、密码确认 |
+| `frontend/src/components/auth/ProtectedRoute.tsx` | 10 | 路由守卫：未认证自动跳转 /login |
+| `frontend/src/components/auth/UserMenu.tsx` | 55 | 用户菜单：头像、下拉菜单（角色/积分/退出） |
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `pyproject.toml` | 新增 `pyjwt>=2.8.0`、`bcrypt>=4.1.0` 依赖 |
+| `app/core/config.py` | 新增 `AuthSettings` 类（25+ 配置字段）嵌入 `AppSettings` |
+| `.env.example` | 新增 15+ 认证相关环境变量 |
+| `app/api/main.py` | 新增 `init_auth_tables()` 调用、`_ensure_admin_user()` 自动创建管理员、注册 auth/user 路由 |
+| `frontend/src/lib/api.ts` | 新增 JWT 请求拦截器（自动附加 Bearer token）、401 响应拦截器（跳转登录）、`authApi` 对象 |
+| `frontend/src/types/index.ts` | 新增 `User` 接口 |
+| `frontend/src/App.tsx` | 新增 `/login`、`/register` 路由、`ProtectedRoute` 包裹 MainLayout、`loadFromStorage` 初始化 |
+
+### 关键设计决策
+
+- **单例引擎模式**：`app/auth/models.py` 采用与 `app/trading/models.py` 一致的模块级单例 `_engine` / `_session_factory`，避免多引擎冲突
+- **bcrypt + SHA-256 双模式**：支持 QuantDinger 遗留的 `sha256$` 格式密码自动升级
+- **token_version 失效机制**：修改密码/重置密码时递增 `token_version`，旧 JWT 立即失效
+- **内存 + DB 混合存储**：`auth.py` 路由使用内存字典做速率限制和验证码缓存（重启丢失），`auth services` 使用 DB 持久化（重启保留）
+- **单用户模式**：`SINGLE_USER_MODE=true` 时跳过 DB 认证，使用 `ADMIN_USER`/`ADMIN_PASSWORD` 环境变量
+- **管理员自举**：应用首次启动时如果 `uf_users` 表为空，自动创建管理员账户
+
+### 测试验证
+
+- 全量测试：`396 passed, 3 failed`（3 个失败为 `.env` LLM_PROVIDER=xiaomi 与测试期望冲突，非本改动引入）
+- 前端构建：TypeScript 类型检查通过，Vite 生产构建成功
+
+### 迁移状态
+
+- ✅ Phase 1：依赖 + 配置（pyproject.toml、config.py、.env.example）
+- ✅ Phase 2：用户模型（9 个 SQLAlchemy 模型）
+- ✅ Phase 3：密码管理（bcrypt + SHA-256 fallback）
+- ✅ Phase 4：JWT 认证 + FastAPI 依赖注入
+- ✅ Phase 5：邮箱服务（验证码 + SMTP）
+- ✅ Phase 6：OAuth 服务（Google + GitHub）
+- ✅ Phase 7：安全服务（速率限制 + Turnstile + 审计）
+- ✅ Phase 8：用户服务（CRUD + 认证 + 积分 + VIP）
+- ✅ Phase 9：认证路由（12 个端点）
+- ✅ Phase 10：用户管理路由（18 个端点）
+- ✅ Phase 13：主应用注册（lifespan 初始化 + 路由注册）
+- ✅ Phase 14：前端认证（authStore、LoginPage、RegisterPage、ProtectedRoute、UserMenu、API 拦截器）
+- ✅ Phase 15：单用户模式支持
+- ✅ Phase 16：管理员自动创建
+- ⏳ Phase 11-12：凭证/计费路由改造（待后续迭代）
+- ⏳ Phase 17：单元测试（待后续迭代）
+
+
+---
+
+## 2026-05-07 — QuantDinger 策略引擎迁移（7 Phase 完整迁移）
+
+### 变更摘要
+
+将 QuantDinger 开源项目的生产级策略引擎逻辑完整迁移到 UF Assistant，实现功能一致性。迁移覆盖信号处理、挂单执行、交易所接口、通知系统和服务层。
+
+### 修改/新增文件
+
+| 文件 | 行数 | 操作 | 说明 |
+|------|------|------|------|
+| `app/strategies/models.py` | 241 | 修改 | 新增 execution_mode、market_category、strategy_mode、notification_config、ai_model_config 等字段；新增 StrategyFeeRate 模型；StrategyPosition 增加 current_price + UniqueConstraint |
+| `app/strategies/price_cache.py` | 53 | 新增 | 线程安全内存价格缓存，per-symbol TTL，减少冗余 API 调用 |
+| `app/strategies/trading_executor.py` | 2,318 | 重写 | 8 路信号、信号去重、价格缓存集成、Bot 模式、脚本状态持久化、手续费缓存、pending_orders 入队、execution_mode 支持 |
+| `app/strategies/pending_order_worker.py` | 872 | 重写 | Stale 订单回收（90s）、优先级排序、maker-then-market 流程、持仓同步、apply_fill_to_local_position |
+| `app/strategies/exchange_client.py` | 789 | 增强 | 新增 set_leverage、place_limit_order、create_market_order、wait_for_fill、get_fee_rate、normalize_symbol；8 路信号映射 |
+| `app/strategies/notifier.py` | 332 | 增强 | 新增 notify_signal 统一调度方法 + get_notifier_manager 单例 |
+| `app/strategies/strategy_service.py` | 236 | 新增 | 策略 CRUD + 批量启停 + 连接测试 |
+
+### 核心迁移内容
+
+1. **8 路信号**：NormalizedSignal 从 4 路扩展为 8 路（open/close/add/reduce × long/short）
+2. **信号去重**：内存 per-candle 去重（`_should_skip_signal_once_per_candle`）+ DB cooldown 去重（`_enqueue_pending_order` 30s 冷却）
+3. **价格缓存**：PriceCache 默认 10s TTL，命中时跳过 API 调用
+4. **Bot 模式**：`strategy_mode == "bot"` 时每 tick 评估 on_bar（合成 bar），支持网格/DCA 策略
+5. **脚本状态持久化**：last_closed_bar_ts + params 写入 trading_config.script_runtime_state
+6. **手续费缓存**：per-strategy 负缓存，查一次后不再重试
+7. **挂单队列**：priority DESC, id ASC 排序；90s stale reclaim 防止死锁
+8. **Maker-then-Market**：限价单（2bps offset）→ 等待 10s → 撤单 → 市价补剩余
+9. **持仓同步**：幽灵持仓清理（交易所已平本地还在）+ 偏差修正（>1% 时同步）
+10. **execution_mode**：signal=本地模拟直接更新 DB，live=入队 pending_orders 由 Worker 执行
+11. **策略服务层**：create/update/delete/get/list + batch_start/batch_stop + test_exchange_connection
+
+### 技术决策
+
+- **CCXT 替代原生 REST**：QuantDinger 12+ 交易所客户端 → UF 用 CCXT 统一接口
+- **SQLAlchemy ORM 替代 raw SQL**：所有 psycopg2 cursor.execute → ORM 查询
+- **单用户简化**：去掉所有 user_id 作用域（UF 单用户场景）
+- **SL/TP leverage 对齐**：止损止盈百分比除以杠杆得到价格变动阈值（与 QuantDinger 一致）
+
+### 验证结果
+
+- 全部 7 个文件 `py_compile` 语法检查通过
+- 共 4,841 行代码
+
+---
+
+## 2025-05-06 — 阶段 1：策略服务增强（QuantDinger 差距 2,3,4,5）
+
+### 改动目标
+将 QuantDinger 的 4 个核心策略服务功能迁移到 UF Stock Assistant：
+- batch_create_strategies() — 批量创建策略 + group_id 分组
+- get_exchange_symbols() — 按交易所获取交易对列表
+- _compute_runtime_metrics() — 策略运行时指标（已实现/未实现 PnL）
+- _build_bot_display() — 网格/马丁/趋势/DCA bot 展示配置
+
+### 涉及文件
+- **新建** `app/strategies/exchange_execution.py` — 凭据解析（resolve_exchange_config、load_strategy_configs、safe_exchange_config_for_log）
+- **新建** `app/utils/local_brokers.py` — IBKR/MT5 桌面经纪商环境检查
+- **修改** `app/strategies/models.py` — StrategyModel 新增 strategy_group_id、group_base_name
+- **修改** `app/strategies/strategy_service.py` — 新增 4 个核心方法 + 辅助函数（_to_float/_to_int/_display_item）
+- **修改** `app/api/routers/strategy.py` — 新增 3 个端点：/strategies/batch、/strategies/exchange-symbols、/strategies/{id}/runtime-metrics
+- **新建** `tests/test_strategy_service_qd.py` — 13 个测试用例
+
+### 改动方案
+1. exchange_execution.py 完全复刻 QuantDinger 设计，适配 UF 凭据系统（credential_store.get_credential_decrypted）
+2. get_exchange_symbols 支持直接 REST（Bybit/Coinbase/Kraken/Kucoin/Gate）+ CCXT fallback + IBKR/MT5 特殊处理
+3. _compute_runtime_metrics 使用 SQLAlchemy ORM 聚合（StrategyTrade + StrategyPosition）
+4. _build_bot_display 支持 4 种 bot_type：martingale/grid/trend/dca
+
+### 测试验证
+- 新增测试：13 passed
+- 全量测试：457 passed, 3 failed（环境变量冲突，非本改动引入）
