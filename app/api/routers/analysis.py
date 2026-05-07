@@ -1,0 +1,115 @@
+"""
+UF Stock Assistant — AI 分析记忆与反思 API
+历史查询、相似模式、反馈、性能统计
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Header
+from pydantic import BaseModel, Field
+
+from app.core.exceptions import AssistantException
+from app.core.logging import get_logger
+from app.services.analysis_memory import AnalysisMemoryService
+from app.services.ai_calibration import AICalibrationService
+
+logger = get_logger("app.api.routers.analysis")
+
+router = APIRouter(prefix="/analysis", tags=["AI 分析记忆"])
+
+
+# ------------------------------------------------------------------
+# Schemas
+# ------------------------------------------------------------------
+
+class FeedbackRequest(BaseModel):
+    memory_id: int = Field(..., description="分析记录 ID")
+    feedback: str = Field(..., description="反馈类型: helpful / not_helpful / accurate / inaccurate")
+
+
+class CalibrationQuery(BaseModel):
+    market: str = Field(default="AStock", description="市场类型")
+
+
+# ------------------------------------------------------------------
+# 查询接口
+# ------------------------------------------------------------------
+
+@router.get("/history")
+async def get_analysis_history(
+    user_id: str = Header(default="default"),
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    """获取用户分析历史"""
+    svc = AnalysisMemoryService()
+    data = svc.get_history(user_id=user_id, page=page, page_size=page_size)
+    return {"code": "success", "data": data}
+
+
+@router.get("/history/{market}/{symbol}")
+async def get_recent_analysis(
+    market: str,
+    symbol: str,
+    days: int = 7,
+    limit: int = 5,
+) -> dict[str, Any]:
+    """获取某标近期的分析历史"""
+    svc = AnalysisMemoryService()
+    items = svc.get_recent(market=market, symbol=symbol, days=days, limit=limit)
+    return {"code": "success", "data": {"items": items, "market": market, "symbol": symbol}}
+
+
+@router.get("/similar/{market}/{symbol}")
+async def get_similar_patterns(
+    market: str,
+    symbol: str,
+    indicators: str = "{}",
+    limit: int = 3,
+) -> dict[str, Any]:
+    """获取历史相似技术指标模式"""
+    import json
+    try:
+        current_indicators = json.loads(indicators) if indicators else {}
+    except json.JSONDecodeError:
+        raise AssistantException("invalid_indicators_json", "indicators 参数必须是合法 JSON")
+
+    svc = AnalysisMemoryService()
+    patterns = svc.get_similar_patterns(market=market, symbol=symbol, current_indicators=current_indicators, limit=limit)
+    return {"code": "success", "data": {"patterns": patterns}}
+
+
+# ------------------------------------------------------------------
+# 反馈与统计
+# ------------------------------------------------------------------
+
+@router.post("/feedback")
+async def record_feedback(payload: FeedbackRequest) -> dict[str, Any]:
+    """记录用户对分析的反馈"""
+    svc = AnalysisMemoryService()
+    ok = svc.record_feedback(payload.memory_id, payload.feedback)
+    if not ok:
+        raise AssistantException("feedback_failed", "反馈记录失败，memory_id 可能不存在")
+    return {"code": "success", "data": {"recorded": True}}
+
+
+@router.get("/stats")
+async def get_performance_stats(
+    market: str | None = None,
+    symbol: str | None = None,
+    days: int = 30,
+) -> dict[str, Any]:
+    """获取 AI 性能统计"""
+    svc = AnalysisMemoryService()
+    stats = svc.get_performance_stats(market=market, symbol=symbol, days=days)
+    return {"code": "success", "data": stats}
+
+
+@router.get("/calibration/{market}")
+async def get_calibration(market: str) -> dict[str, Any]:
+    """获取市场最新校准配置"""
+    svc = AICalibrationService()
+    cfg = svc.get_latest(market)
+    return {"code": "success", "data": {"market": market, "config": cfg}}

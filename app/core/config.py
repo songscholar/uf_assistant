@@ -79,6 +79,20 @@ class MembershipSettings(BaseSettings):
     lifetime_monthly_credits: int = Field(default=800, description="终身会员每月积分")
 
 
+class ReflectionSettings(BaseSettings):
+    """AI 反射与校准配置"""
+    model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_REFLECTION_", extra="ignore")
+    
+    enabled: bool = Field(default=True, description="是否启用反射 Worker")
+    interval_seconds: int = Field(default=86400, description="反射 Worker 执行间隔(秒)")
+    min_age_days: int = Field(default=7, description="验证最小历史天数")
+    validate_limit: int = Field(default=200, description="单次验证最大条数")
+    calibration_enabled: bool = Field(default=True, description="是否启用离线 AI 校准")
+    calibration_markets: str = Field(default="Crypto", description="需要校准的市场，逗号分隔")
+    calibration_lookback_days: int = Field(default=30, description="校准回溯天数")
+    calibration_min_samples: int = Field(default=80, description="校准最小样本数")
+
+
 class UsdtPaymentSettings(BaseSettings):
     """USDT-TRC20 支付配置"""
     model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_USDT_", extra="ignore")
@@ -120,6 +134,7 @@ class AppSettings(BaseSettings):
     billing: BillingSettings = Field(default_factory=BillingSettings)
     membership: MembershipSettings = Field(default_factory=MembershipSettings)
     usdt: UsdtPaymentSettings = Field(default_factory=UsdtPaymentSettings)
+    reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
     
     @property

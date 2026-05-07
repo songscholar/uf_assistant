@@ -1190,3 +1190,61 @@ tests/test_code_quality.py    — 22 passed
 - ✅ **Agent Gateway 异步回测（POST /api/agent/v1/backtests）— 本次补充**
 
 QuantDinger → UF Stock Assistant 回测引擎迁移完整闭环。
+
+
+---
+
+## 2025-05-07 — QuantDinger AI 校准/反思系统迁移
+
+### 目标
+将 QuantDinger 的 AI 校准与反思系统迁移到 UF Stock Assistant，包括：
+- 分析记忆存储与查询
+- 历史决策验证（价格回撤比对）
+- 相似技术指标模式匹配
+- 离线阈值校准（Grid Search）
+- 后台反射 Worker
+
+### 涉及文件
+- `app/data/analysis_models.py` — 新建，SQLAlchemy ORM 模型（AnalysisMemoryModel + AICalibrationModel）
+- `app/services/analysis_memory.py` — 新建，分析记忆 CRUD + 验证 + 相似模式匹配
+- `app/services/ai_calibration.py` — 新建，阈值校准服务（Grid Search 最优阈值）
+- `app/services/reflection.py` — 新建，定期验证 Worker
+- `app/api/routers/analysis.py` — 新建，FastAPI 路由（历史、统计、反馈、校准配置）
+- `app/core/config.py` — 新增 ReflectionSettings（ENABLE_REFLECTION_WORKER 等 8 项配置）
+- `app/api/main.py` — 注册 analysis 路由，lifespan 中启动 Reflection Worker
+- `tests/test_analysis.py` — 新建，10 个单元测试
+
+### 架构适配
+| QuantDinger | UF Stock Assistant |
+|------------|-------------------|
+| Flask + PostgreSQL + raw SQL | FastAPI + SQLite + SQLAlchemy ORM |
+| `qd_analysis_memory` / `qd_ai_calibration` 表 | `analysis_memory` / `ai_calibration` ORM 模型 |
+| `MarketDataCollector._get_price()` | `get_stock_realtime()` / `get_crypto_price()` |
+| `int user_id` | `str user_id` (对话系统) |
+
+### 服务类可测试性改进
+`AnalysisMemoryService` 和 `AICalibrationService` 的构造函数增加可选 `session` 参数：
+- 生产环境：不传 session，自动从 `BillingStore.get_session()` 获取
+- 测试环境：传入内存 SQLite session，实现隔离测试
+
+### API 端点
+- `GET /api/v1/analysis/history` — 用户分析历史（分页）
+- `GET /api/v1/analysis/history/{market}/{symbol}` — 标的近期分析
+- `GET /api/v1/analysis/similar/{market}/{symbol}` — 相似技术指标模式
+- `POST /api/v1/analysis/feedback` — 用户反馈
+- `GET /api/v1/analysis/stats` — 性能统计
+- `GET /api/v1/analysis/calibration/{market}` — 校准配置
+
+### 测试验证
+- 新模块测试：`10 passed`
+- 全量测试：`396 passed, 3 failed`（3 个失败为 `.env` LLM_PROVIDER=xiaomi 与测试期望冲突，非本改动引入）
+
+### 迁移状态
+- ✅ AnalysisMemoryModel / AICalibrationModel 数据模型
+- ✅ AnalysisMemoryService（存储、查询、验证、反馈、相似模式、统计）
+- ✅ AICalibrationService（阈值搜索、结果持久化）
+- ✅ Reflection Worker（后台验证 + 校准触发）
+- ✅ FastAPI 路由（6 个端点）
+- ✅ 配置集成（ReflectionSettings）
+- ✅ 单元测试（10 个）
+

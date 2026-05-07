@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AssistantException
 from app.core.logging import get_logger, setup_logging
 
-from .routers import billing, chat, credentials, crypto, market, stock, strategy, trading, upload
+from .routers import analysis, billing, chat, credentials, crypto, market, stock, strategy, trading, upload
 from .agent import router as agent_router
 
 logger = get_logger("app.api.main")
@@ -44,6 +44,11 @@ async def lifespan(app: FastAPI):
     from app.trading.models import init_trading_tables
     init_trading_tables()
     logger.info("trading_tables_initialized")
+
+    # 启动反射 Worker（如启用）
+    from app.services.reflection import start_reflection_worker
+    start_reflection_worker()
+    logger.info("reflection_worker_initialized")
 
     yield
 
@@ -175,6 +180,7 @@ app.include_router(credentials.router, prefix="/api/v1", tags=["凭证管理"])
 app.include_router(strategy.router, prefix="/api/v1", tags=["策略"])
 app.include_router(upload.router, prefix="/api/v1", tags=["文件上传"])
 app.include_router(billing.router, prefix="/api/v1", tags=["计费"])
+app.include_router(analysis.router, prefix="/api/v1", tags=["AI 分析记忆"])
 app.include_router(agent_router, prefix="/api", tags=["Agent Gateway"])
 
 
