@@ -56,6 +56,19 @@ class OrderStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class MarketType(StrEnum):
+    """交易市场类型"""
+    CRYPTO = "crypto"
+    A_SHARE = "a_share"
+    US_STOCK = "us_stock"
+
+
+class TradingMode(StrEnum):
+    """交易模式"""
+    MOCK = "mock"
+    LIVE = "live"
+
+
 class StrategyType(StrEnum):
     """内置策略类型"""
     MA_CROSSOVER = "ma_crossover"           # 均线交叉
@@ -99,11 +112,20 @@ MARKET_AFTERNOON_START = "13:00"
 
 # Agent Gateway Scope
 class AgentScope(StrEnum):
-    """Agent Token 权限范围"""
+    """Agent Token 权限范围（参考 QuantDinger AI_INTEGRATION_DESIGN.md §3）"""
     READ = "R"          # 读取市场数据
     WRITE = "W"         # 创建/修改策略
-    BACKTEST = "B"      # 运行回测
+    BACKTEST = "B"      # 运行回测/模拟
+    NOTIFY = "N"        # 通知 & 杂项副作用
+    CREDENTIALS = "C"   # 凭证管理（admin only）
     TRADE = "T"         # 交易（下单/撤单）
+
+
+class AgentTokenStatus(StrEnum):
+    """Agent Token 状态"""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    REVOKED = "revoked"
 
 # Agent Token 默认前缀
 AGENT_TOKEN_PREFIX = "uf_agent_"

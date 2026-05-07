@@ -200,65 +200,11 @@ def uf_pick_stocks(strategy_key: str, symbols: str, params: str = "{}", min_conf
 
 
 # =============================================================================
-# 交易 Tools（需要 T scope，默认 paper-only）
-# =============================================================================
-
-def uf_get_positions() -> str:
-    """
-    获取当前所有持仓。
-    
-    Returns:
-        JSON 字符串，包含持仓列表、成本、盈亏等
-    """
-    result = _get_client().get("/trading/positions")
-    return str(result)
-
-
-def uf_get_orders(status: str | None = None) -> str:
-    """
-    获取订单列表。
-    
-    Args:
-        status: 可选状态过滤，如 "filled", "pending", "cancelled"
-    
-    Returns:
-        JSON 字符串，包含订单列表
-    """
-    params = {}
-    if status:
-        params["status"] = status
-    result = _get_client().get("/trading/orders", params=params)
-    return str(result)
-
-
-def uf_place_order(symbol: str, side: str, quantity: float, price: float | None = None, order_type: str = "market") -> str:
-    """
-    下单（默认模拟交易，实盘需服务端显式开启）。
-    
-    Args:
-        symbol: 股票代码
-        side: "buy" 或 "sell"
-        quantity: 数量
-        price: 价格（限价单必填）
-        order_type: "market" 或 "limit"
-    
-    Returns:
-        JSON 字符串，包含订单结果
-    """
-    payload: dict[str, Any] = {
-        "symbol": symbol,
-        "side": side,
-        "quantity": quantity,
-        "order_type": order_type,
-    }
-    if price is not None:
-        payload["price"] = price
-    result = _get_client().post("/trading/orders", json=payload)
-    return str(result)
-
-
-# =============================================================================
 # Tools 注册表
+# =============================================================================
+# 注：MCP Server 只暴露 R（Read）和 B（Backtest）类工具。
+# 交易工具（T scope）不通过 MCP 暴露，需直接使用 REST API。
+# 参考 QuantDinger 设计：MCP 是窄接口，安全边界在 Gateway。
 # =============================================================================
 
 ALL_TOOLS = [
@@ -272,7 +218,4 @@ ALL_TOOLS = [
     uf_chat,
     uf_run_strategy,
     uf_pick_stocks,
-    uf_get_positions,
-    uf_get_orders,
-    uf_place_order,
 ]

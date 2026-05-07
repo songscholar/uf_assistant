@@ -35,7 +35,14 @@ def _create_mcp_server():
         )
         raise SystemExit(1) from exc
 
-    server = FastMCP("uf-assistant")
+    server = FastMCP(
+        "uf-assistant",
+        instructions=(
+            "Tools for the UF Stock Assistant self-hosted quant platform. "
+            "All tools are scoped via the configured agent token. "
+            "Trading is intentionally NOT exposed via MCP; use the REST API for that."
+        ),
+    )
 
     # 注册所有 tools
     for tool in ALL_TOOLS:

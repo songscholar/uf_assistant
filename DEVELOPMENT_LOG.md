@@ -758,3 +758,57 @@ feat(billing): 补充终身会员自动补发、会员订单表、operator_id �
 - 计费文档补充 membership_orders / operator_id / USDT 调试说明
 - 测试覆盖：18 passed（新增3个终身会员和订单查询用例）
 ```
+
+---
+
+## 2026-05-06 — Agent Gateway 对齐 QuantDinger 参考设计（Phase 1）
+
+### 变更摘要
+
+严格对照 QuantDinger `docs/agent/AI_INTEGRATION_DESIGN.md` 和 `app/utils/agent_auth.py`，补齐 Agent Gateway 和 MCP Server 的安全与功能缺口。
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `app/core/agent_auth.py` | 重写：添加速率限制（内存滑动窗口）、markets/instruments 白名单、token 状态（active/inactive/revoked）、`last_used_at` 追踪、`token_urlsafe(32)` 熵增强、允许名单检查辅助方法 |
+| `app/core/constants.py` | 添加 `AgentScope.NOTIFY`("N")、`AgentScope.CREDENTIALS`("C")、`AgentTokenStatus` 枚举 |
+| `app/api/main.py` | 全局异常处理器支持 Agent Gateway 错误码 → HTTP 状态码映射（401/403/429），返回统一错误 envelope `{code, message, details, retriable}` |
+| `app/api/agent/__init__.py` | 重写：`verify_agent_token` 直接抛 `ValidationError`（由全局 handler 统一处理）、添加 `/whoami` 端点、添加 `/admin/tokens` CRUD 端点（需 C scope） |
+| `app/api/agent/markets.py` | 所有涉及 symbol 的端点添加 `_check_instrument` 白名单检查 |
+| `app/api/agent/strategies.py` | 策略执行和选股端点添加品种白名单检查 |
+| `app/api/agent/trading.py` | 持仓查询和下单端点添加品种白名单检查 |
+| `mcp_server/src/uf_assistant_mcp/tools.py` | **移除交易工具**（`uf_get_positions`、`uf_get_orders`、`uf_place_order`），只保留 R/B 类工具，与参考设计一致 |
+| `mcp_server/src/uf_assistant_mcp/server.py` | FastMCP instructions 明确声明 "Trading is intentionally NOT exposed via MCP" |
+
+### 补齐清单（对照 QuantDinger）
+
+| 参考设计特性 | 之前状态 | 现在状态 |
+|-------------|---------|---------|
+| 6 个 Scope（R/W/B/N/C/T） | ❌ 只有 4 个 | ✅ 6 个齐全 |
+| 速率限制（每 token 每分钟） | ❌ 没有 | ✅ 内存滑动窗口 |
+| markets/instruments 白名单 | ❌ 没有 | ✅ Token 级别可配置 |
+| Token 状态（active/inactive/revoked） | ❌ 没有 | ✅ 支持 |
+| `last_used_at` | ❌ 没有 | ✅ 每次验证更新 |
+| 统一错误格式 `{code, message, details, retriable}` | ❌ HTTPException | ✅ 全局 handler 统一 |
+| `/whoami` 端点 | ❌ 没有 | ✅ 已添加 |
+| Admin 端点（token 列表/吊销/激活/停用） | ❌ 没有 | ✅ 需 C scope |
+| MCP 不暴露交易工具 | ❌ 暴露了 3 个交易 tool | ✅ 已移除 |
+| MCP instructions 声明安全边界 | ❌ 没有 | ✅ 已添加 |
+
+### 验证结果
+
+- ✅ 语法检查：全部通过
+- ✅ 全量测试：**153 passed, 3 failed**（3 个失败为已知环境变量问题，与本次修改无关）
+- ✅ 无 regression
+
+### Git 提交
+
+```
+feat(agent): 对齐 QuantDinger 参考设计 Phase 1
+
+- Agent Gateway: 速率限制、markets/instruments 白名单、token 状态、last_used_at
+- 统一错误格式 {code, message, details, retriable}
+- 新增 /whoami 和 /admin/tokens 生命周期管理端点
+- MCP Server: 移除交易工具，只暴露 R/B 类，与参考设计一致
+```

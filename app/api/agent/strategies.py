@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.agent_auth import AgentAuthManager, AgentTokenRecord
 from app.core.constants import AgentScope
+from app.core.exceptions import ValidationError
 from app.core.logging import get_logger
 from app.services.stock_picker import StockPicker
 from app.strategies.base import BaseStrategy
@@ -26,6 +27,15 @@ logger = get_logger("app.api.agent.strategies")
 router = APIRouter()
 
 AKSHARE_TIMEOUT = 20.0
+
+
+def _check_instrument(record: AgentTokenRecord, symbol: str) -> None:
+    """检查品种白名单"""
+    if not AgentAuthManager.instrument_allowed(record, symbol):
+        raise ValidationError(
+            f"Instrument not allowed for this token: {symbol}",
+            details={"code": "INSTRUMENT_NOT_ALLOWED", "instrument": symbol},
+        )
 
 
 async def _call_with_timeout(func, *args, **kwargs):
@@ -80,25 +90,26 @@ class StrategyEvaluateRequest(BaseModel):
 async def agent_strategy_evaluate(
     strategy_key: str,
     request: StrategyEvaluateRequest,
-    _record: AgentTokenRecord = Depends(require_scope(AgentScope.BACKTEST)),
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.BACKTEST)),
 ):
     """执行策略分析"""
+    _check_instrument(record, request.symbol)
     try:
         registry = StrategyRegistry()
         strategy_cls = registry.get(strategy_key)
         if not strategy_cls:
             raise HTTPException(status_code=404, detail=f"策略不存在: {strategy_key}")
-        
+
         strategy = strategy_cls(**request.params)
-        
+
         # 获取历史数据
         from app.tools.stock_data import get_stock_history
         history_json = await _call_with_timeout(get_stock_history, request.symbol, limit=100)
         import json
         history_data = json.loads(history_json).get("data", [])
-        
+
         result = strategy.evaluate(request.symbol, history_data)
-        
+
         return {
             "strategy": strategy.name,
             "symbol": request.symbol,
@@ -131,9 +142,12 @@ class StockPickRequest(BaseModel):
 @router.post("/pick")
 async def agent_stock_pick(
     request: StockPickRequest,
-    _record: AgentTokenRecord = Depends(require_scope(AgentScope.BACKTEST)),
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.BACKTEST)),
 ):
     """基于策略条件筛选股票"""
+    # 检查所有候选品种是否在白名单内
+    for sym in request.symbols:
+        _check_instrument(record, sym)
     try:
         picker = StockPicker()
         results = picker.pick(

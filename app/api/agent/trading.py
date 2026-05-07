@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.agent_auth import AgentAuthManager, AgentTokenRecord
 from app.core.constants import AgentScope
-from app.core.exceptions import TradingError
+from app.core.exceptions import TradingError, ValidationError
 from app.core.logging import get_logger
 from app.tools.trading import (
     cancel_order,
@@ -29,6 +29,15 @@ from . import require_scope
 logger = get_logger("app.api.agent.trading")
 
 router = APIRouter()
+
+
+def _check_instrument(record: AgentTokenRecord, symbol: str) -> None:
+    """检查品种白名单"""
+    if not AgentAuthManager.instrument_allowed(record, symbol):
+        raise ValidationError(
+            f"Instrument not allowed for this token: {symbol}",
+            details={"code": "INSTRUMENT_NOT_ALLOWED", "instrument": symbol},
+        )
 
 
 # =============================================================================
@@ -50,9 +59,10 @@ async def agent_get_positions(
 @router.get("/position/{symbol}")
 async def agent_get_position(
     symbol: str,
-    _record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
 ):
     """获取指定持仓"""
+    _check_instrument(record, symbol)
     try:
         return get_position(symbol)
     except Exception as exc:
@@ -93,18 +103,22 @@ async def agent_place_order(
 ):
     """
     下单接口
-    
+
     安全机制：
     1. 需要 T (Trade) scope
     2. Token 必须 paper_only=false
     3. 服务端 AGENT_LIVE_TRADING_ENABLED=true
-    
+    4. 品种必须在白名单内
+
     默认所有订单都是模拟订单（paper），实盘需显式开启双重开关。
     """
     try:
+        # 品种白名单检查
+        _check_instrument(record, request.symbol)
+
         # 双重安全检查
         AgentAuthManager.check_trade_permission(record)
-        
+
         result = submit_order(
             symbol=request.symbol,
             side=request.side,
@@ -112,7 +126,7 @@ async def agent_place_order(
             price=request.price,
             order_type=request.order_type,
         )
-        
+
         logger.info(
             "agent_order_placed",
             token_name=record.name,
@@ -120,7 +134,7 @@ async def agent_place_order(
             side=request.side,
             quantity=request.quantity,
         )
-        
+
         return result
     except HTTPException:
         raise

@@ -91,6 +91,20 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Agent Gateway 错误码 → HTTP 状态码映射
+_AGENT_ERROR_STATUS = {
+    "INVALID_TOKEN": 401,
+    "TOKEN_NOT_FOUND": 401,
+    "TOKEN_REVOKED": 401,
+    "TOKEN_INACTIVE": 401,
+    "TOKEN_EXPIRED": 401,
+    "INSUFFICIENT_SCOPE": 403,
+    "RATE_LIMITED": 429,
+    "PAPER_ONLY": 403,
+    "LIVE_TRADING_DISABLED": 403,
+}
+
+
 # 全局异常处理
 @app.exception_handler(AssistantException)
 async def assistant_exception_handler(request: Request, exc: AssistantException):
@@ -100,14 +114,19 @@ async def assistant_exception_handler(request: Request, exc: AssistantException)
         code=exc.code,
         message=exc.message,
     )
+    status_code = _AGENT_ERROR_STATUS.get(exc.code, 400)
+    # Rate limit 返回 Retry-After 头
+    headers = {}
+    if exc.code == "RATE_LIMITED":
+        headers["Retry-After"] = "60"
     return JSONResponse(
-        status_code=400,
+        status_code=status_code,
+        headers=headers,
         content={
-            "error": {
-                "code": exc.code,
-                "message": exc.message,
-                "details": exc.details,
-            }
+            "code": exc.code,
+            "message": exc.message,
+            "details": exc.details,
+            "retriable": exc.details.get("retriable", False) if exc.details else False,
         },
     )
 
