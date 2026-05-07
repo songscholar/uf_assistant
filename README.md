@@ -18,6 +18,7 @@
 - **多 LLM 支持**：Kimi、OpenAI、DeepSeek、Xiaomi 等提供商切换
 - **Agent Gateway**：为外部 AI Agent 提供标准化 API（Token 认证、Scope 权限、审计日志）
 - **MCP Server**：支持 Cursor / Claude Code / Codex 通过 MCP 协议调用（stdio / sse / streamable-http）
+- **用户认证**：JWT 登录、OAuth（Google/GitHub）、邮箱验证码、RBAC 四级权限、积分/VIP、单用户模式
 
 ### 技术架构
 - **AI 框架**：LangChain + LangGraph（状态机 Agent）
@@ -68,6 +69,43 @@ vim .env
 STOCK_ASSISTANT_LLM_PROVIDER=kimi
 KIMI_LLM_API_KEY=your-api-key-here
 KIMI_LLM_BASE_URL=https://api.moonshot.cn/v1/chat/completions
+```
+
+### 认证配置
+
+系统默认启用 JWT 认证，所有业务 API 需要登录获取 token。
+
+**单用户模式**（个人使用，无需注册）：
+```env
+STOCK_ASSISTANT_AUTH_SINGLE_USER_MODE=true
+STOCK_ASSISTANT_AUTH_ADMIN_USER=admin
+STOCK_ASSISTANT_AUTH_ADMIN_PASSWORD=your-password
+```
+
+**多用户模式**（团队/生产环境）：
+```env
+STOCK_ASSISTANT_AUTH_SECRET_KEY=your-random-secret-key
+STOCK_ASSISTANT_AUTH_REGISTRATION_ENABLED=true
+STOCK_ASSISTANT_AUTH_ADMIN_USER=admin
+STOCK_ASSISTANT_AUTH_ADMIN_PASSWORD=your-admin-password
+```
+
+首次启动时自动创建管理员账户（当用户表为空时）。
+
+**可选 — OAuth 第三方登录**：
+```env
+STOCK_ASSISTANT_AUTH_GOOGLE_CLIENT_ID=
+STOCK_ASSISTANT_AUTH_GOOGLE_CLIENT_SECRET=
+STOCK_ASSISTANT_AUTH_GITHUB_CLIENT_ID=
+STOCK_ASSISTANT_AUTH_GITHUB_CLIENT_SECRET=
+```
+
+**可选 — 邮箱验证码**：
+```env
+STOCK_ASSISTANT_AUTH_SMTP_HOST=smtp.example.com
+STOCK_ASSISTANT_AUTH_SMTP_PORT=587
+STOCK_ASSISTANT_AUTH_SMTP_USER=
+STOCK_ASSISTANT_AUTH_SMTP_PASSWORD=
 ```
 
 ### 启动 API 服务

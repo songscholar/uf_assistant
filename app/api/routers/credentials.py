@@ -160,6 +160,18 @@ async def test_connection(request: CredentialTestRequest, user: dict = Depends(g
         }
 
 
+@router.get("/credentials/desktop-brokers-policy")
+async def desktop_brokers_policy(user: dict = Depends(get_current_user)):
+    """Whether IBKR / MT5 may be configured on this deployment."""
+    from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
+
+    allowed = local_desktop_brokers_allowed()
+    return {
+        "allow_local_desktop_brokers": allowed,
+        "disabled_message": None if allowed else desktop_broker_cloud_reject_message(),
+    }
+
+
 @router.get("/credentials/egress-ip")
 async def get_egress_ip(user: dict = Depends(get_current_user)):
     """获取本机出口公网 IP（用于交易所 IP 白名单配置）"""

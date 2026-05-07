@@ -125,6 +125,11 @@ class BackendRouter:
                 raise RuntimeError("Local desktop brokers (IBKR) are not allowed in this deployment.")
             from app.trading.backends.ibkr_backend import IBKRBackend
             return IBKRBackend()
+        elif mt == "mt5":
+            if not settings.local_broker.allowed:
+                raise RuntimeError("Local desktop brokers (MT5) are not allowed in this deployment.")
+            from app.trading.backends.mt5_backend import MT5Backend
+            return MT5Backend()
         else:
             raise ValueError(f"Unsupported market_type: {market_type}")
 
@@ -133,5 +138,5 @@ class BackendRouter:
         """返回支持的市场类型列表"""
         base = ["crypto", "a_share", "us_stock"]
         if settings.local_broker.allowed:
-            base.append("ibkr")
+            base.extend(["ibkr", "mt5"])
         return base

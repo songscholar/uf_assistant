@@ -4,6 +4,74 @@
 
 ---
 
+## 2026-05-07 — QuantDinger 用户系统完整移植
+
+### 变更摘要
+
+将 QuantDinger 的完整用户认证系统移植到 UF Stock Assistant，包括 JWT 认证、OAuth、邮箱验证、RBAC 权限、积分/VIP、安全审计等。所有业务 API 路由（113 个）现需 JWT Bearer token 认证。
+
+### 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/auth/__init__.py` | 6 | 认证模块包 |
+| `app/auth/models.py` | 215 | 9 张 SQLAlchemy 表（User/VerificationCode/LoginAttempt/OAuthLink/OAuthState/SecurityLog/AgentToken/AgentAudit/CreditsLog） |
+| `app/auth/password.py` | 55 | bcrypt 12 轮哈希 + SHA-256 fallback + 密码强度校验 |
+| `app/auth/jwt_auth.py` | 67 | JWT HS256 生成/验证/token_version 校验 |
+| `app/auth/dependencies.py` | 95 | FastAPI 依赖注入：get_current_user / require_admin / require_manager / require_permission |
+| `app/auth/email_service.py` | 223 | SMTP+STARTTLS 邮箱验证码，频率限制，防暴力破解 |
+| `app/auth/oauth_service.py` | 334 | Google + GitHub OAuth 2.0，DB-backed CSRF state |
+| `app/auth/security_service.py` | 238 | IP 封锁/账户锁定/Turnstile/审计日志 |
+| `app/auth/user_service.py` | 460 | 用户 CRUD/认证/积分/VIP/管理员自举 |
+| `app/api/routers/auth.py` | 405 | 12 个认证端点（登录/注册/发码/重置密码/OAuth/logout/info） |
+| `app/api/routers/user.py` | 393 | 18 个用户管理端点（管理+自助） |
+| `frontend/src/stores/authStore.ts` | 81 | Zustand 认证状态管理 |
+| `frontend/src/pages/LoginPage.tsx` | 79 | 登录页面 |
+| `frontend/src/pages/RegisterPage.tsx` | 155 | 注册页面（含验证码倒计时） |
+| `frontend/src/components/auth/ProtectedRoute.tsx` | 8 | 路由守卫 |
+| `frontend/src/components/auth/UserMenu.tsx` | 53 | 用户头像下拉菜单 |
+| `tests/test_password.py` | 123 | 14 个密码测试 |
+| `tests/test_jwt.py` | 128 | 10 个 JWT 测试 |
+| `tests/test_auth_api.py` | 307 | 12 个认证 API 测试 |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/core/config.py` | 新增 AuthSettings 类（25+ 配置项），嵌入 AppSettings |
+| `app/api/main.py` | lifespan 调用 init_auth_tables() + _ensure_admin_user()，注册 auth/user 路由 |
+| `app/api/routers/credentials.py` | 5 个端点添加 get_current_user 依赖 |
+| `app/api/routers/billing.py` | 7 个端点从 Header(user_id) 改为 Depends(get_current_user) |
+| `app/api/routers/chat.py` | router 级 dependencies + 使用认证用户 ID |
+| `app/api/routers/stock.py` | router 级 dependencies |
+| `app/api/routers/market.py` | router 级 dependencies |
+| `app/api/routers/crypto.py` | router 级 dependencies |
+| `app/api/routers/trading.py` | router 级 dependencies |
+| `app/api/routers/strategy.py` | router 级 dependencies |
+| `app/api/routers/upload.py` | router 级 dependencies |
+| `app/api/routers/analysis.py` | router 级 dependencies + 使用认证用户 ID |
+| `frontend/src/lib/api.ts` | JWT 请求拦截器（自动 Bearer token）+ 401 响应拦截器（跳转登录） |
+| `frontend/src/App.tsx` | /login /register 路由 + ProtectedRoute 包裹 MainLayout |
+| `frontend/src/types/index.ts` | User 接口定义 |
+| `.env.example` | 新增 15+ STOCK_ASSISTANT_AUTH_* 环境变量 |
+| `pyproject.toml` | 新增 pyjwt>=2.8.0, bcrypt>=4.1.0 |
+| `tests/test_api.py` | 添加 get_current_user dependency override |
+
+### 技术决策
+
+1. **router 级 dependencies**：对 8 个业务路由文件使用 `APIRouter(dependencies=[Depends(get_current_user)])`，一次改动保护所有端点，无需逐个修改函数签名。
+2. **单例引擎模式**：auth models 使用模块级 `_engine` / `_session_factory` 单例，与 `app/trading/models.py` 一致，避免多引擎冲突。
+3. **管理员自举**：应用启动时如果 `uf_users` 表为空（非单用户模式），自动创建管理员账户，无需手动初始化。
+4. **FastAPI dependency override**：测试中使用 `app.dependency_overrides[get_current_user]` 替代 `unittest.mock.patch`，这是 FastAPI TestClient 的正确模式。
+5. **datetime.utcnow() 修复**：jwt_auth.py 改用 `datetime.now(UTC)` 消除 Python 3.12 deprecation warning。
+
+### 测试验证
+
+- 新增测试：44 个（密码 14 + JWT 10 + 认证 API 20）
+- 全量测试：**523 passed, 4 failed**（4 个预存失败与 auth 无关）
+
+---
+
 ## 2026-05-06 — 第一阶段：项目基础架构搭建
 
 ### 变更摘要
@@ -1485,3 +1553,43 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 ### 测试验证
 - 新增测试：`tests/test_ibkr_backend.py` **19 passed**
 - 全量测试：**536 passed, 3 failed**（`.env` 中 `LLM_PROVIDER=xiaomi` 导致的预存环境变量冲突，非本改动引入）
+
+
+---
+
+## 2026-05-07 — 阶段 P5：MT5 Backend 迁移 + credentials 增强
+
+### 改动目标
+1. 将 QuantDinger 的 MT5 桌面券商客户端（`MetaTrader5` 库）迁移到 UF Stock Assistant
+2. 补充 `GET /credentials/desktop-brokers-policy` 端点（前端 SaaS 策略探测）
+3. 统一 `local_brokers.py` 使用 `LocalBrokerSettings` 而非裸环境变量
+
+### 涉及文件
+- **新建** `app/trading/backends/mt5_backend.py` — `MT5Backend` 类（async 包装 `MetaTrader5` 同步 API）
+- **修改** `app/trading/backends/__init__.py` — `BackendRouter` 注册 `mt5` 市场 + SaaS 拦截
+- **修改** `app/utils/local_brokers.py` — 改用 `settings.local_broker.allowed` 统一判断
+- **修改** `app/api/routers/credentials.py` — 新增 `GET /credentials/desktop-brokers-policy`
+- **新建** `tests/test_mt5_backend.py` — 19 个测试用例
+
+### 改动方案
+1. **async 适配**：`MetaTrader5` 是同步 API，全部用 `asyncio.to_thread()` 包装
+2. **lazy import**：`MetaTrader5` 不在项目依赖中，首次使用时报 `ImportError` 并提示安装（Windows-only）
+3. **SaaS 拦截**：`BackendRouter.create("mt5")` 先检查 `settings.local_broker.allowed`，与 IBKR 共用同一开关
+4. **Symbol 归一化**：`_normalize_symbol()` 去除 `/ - _ ` 等分隔符，转为大写（如 `EUR/USD` → `EURUSD`）
+5. **订单类型**：`market` → `TRADE_ACTION_DEAL` + `ORDER_TYPE_BUY/SELL`；`limit` → `TRADE_ACTION_PENDING` + `BUY_LIMIT/SELL_LIMIT`（自动根据价格与当前价位判断是否为 stop）
+6. **Volume 校验**：按 symbol 的 `volume_min/volume_max/volume_step` 校验并圆整
+7. **Filling mode 探测**：按 symbol 的 `filling_mode` 位掩码探测 IOC/FOK/RETURN
+8. **持仓方向**：BUY 仓位 quantity 为正，SELL 仓位 quantity 为负（与 UF 的 `PositionResult` 语义一致）
+9. **凭证策略端点**：`/credentials/desktop-brokers-policy` 返回 `allow_local_desktop_brokers` + `disabled_message`，供前端在保存凭证前判断
+
+### 配置项
+沿用 P4 的 `LocalBrokerSettings`，MT5 专属字段通过 `extra_config` 传递：
+- `mt5_login` — 账号
+- `mt5_password` — 密码
+- `mt5_server` — 券商服务器（如 `ICMarkets-Demo`）
+- `mt5_terminal_path` — terminal64.exe 路径（可选）
+- `mt5_magic_number` — EA 魔法数（默认 123456）
+
+### 测试验证
+- 新增测试：`tests/test_mt5_backend.py` **19 passed**
+- 全量测试：**555 passed, 3 failed**（`.env` 中 `LLM_PROVIDER=xiaomi` 导致的预存环境变量冲突，非本改动引入）
