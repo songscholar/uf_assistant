@@ -97,5 +97,16 @@ MARKET_CLOSE_TIME = "15:00"
 MARKET_MORNING_END = "11:30"
 MARKET_AFTERNOON_START = "13:00"
 
+# Agent Gateway Scope
+class AgentScope(StrEnum):
+    """Agent Token 权限范围"""
+    READ = "R"          # 读取市场数据
+    WRITE = "W"         # 创建/修改策略
+    BACKTEST = "B"      # 运行回测
+    TRADE = "T"         # 交易（下单/撤单）
+
+# Agent Token 默认前缀
+AGENT_TOKEN_PREFIX = "uf_agent_"
+
 # 用户代理标识
 DEFAULT_USER_AGENT = "UF-Stock-Assistant/0.1.0"

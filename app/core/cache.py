@@ -16,11 +16,11 @@ from app.core.logging import get_logger
 
 logger = get_logger("app.core.cache")
 
-# 缓存 TTL（秒）
-CACHE_TTL = 60
+# 缓存 TTL（秒）— 5 分钟
+CACHE_TTL = 300
 
-# 后台刷新间隔（秒）
-REFRESH_INTERVAL = 60
+# 后台刷新间隔（秒）— 5 分钟
+REFRESH_INTERVAL = 300
 
 # 全局缓存存储
 _cache_store: dict[str, Any] = {}
@@ -170,7 +170,8 @@ async def _background_refresh_loop() -> None:
         start = time.perf_counter()
         logger.info("background_refresh_start")
 
-        for key in ("market:spot", "market:index", "market:sector"):
+        # 指数和龙虎榜已走东财直连，不再需要缓存刷新
+        for key in ("market:spot", "market:sector"):
             if _stop_event.is_set():
                 break
             try:

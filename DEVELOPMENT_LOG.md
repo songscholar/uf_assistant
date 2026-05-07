@@ -575,3 +575,136 @@ feat(billing): 迁移 QuantDinger 商业化计费系统
 - 新增计费模块单元测试（15 个用例全部通过）
 - 新增计费业务文档 docs/business/BILLING.md
 ```
+
+---
+
+## 2026-05-07 — Agent Gateway + MCP Server 完整实现
+
+### 变更摘要
+
+参考 QuantDinger 的 Agent Gateway 和 MCP Server 设计，为 UF Stock Assistant 实现了一套完整的 AI Agent 调用接口：
+
+1. **Agent Gateway** (`/api/agent/v1`)：REST API，支持 Token 认证、Scope 权限控制、审计日志、SSE 流式响应
+2. **MCP Server** (`mcp_server/`)：独立 PyPI 包，支持 stdio 和 HTTP transport，将平台能力包装为 13 个 MCP Tools
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/core/agent_auth.py` | Agent Token 管理：SHA-256 哈希存储、Scope 检查、paper-only 安全模式 |
+| `app/memory/audit_log.py` | 审计日志：SQLAlchemy 模型 + SQLite 存储，记录每次 Agent 调用的 route/scope/status/duration |
+| `app/api/agent/__init__.py` | Agent Gateway 路由注册 + Token 认证依赖 + Scope 检查依赖 |
+| `app/api/agent/markets.py` | 市场数据端点：股票搜索/实时/历史、市场概况/指数/板块、加密货币价格 |
+| `app/api/agent/chat.py` | 对话端点：普通对话 + SSE 流式返回（模拟 thinking/tool_call/answer/done 事件） |
+| `app/api/agent/strategies.py` | 策略端点：策略列表、执行分析、智能选股、快速筛选 |
+| `app/api/agent/trading.py` | 交易端点：持仓/订单/组合查询、下单/撤单（双重安全检查：Scope + paper_only + 服务端开关） |
+| `mcp_server/pyproject.toml` | MCP Server 包配置（`uf-assistant-mcp`） |
+| `mcp_server/src/uf_assistant_mcp/__init__.py` | 包入口和文档 |
+| `mcp_server/src/uf_assistant_mcp/client.py` | Agent Gateway HTTP 客户端（httpx） |
+| `mcp_server/src/uf_assistant_mcp/tools.py` | 13 个 MCP Tools 定义 |
+| `mcp_server/src/uf_assistant_mcp/server.py` | MCP Server 主程序（FastMCP），支持 stdio / streamable-http / sse |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/core/constants.py` | 新增 `AgentScope` StrEnum（R/W/B/T）、`AGENT_TOKEN_PREFIX` |
+| `app/core/config.py` | 新增 `AgentSettings`（live_trading_enabled / token_ttl_hours / audit_log_retention / sse_heartbeat） |
+| `app/core/cache.py` | TTL 从 60s 调整为 300s（5 分钟），减少 AKShare 调用频率 |
+| `app/tools/market.py` | 修复 `fetch_longhu_bang` → `get_longhu_bang` 命名不一致 |
+| `app/tools/__init__.py` | 同步修复 `fetch_longhu_bang` → `get_longhu_bang` |
+| `tests/test_tools_stock.py` | 适配 `get_stock_realtime` 返回 dict 的改动 |
+
+### 技术决策
+
+1. **Token 安全**：明文 Token 仅返回一次（类似 AWS Access Key），服务端只存 SHA-256 hash。支持过期时间和 Scope 控制。
+2. **paper-only by default**：即使 Token 有 T scope，下单仍需 `paper_only=false` + `AGENT_LIVE_TRADING_ENABLED=true` 双重开关。
+3. **审计日志**：独立 SQLite 表，异步记录（不阻塞 API 响应），支持自动清理（默认保留 90 天）。
+4. **SSE 流式**：当前 Agent 不支持原生流式，采用模拟分段输出（thinking → tool_call → answer chunk → done）。
+5. **MCP Server 独立包**：`mcp_server/` 是独立 Python 包，可单独发布到 PyPI，不污染主项目依赖。
+
+### Agent Gateway 端点列表
+
+| 方法 | 路径 | Scope | 说明 |
+|------|------|-------|------|
+| GET | `/agent/v1/markets/stocks/search` | R | 搜索股票 |
+| GET | `/agent/v1/markets/stocks/{symbol}/realtime` | R | 个股实时行情 |
+| GET | `/agent/v1/markets/stocks/{symbol}/history` | R | 历史 K 线 |
+| GET | `/agent/v1/markets/overview` | R | 市场概况 |
+| GET | `/agent/v1/markets/indices` | R | 大盘指数 |
+| GET | `/agent/v1/markets/sectors` | R | 板块热点 |
+| GET | `/agent/v1/markets/crypto/price` | R | 加密货币价格 |
+| POST | `/agent/v1/chat` | R | 对话 |
+| POST | `/agent/v1/chat/stream` | R | 对话（SSE 流式） |
+| GET | `/agent/v1/strategies/list` | R | 策略列表 |
+| POST | `/agent/v1/strategies/{key}/evaluate` | B | 策略执行 |
+| POST | `/agent/v1/strategies/pick` | B | 智能选股 |
+| POST | `/agent/v1/strategies/screen` | R | 快速筛选 |
+| GET | `/agent/v1/trading/positions` | R | 持仓查询 |
+| GET | `/agent/v1/trading/orders` | R | 订单查询 |
+| POST | `/agent/v1/trading/orders` | T | 下单（需双重开关） |
+| DELETE | `/agent/v1/trading/orders/{id}` | T | 撤单（需双重开关） |
+| GET | `/agent/v1/trading/portfolio` | R | 投资组合 |
+
+### MCP Tools 列表
+
+- `uf_search_stocks` — 搜索 A 股
+- `uf_get_stock_realtime` — 个股实时行情
+- `uf_get_stock_history` — 历史 K 线
+- `uf_get_market_overview` — 市场概况
+- `uf_get_market_indices` — 大盘指数
+- `uf_get_sectors` — 板块热点
+- `uf_get_crypto_price` — 加密货币价格
+- `uf_chat` — 与股票助手对话
+- `uf_run_strategy` — 执行策略分析
+- `uf_pick_stocks` — 智能选股
+- `uf_get_positions` — 持仓查询
+- `uf_get_orders` — 订单查询
+- `uf_place_order` — 下单（默认模拟）
+
+### 验证结果
+
+- ✅ `python3 -m py_compile` 语法检查全部通过
+- ✅ 全量测试 **150 passed**（3 个环境相关失败：XIAOMI_LLM_API_KEY 环境变量干扰）
+
+### 使用方式
+
+**1. 签发 Agent Token：**
+```python
+from app.core.agent_auth import AgentAuthManager
+from app.core.constants import AgentScope
+
+token = AgentAuthManager.issue_token(
+    name="cursor-mcp",
+    scopes=[AgentScope.READ, AgentScope.BACKTEST],
+    paper_only=True,
+)
+```
+
+**2. Cursor MCP 配置：**
+```json
+{
+  "mcpServers": {
+    "uf-assistant": {
+      "command": "uvx",
+      "args": ["uf-assistant-mcp"],
+      "env": {
+        "UF_ASSISTANT_BASE_URL": "http://localhost:8000",
+        "UF_ASSISTANT_AGENT_TOKEN": "uf_agent_xxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+### Git 提交
+
+```
+feat: Agent Gateway + MCP Server 完整实现
+
+- 新增 Agent Gateway (/api/agent/v1)：Token 认证 + Scope 控制 + 审计日志
+- 新增 SSE 流式对话接口
+- 新增 MCP Server 独立包（13 个 tools，支持 stdio/HTTP/SSE）
+- 双重安全：paper-only by default + AGENT_LIVE_TRADING_ENABLED 开关
+- 修复 fetch_longhu_bang 命名不一致
+```

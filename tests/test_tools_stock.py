@@ -51,12 +51,11 @@ class TestGetStockRealtime:
     """测试实时行情"""
 
     def test_get_realtime_returns_json(self):
-        """测试获取实时行情返回 JSON"""
-        with patch("app.tools.stock_data._get_ak") as mock_ak:
-            mock_df = MagicMock()
-            mock_df.empty = True
-            mock_ak.return_value.stock_zh_a_spot_em.return_value = mock_df
+        """测试获取实时行情返回 JSON（兼容 dict 或 str 返回）"""
+        with patch("app.tools.stock_data.eastmoney_api") as mock_em:
+            mock_em.get_stock_realtime.return_value = {"error": "未找到股票 000001"}
             
             result = get_stock_realtime("000001")
-            data = json.loads(result)
+            # 兼容 dict 直接返回或 JSON 字符串
+            data = result if isinstance(result, dict) else json.loads(result)
             assert "error" in data

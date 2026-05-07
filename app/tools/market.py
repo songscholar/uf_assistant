@@ -12,6 +12,7 @@ from typing import Any
 from app.core.cache import ensure_cache
 from app.core.exceptions import DataProviderError
 from app.core.logging import get_logger
+from app.tools import eastmoney_api
 
 logger = get_logger("app.tools.market")
 
@@ -33,54 +34,23 @@ def _get_ak() -> Any:
 
 def get_market_index() -> dict:
     """
-    获取主要大盘指数实时行情
-    优先从共享缓存读取，避免每次请求都拉取全量指数数据
+    获取 5 大市场指数实时行情（东财直连 ~60ms）
+    A股（上证指数）、沪市（上证50）、深市（深证成指）、港股（恒生指数）、美股（纳斯达克）
     """
     try:
-        df = ensure_cache("market:index")
-        if df is None:
-            logger.warning("index_cache_miss_fallback")
-            ak = _get_ak()
-            df = ak.stock_zh_index_spot_em()
-
-        indices = []
-        key_indices = {"000001", "000002", "000016", "000688", "399001", "399006", "399005"}
-        key_names = ["上证", "深证", "创业板", "科创", "沪深300"]
-
-        for _, row in df.iterrows():
-            code = str(row.get("代码", "")).strip()
-            name = str(row.get("名称", ""))
-            if code in key_indices or any(kn in name for kn in key_names):
-                indices.append({
-                    "symbol": code,
-                    "name": name,
-                    "value": row.get("最新价"),
-                    "change": row.get("涨跌额"),
-                    "change_percent": row.get("涨跌幅"),
-                })
-
-        # 如果主要指数没抓到，返回前6个
-        if len(indices) < 4:
-            for _, row in df.head(6).iterrows():
-                indices.append({
-                    "symbol": str(row.get("代码", "")),
-                    "name": str(row.get("名称", "")),
-                    "value": row.get("最新价"),
-                    "change": row.get("涨跌额"),
-                    "change_percent": row.get("涨跌幅"),
-                })
-
-        logger.info("market_index_fetched", indices=len(indices), cached=ensure_cache("market:index") is not None)
+        indices = eastmoney_api.get_indices()
+        logger.info("market_index_fetched", indices=len(indices))
         return {"indices": indices, "timestamp": datetime.now().isoformat(), "source": "live"}
 
     except Exception as exc:
         logger.error("market_index_failed", error=str(exc))
         return {
             "indices": [
-                {"symbol": "000001", "name": "上证指数", "value": 3456.78, "change": 12.45, "change_percent": 0.36},
-                {"symbol": "399001", "name": "深证成指", "value": 11234.56, "change": -15.32, "change_percent": -0.14},
-                {"symbol": "399006", "name": "创业板指", "value": 2345.67, "change": 28.9, "change_percent": 1.23},
-                {"symbol": "000688", "name": "科创50", "value": 1234.56, "change": -8.23, "change_percent": -0.67},
+                {"symbol": "000001", "name": "上证指数", "market": "A股", "value": 0, "change": 0, "change_percent": 0},
+                {"symbol": "000016", "name": "上证50", "market": "沪市", "value": 0, "change": 0, "change_percent": 0},
+                {"symbol": "399001", "name": "深证成指", "market": "深市", "value": 0, "change": 0, "change_percent": 0},
+                {"symbol": "HSI", "name": "恒生指数", "market": "港股", "value": 0, "change": 0, "change_percent": 0},
+                {"symbol": "NDX", "name": "纳斯达克", "market": "美股", "value": 0, "change": 0, "change_percent": 0},
             ],
             "timestamp": datetime.now().isoformat(),
             "source": "demo",
@@ -101,31 +71,40 @@ def get_sector_hot() -> dict:
         sectors = []
 
         if df is not None:
-            for _, row in df.head(10).iterrows():
+            for _, row in df.head(15).iterrows():
+                name = str(row.get("板块名称", row.get("名称", "")))
+                if not name or name == "未知":
+                    continue
                 sectors.append({
-                    "name": str(row.get("板块名称", row.get("名称", "未知"))),
+                    "name": name,
                     "change_percent": row.get("涨跌幅", 0),
                 })
+                if len(sectors) >= 10:
+                    break
         else:
             logger.warning("sector_cache_miss_fallback")
             ak = _get_ak()
             # 尝试新 API
             try:
                 df = ak.stock_board_industry_spot_em()
-                for _, row in df.head(10).iterrows():
-                    sectors.append({
-                        "name": str(row.get("板块名称", row.get("名称", "未知"))),
-                        "change_percent": row.get("涨跌幅", 0),
-                    })
+                for _, row in df.head(15).iterrows():
+                    name = str(row.get("板块名称", row.get("名称", "")))
+                    if not name or name == "未知":
+                        continue
+                    sectors.append({"name": name, "change_percent": row.get("涨跌幅", 0)})
+                    if len(sectors) >= 10:
+                        break
             except Exception as e:
                 logger.warning("industry_spot_em_failed", error=str(e))
                 try:
                     df = ak.stock_board_concept_spot_em()
-                    for _, row in df.head(10).iterrows():
-                        sectors.append({
-                            "name": str(row.get("板块名称", row.get("名称", "未知"))),
-                            "change_percent": row.get("涨跌幅", 0),
-                        })
+                    for _, row in df.head(15).iterrows():
+                        name = str(row.get("板块名称", row.get("名称", "")))
+                        if not name or name == "未知":
+                            continue
+                        sectors.append({"name": name, "change_percent": row.get("涨跌幅", 0)})
+                        if len(sectors) >= 10:
+                            break
                 except Exception as e2:
                     logger.warning("concept_spot_em_failed", error=str(e2))
 
@@ -162,29 +141,7 @@ def get_longhu_bang(date: str | None = None) -> str:
     获取龙虎榜数据
     """
     try:
-        ak = _get_ak()
-
-        if date:
-            date_fmt = date.replace("-", "")
-        else:
-            date_fmt = None
-
-        df = ak.stock_lhb_detail_daily_sina(start_date=date_fmt, end_date=date_fmt)
-
-        if df.empty:
-            return json.dumps({"date": date, "data": []}, ensure_ascii=False)
-
-        records = []
-        for _, row in df.head(20).iterrows():
-            records.append({
-                "symbol": row.get("代码"),
-                "name": row.get("名称"),
-                "close_price": row.get("收盘价"),
-                "change_pct": row.get("涨跌幅"),
-                "volume": row.get("成交量"),
-                "amount": row.get("成交额"),
-                "reason": row.get("上榜原因"),
-            })
+        records = eastmoney_api.get_longhu_bang(date)
 
         logger.info("longhu_bang_fetched", date=date, records=len(records))
         return json.dumps({"date": date, "data": records}, ensure_ascii=False, default=str)
@@ -200,49 +157,26 @@ def get_longhu_bang(date: str | None = None) -> str:
 
 def get_market_overview() -> dict:
     """
-    获取市场整体概况
-    优先从共享缓存读取全市场数据
+    获取市场整体概况（东财直连）
+    包含涨跌家数统计 + 5 大指数
     """
     try:
-        # 涨跌家数统计：从全市场缓存读取
-        df_spot = ensure_cache("market:spot")
-        if df_spot is None:
-            logger.warning("overview_spot_cache_miss_fallback")
-            ak = _get_ak()
-            df_spot = ak.stock_zh_a_spot_em()
+        # 涨跌统计
+        stats = eastmoney_api.get_market_stats()
 
-        up_count = int(len(df_spot[df_spot["涨跌幅"] > 0]))
-        down_count = int(len(df_spot[df_spot["涨跌幅"] < 0]))
-        flat_count = int(len(df_spot[df_spot["涨跌幅"] == 0]))
-        limit_up = int(len(df_spot[df_spot["涨跌幅"] >= 9.9]))
-        limit_down = int(len(df_spot[df_spot["涨跌幅"] <= -9.9]))
+        # 大盘指数
+        indices = eastmoney_api.get_indices()
 
-        # 大盘指数：从指数缓存读取
-        df_index = ensure_cache("market:index")
-        if df_index is None:
-            logger.warning("overview_index_cache_miss_fallback")
-            ak = _get_ak()
-            df_index = ak.stock_zh_index_spot_em()
-
-        indices = []
-        for _, row in df_index.head(6).iterrows():
-            indices.append({
-                "symbol": str(row.get("代码", "")),
-                "name": str(row.get("名称", "")),
-                "value": row.get("最新价"),
-                "change_percent": row.get("涨跌幅"),
-            })
-
-        logger.info("market_overview_fetched", cached=ensure_cache("market:spot") is not None)
+        logger.info("market_overview_fetched")
         return {
             "timestamp": datetime.now().isoformat(),
             "source": "live",
             "summary": {
-                "up": up_count,
-                "down": down_count,
-                "flat": flat_count,
-                "limit_up": limit_up,
-                "limit_down": limit_down,
+                "up": stats.get("up", 0),
+                "down": stats.get("down", 0),
+                "flat": stats.get("flat", 0),
+                "limit_up": stats.get("limit_up", 0),
+                "limit_down": stats.get("limit_down", 0),
             },
             "indices": indices,
         }
@@ -252,11 +186,8 @@ def get_market_overview() -> dict:
         return {
             "timestamp": datetime.now().isoformat(),
             "source": "demo",
-            "summary": {"up": 2500, "down": 1800, "flat": 150, "limit_up": 45, "limit_down": 12},
-            "indices": [
-                {"symbol": "000001", "name": "上证指数", "value": 3456.78, "change_percent": 0.36},
-                {"symbol": "399001", "name": "深证成指", "value": 11234.56, "change_percent": -0.14},
-            ],
+            "summary": {"up": 0, "down": 0, "flat": 0, "limit_up": 0, "limit_down": 0},
+            "indices": [],
         }
 
 
@@ -264,7 +195,7 @@ def get_market_overview() -> dict:
 # 北向资金
 # =============================================================================
 
-def get_northbound_flow() -> str:
+def get_northbound_flow() -> dict:
     """
     获取北向资金流向（沪深港通）
     """
@@ -273,18 +204,18 @@ def get_northbound_flow() -> str:
         df = ak.stock_hsgt_hist_em(symbol="北向资金")
 
         if df.empty:
-            return json.dumps({"flow": []}, ensure_ascii=False)
+            return {"flow": [], "source": "live"}
 
         records = []
         for _, row in df.head(5).iterrows():
             records.append({
-                "date": row.get("日期"),
+                "date": str(row.get("日期", "")),
                 "net_inflow": row.get("净流入"),
                 "cumulative": row.get("累计净流入"),
             })
 
-        return json.dumps({"flow": records}, ensure_ascii=False, default=str)
+        return {"flow": records, "source": "live"}
 
     except Exception as exc:
         logger.error("northbound_flow_failed", error=str(exc))
-        raise DataProviderError(f"获取北向资金失败: {exc}") from exc
+        return {"flow": [], "source": "demo", "error": str(exc)}
