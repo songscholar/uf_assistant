@@ -1593,3 +1593,91 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 ### 测试验证
 - 新增测试：`tests/test_mt5_backend.py` **19 passed**
 - 全量测试：**555 passed, 3 failed**（`.env` 中 `LLM_PROVIDER=xiaomi` 导致的预存环境变量冲突，非本改动引入）
+
+---
+
+## 2026-05-07 — Gap Items 11-15: 高级策略功能扩展（6 Phase）
+
+### 改动目标
+将 QuantDinger 的高级策略功能移植到 UF Stock Assistant，覆盖 gap 分析中的 items 11-15。
+
+### Phase 1: 策略编译器 + 快照 (Item 13)
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/strategies/strategy_compiler.py` | ~470 | 声明式配置→Python 回测代码编译器 |
+| `app/strategies/strategy_snapshot.py` | ~280 | DB 策略行→回测快照解析器 |
+
+- `StrategyCompiler.compile(config)` 支持 7 种指标: supertrend, ema, rsi, macd, bollinger, kdj, ma
+- `StrategySnapshotResolver.resolve(strategy_id)` 使用 SQLAlchemy ORM，去掉 user_id
+
+### Phase 2: 市场数据收集器 (Item 12 补充)
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/strategies/market_data_collector.py` | ~480 | 并行数据采集 + 内联技术指标计算 |
+
+- `MarketDataCollector.collect_all()` 并行获取价格 + K 线
+- 内联实现 RSI/MACD/ATR/Bollinger/MA 等指标，不依赖 pandas-ta
+- A 股通过 AKShare，加密货币通过 CCXT
+
+### Phase 3: 快速分析服务 (Item 12 核心)
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/strategies/fast_analysis.py` | ~420 | 多维评分 + LLM 结构化分析 |
+
+- `FastAnalysisService.analyze()` — technical(35%) + fundamental(25%) + macro(40%)
+- 调用 `LlmService.chat()` 生成结构化 JSON 分析
+- 调用 `AnalysisMemoryService.store()` 存储结果
+- 置信度校准: 60% 客观评分 + 40% LLM 置信度
+
+### Phase 4: 实验系统 (Item 11)
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/strategies/experiment/__init__.py` | 18 | 包导出 |
+| `app/strategies/experiment/regime.py` | 246 | 规则式市场状态检测（纯 Python） |
+| `app/strategies/experiment/scoring.py` | 177 | 7 因子策略评分（A-E 评级） |
+| `app/strategies/experiment/evolution.py` | 146 | 网格/随机参数变体生成 |
+| `app/strategies/experiment/prompts.py` | 219 | LLM 提示模板 + 防御性 JSON 解析 |
+| `app/strategies/experiment/runner.py` | 606 | AI 多轮优化 + 结构化搜索编排器 |
+
+- `MarketRegimeService.detect()` — 5 种市场状态: bull_trend, bear_trend, range_compression, high_volatility, transition
+- `StrategyScoringService.score_result()` — 7 因子加权: return(22%), annual_return(12%), sharpe(18%), profit_factor(14%), win_rate(9%), drawdown(15%), stability(10%)
+- `ExperimentRunnerService.run_ai_pipeline()` — LLM 多轮优化，early stop at score >= 82
+- `ExperimentRunnerService.run_structured_tune()` — 网格/随机搜索，无 LLM
+
+### Phase 5: 通知渠道扩展 (Item 14)
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `app/strategies/notifier.py` | +190 行 | 新增 Discord/Browser 通知器 + 多语言 + 签名 |
+
+- `DiscordNotifier` — Embed 格式，绿色=开仓，红色=平仓
+- `BrowserNotifier` — 写入 `SignalNotification` 表，前端轮询
+- `render_template()` — 中/英多语言模板（signal_open, signal_close, alert_price, alert_pnl）
+- `WebhookNotifier` — HMAC-SHA256 签名 (`X-Signature` header)
+- `NotifierManager.notify_signal()` — 新增 language, confidence, reason 参数
+
+### Phase 6: 组合 AI 监控 (Item 15)
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `app/strategies/portfolio_monitor.py` | 重写 484 行 | AI 分析 + 持仓告警 + 批量通知 |
+
+- `ThreadPoolExecutor(max_workers=4)` 并行 AI 分析持仓
+- `PositionAlert` — 4 种告警类型: price_above, price_below, pnl_above, pnl_below
+- 告警冷却期: 5 分钟，防止通知风暴
+- `set_alert()`, `remove_alerts()`, `get_alerts()` API
+
+### 简化点（vs QuantDinger）
+- 去掉所有 `user_id` 作用域（UF 单用户）
+- 去掉计费服务集成
+- UF 用 CCXT 统一接口，不移植原生交易所客户端
+- UF 用 `LlmService.chat()` 直接调 LLM
+- 内联技术指标，不引入 pandas-ta
+- 规则式市场状态检测，不依赖 LLM
+
+### 测试验证
+- 所有 11 个文件通过 `python3 -m py_compile` 语法检查

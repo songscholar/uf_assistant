@@ -1,10 +1,12 @@
 """
 UF Stock Assistant — 信号通知系统
-支持 Telegram / Email / Webhook 三种渠道
+支持 Telegram / Email / Webhook / Discord / Browser 五种渠道
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import smtplib
 from abc import ABC, abstractmethod
@@ -27,6 +29,40 @@ class NotificationChannel(StrEnum):
     TELEGRAM = "telegram"
     EMAIL = "email"
     WEBHOOK = "webhook"
+    DISCORD = "discord"
+    BROWSER = "browser"
+
+
+# ── Multilingual Templates ──────────────────────────────────────────────
+
+TEMPLATES: dict[str, dict[str, str]] = {
+    "zh": {
+        "signal_open": "🟢 开仓信号\n策略: {strategy_name}\n标的: {symbol}\n方向: {signal_type}\n价格: {price}\n置信度: {confidence}\n原因: {reason}",
+        "signal_close": "🔴 平仓信号\n策略: {strategy_name}\n标的: {symbol}\n方向: {signal_type}\n价格: {price}\n原因: {reason}",
+        "alert_price": "⚠️ 价格告警\n标的: {symbol}\n当前价: {current_price}\n触发条件: {condition}",
+        "alert_pnl": "📊 盈亏告警\n策略: {strategy_name}\n标的: {symbol}\n未实现盈亏: {pnl}",
+    },
+    "en": {
+        "signal_open": "🟢 Open Signal\nStrategy: {strategy_name}\nSymbol: {symbol}\nType: {signal_type}\nPrice: {price}\nConfidence: {confidence}\nReason: {reason}",
+        "signal_close": "🔴 Close Signal\nStrategy: {strategy_name}\nSymbol: {symbol}\nType: {signal_type}\nPrice: {price}\nReason: {reason}",
+        "alert_price": "⚠️ Price Alert\nSymbol: {symbol}\nCurrent: {current_price}\nCondition: {condition}",
+        "alert_pnl": "📊 PnL Alert\nStrategy: {strategy_name}\nSymbol: {symbol}\nUnrealized PnL: {pnl}",
+    },
+}
+
+
+def render_template(
+    template_key: str,
+    language: str = "zh",
+    **kwargs: Any,
+) -> str:
+    """Render a notification template in the specified language."""
+    lang = "zh" if language.startswith("zh") else "en"
+    tpl = TEMPLATES.get(lang, TEMPLATES["en"]).get(template_key, "")
+    try:
+        return tpl.format(**kwargs)
+    except KeyError:
+        return tpl
 
 
 @dataclass
@@ -183,14 +219,25 @@ class EmailNotifier(BaseNotifier):
 
 
 class WebhookNotifier(BaseNotifier):
-    """Webhook POST 通知器"""
+    """Webhook POST 通知器，支持 HMAC-SHA256 签名"""
 
-    def __init__(self, webhook_url: str) -> None:
+    def __init__(self, webhook_url: str, signing_secret: str = "") -> None:
         self._webhook_url = webhook_url
+        self._signing_secret = signing_secret
 
     @property
     def channel(self) -> NotificationChannel:
         return NotificationChannel.WEBHOOK
+
+    def _sign_payload(self, body: bytes) -> str:
+        """Generate HMAC-SHA256 signature for the payload."""
+        if not self._signing_secret:
+            return ""
+        return hmac.new(
+            self._signing_secret.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
 
     def send(self, message: SignalMessage) -> bool:
         payload = {
@@ -204,13 +251,16 @@ class WebhookNotifier(BaseNotifier):
             "timestamp": message.timestamp,
         }
 
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+
+        signature = self._sign_payload(body)
+        if signature:
+            headers["X-Signature"] = f"sha256={signature}"
+
         try:
             with httpx.Client(timeout=10.0) as client:
-                resp = client.post(
-                    self._webhook_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                )
+                resp = client.post(self._webhook_url, content=body, headers=headers)
             if resp.status_code < 300:
                 logger.info("webhook_sent", symbol=message.signal_type, url=self._webhook_url)
                 return True
@@ -225,6 +275,110 @@ class WebhookNotifier(BaseNotifier):
 
         except httpx.HTTPError as exc:
             logger.error("webhook_send_error", error=str(exc), url=self._webhook_url, exc_info=True)
+            return False
+
+
+class DiscordNotifier(BaseNotifier):
+    """Discord Webhook 通知器 — 使用 Embed 格式"""
+
+    def __init__(self, webhook_url: str) -> None:
+        self._webhook_url = webhook_url
+
+    @property
+    def channel(self) -> NotificationChannel:
+        return NotificationChannel.DISCORD
+
+    def _build_embed(self, message: SignalMessage) -> dict[str, Any]:
+        """Build Discord embed with color coding."""
+        is_open = "open" in message.signal_type.lower()
+        color = 0x2ECC71 if is_open else 0xE74C3C  # green for open, red for close
+
+        fields = [
+            {"name": "Symbol", "value": f"`{message.symbol}`", "inline": True},
+            {"name": "Signal", "value": f"`{message.signal_type}`", "inline": True},
+            {"name": "Price", "value": f"`{message.price:.4f}`", "inline": True},
+            {"name": "Confidence", "value": f"`{message.confidence:.0%}`", "inline": True},
+            {"name": "Reason", "value": message.reason[:256], "inline": False},
+        ]
+
+        return {
+            "title": f"Strategy: {message.strategy_name}",
+            "color": color,
+            "fields": fields,
+            "footer": {"text": f"ID: {message.strategy_id}"},
+            "timestamp": message.timestamp,
+        }
+
+    def send(self, message: SignalMessage) -> bool:
+        embed = self._build_embed(message)
+        payload = {"embeds": [embed]}
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    self._webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+            if resp.status_code < 300:
+                logger.info("discord_sent", symbol=message.symbol, signal=message.signal_type)
+                return True
+
+            logger.error(
+                "discord_send_failed",
+                status=resp.status_code,
+                body=resp.text,
+                symbol=message.symbol,
+            )
+            return False
+
+        except httpx.HTTPError as exc:
+            logger.error("discord_send_error", error=str(exc), symbol=message.symbol, exc_info=True)
+            return False
+
+
+class BrowserNotifier(BaseNotifier):
+    """Browser 通知器 — 写入 DB，前端轮询拉取"""
+
+    def __init__(self, db_session_factory: Any = None) -> None:
+        self._session_factory = db_session_factory
+
+    @property
+    def channel(self) -> NotificationChannel:
+        return NotificationChannel.BROWSER
+
+    def send(self, message: SignalMessage) -> bool:
+        if not self._session_factory:
+            logger.warning("browser_notifier_no_db", symbol=message.symbol)
+            return False
+
+        try:
+            from app.strategies.models import SignalNotification
+
+            session = self._session_factory()
+            try:
+                notification = SignalNotification(
+                    strategy_id=str(message.strategy_id),
+                    signal_type=message.signal_type,
+                    symbol=message.symbol,
+                    price=message.price,
+                    message=(
+                        f"{message.strategy_name}: {message.signal_type} "
+                        f"{message.symbol} @ {message.price:.4f} — {message.reason}"
+                    ),
+                    channel="browser",
+                    sent=True,
+                    is_read=False,
+                )
+                session.add(notification)
+                session.commit()
+                logger.info("browser_notification_stored", symbol=message.symbol)
+                return True
+            finally:
+                session.close()
+
+        except Exception as exc:
+            logger.error("browser_notifier_error", error=str(exc), symbol=message.symbol, exc_info=True)
             return False
 
 
@@ -283,6 +437,9 @@ class NotifierManager:
         price: float,
         stake_amount: float = 0.0,
         direction: str = "long",
+        confidence: float = 0.0,
+        reason: str = "",
+        language: str = "zh",
         notification_config: dict[str, Any] | None = None,
         extra: dict[str, Any] | None = None,
     ) -> dict[str, dict[str, Any]]:
@@ -296,14 +453,29 @@ class NotifierManager:
             {channel_name: {"ok": bool, "error": str_or_empty}} dict.
         """
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Use multilingual template if no custom reason provided
+        if not reason:
+            template_key = "signal_open" if "open" in signal_type else "signal_close"
+            reason = render_template(
+                template_key,
+                language=language,
+                strategy_name=strategy_name or f"Strategy_{strategy_id}",
+                symbol=symbol,
+                signal_type=signal_type,
+                price=f"{price:.4f}",
+                confidence=f"{confidence:.0%}",
+                reason=f"Amount: {stake_amount:.4f} | Direction: {direction}",
+            )
+
         message = SignalMessage(
             strategy_id=int(strategy_id) if strategy_id else 0,
             strategy_name=strategy_name or f"Strategy_{strategy_id}",
             symbol=symbol,
             signal_type=signal_type,
             price=price,
-            confidence=0.0,
-            reason=f"Amount: {stake_amount:.4f} | Direction: {direction}",
+            confidence=confidence,
+            reason=reason,
             timestamp=now_str,
         )
 
