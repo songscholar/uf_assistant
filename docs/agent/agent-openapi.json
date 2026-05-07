@@ -1,0 +1,355 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "UF Stock Assistant Agent Gateway",
+    "description": "Agent-facing API for AI agents and MCP clients. All endpoints require Agent Token authentication via `Authorization: Bearer uf_agent_xxx` header.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Local development"
+    }
+  ],
+  "security": [
+    {
+      "AgentToken": []
+    }
+  ],
+  "paths": {
+    "/api/agent/v1/whoami": {
+      "get": {
+        "tags": ["Identity"],
+        "summary": "Get current token identity",
+        "description": "Returns the calling token's scopes, allowlists, and metadata.",
+        "operationId": "whoami",
+        "responses": {
+          "200": {
+            "description": "Token identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {"type": "string"},
+                    "scopes": {"type": "array", "items": {"type": "string"}},
+                    "markets": {"type": "array", "items": {"type": "string"}},
+                    "instruments": {"type": "array", "items": {"type": "string"}},
+                    "paper_only": {"type": "boolean"},
+                    "status": {"type": "string"},
+                    "rate_limit_per_min": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/stocks/search": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Search stocks",
+        "operationId": "searchStocks",
+        "parameters": [
+          {"name": "q", "in": "query", "required": true, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 10}}
+        ],
+        "responses": {
+          "200": {"description": "Stock search results"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/stocks/{symbol}/realtime": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Get stock realtime quote",
+        "operationId": "getStockRealtime",
+        "parameters": [
+          {"name": "symbol", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "Realtime quote"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/stocks/{symbol}/history": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Get stock history K-lines",
+        "operationId": "getStockHistory",
+        "parameters": [
+          {"name": "symbol", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "period", "in": "query", "schema": {"type": "string", "default": "daily"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 100}}
+        ],
+        "responses": {
+          "200": {"description": "History data"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/overview": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Get market overview",
+        "operationId": "getMarketOverview",
+        "responses": {
+          "200": {"description": "Market overview"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/indices": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Get market indices",
+        "operationId": "getMarketIndices",
+        "responses": {
+          "200": {"description": "Indices data"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/sectors": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Get sector hot list",
+        "operationId": "getSectors",
+        "responses": {
+          "200": {"description": "Sector list"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/markets/crypto/price": {
+      "get": {
+        "tags": ["Markets"],
+        "summary": "Get crypto price",
+        "operationId": "getCryptoPrice",
+        "parameters": [
+          {"name": "symbol", "in": "query", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "Crypto price"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/chat": {
+      "post": {
+        "tags": ["Chat"],
+        "summary": "Agent chat",
+        "operationId": "chat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {"type": "string"},
+                  "conversation_id": {"type": "string"},
+                  "user_id": {"type": "string"}
+                },
+                "required": ["message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Chat response"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/strategies/list": {
+      "get": {
+        "tags": ["Strategies"],
+        "summary": "List available strategies",
+        "operationId": "listStrategies",
+        "responses": {
+          "200": {"description": "Strategy list"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/strategies/{strategy_key}/evaluate": {
+      "post": {
+        "tags": ["Strategies"],
+        "summary": "Evaluate strategy (async job)",
+        "operationId": "evaluateStrategy",
+        "parameters": [
+          {"name": "strategy_key", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "symbol": {"type": "string"},
+                  "params": {"type": "object"}
+                },
+                "required": ["symbol"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Job submitted"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/jobs/{job_id}": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Get job status",
+        "operationId": "getJob",
+        "parameters": [
+          {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "Job status"},
+          "404": {"description": "Job not found"}
+        }
+      }
+    },
+    "/api/agent/v1/trading/positions": {
+      "get": {
+        "tags": ["Trading"],
+        "summary": "Get positions",
+        "operationId": "getPositions",
+        "responses": {
+          "200": {"description": "Positions"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/trading/orders": {
+      "post": {
+        "tags": ["Trading"],
+        "summary": "Place order (paper-only by default)",
+        "operationId": "placeOrder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "symbol": {"type": "string"},
+                  "side": {"type": "string", "enum": ["buy", "sell"]},
+                  "quantity": {"type": "number"},
+                  "price": {"type": "number"},
+                  "order_type": {"type": "string", "enum": ["market", "limit"]}
+                },
+                "required": ["symbol", "side", "quantity"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Order result"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/agent/v1/trading/kill-switch": {
+      "post": {
+        "tags": ["Trading"],
+        "summary": "Kill switch: cancel all open paper orders",
+        "operationId": "killSwitch",
+        "responses": {
+          "200": {"description": "Cancelled count"}
+        }
+      }
+    },
+    "/api/agent/v1/admin/tokens": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List all tokens",
+        "operationId": "listTokens",
+        "responses": {
+          "200": {"description": "Token list"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AgentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "uf_agent_xxx",
+        "description": "Agent Token issued via admin UI or API"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid agent token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {"type": "string"},
+                "message": {"type": "string"},
+                "details": {"type": "object"},
+                "retriable": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Insufficient scope or operation not allowed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {"type": "string"},
+                "message": {"type": "string"},
+                "details": {"type": "object"},
+                "retriable": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Rate limit exceeded",
+        "headers": {
+          "Retry-After": {"schema": {"type": "integer"}},
+          "X-RateLimit-Limit": {"schema": {"type": "integer"}},
+          "X-RateLimit-Remaining": {"schema": {"type": "integer"}},
+          "X-RateLimit-Reset": {"schema": {"type": "integer"}}
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {"type": "string"},
+                "message": {"type": "string"},
+                "details": {"type": "object"},
+                "retriable": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -21,6 +21,30 @@ logger = get_logger("app.memory.audit_log")
 
 Base = declarative_base()
 
+# 敏感字段自动脱敏
+_REDACT_KEYS = {"password", "secret", "token", "apikey", "api_key", "authorization", "api_secret", "passphrase"}
+
+
+def _redact(obj: Any, depth: int = 0) -> Any:
+    """递归脱敏敏感字段"""
+    if depth > 3:
+        return "<truncated>"
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if str(k).lower() in _REDACT_KEYS:
+                out[k] = "<redacted>"
+            else:
+                out[k] = _redact(v, depth + 1)
+        return out
+    if isinstance(obj, list):
+        return [_redact(v, depth + 1) for v in obj[:20]]
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        if isinstance(obj, str) and len(obj) > 500:
+            return obj[:500] + "..."
+        return obj
+    return str(type(obj).__name__)
+
 
 class AuditLogModel(Base):
     """Agent 审计日志表"""
@@ -75,12 +99,22 @@ class AuditLogStore:
         response_summary: str | None = None,
     ) -> int:
         """
-        记录一次 Agent 调用
-        
+        记录一次 Agent 调用（request_body 自动脱敏）
+
         Returns:
             日志记录 ID
         """
         try:
+            # 脱敏处理
+            redacted_request = None
+            if request_body:
+                redacted_request = json.dumps(
+                    _redact(request_body), ensure_ascii=False, default=str
+                )[:2000]
+            redacted_response = None
+            if response_summary:
+                redacted_response = str(response_summary)[:1000]
+
             with self._get_session() as session:
                 log = AuditLogModel(
                     token_hash=token_hash,
@@ -90,13 +124,13 @@ class AuditLogStore:
                     method=method,
                     status_code=status_code,
                     duration_ms=duration_ms,
-                    request_body=json.dumps(request_body, ensure_ascii=False, default=str)[:2000] if request_body else None,
-                    response_summary=response_summary[:1000] if response_summary else None,
+                    request_body=redacted_request,
+                    response_summary=redacted_response,
                 )
                 session.add(log)
                 session.commit()
                 log_id = log.id
-                
+
             logger.info(
                 "agent_audit_logged",
                 log_id=log_id,

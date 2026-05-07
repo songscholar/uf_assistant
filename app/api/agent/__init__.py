@@ -5,8 +5,9 @@ UF Stock Assistant — Agent Gateway 路由注册
 参考 QuantDinger Agent Gateway 设计：
   - 统一错误格式 {code, message, details, retriable}
   - 每请求审计日志
-  - 速率限制
+  - 速率限制（含 X-RateLimit-* 响应头）
   - markets / instruments 白名单
+  - 幂等性（Idempotency-Key）
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.agent_auth import AgentAuthManager, AgentTokenRecord
@@ -60,6 +61,16 @@ def require_scope(scope: str):
         AgentAuthManager.require_scope(record, scope)
         return record
     return _check_scope
+
+
+# ─────────────────────────── rate limit headers helper ───────────────────────────
+
+def _inject_rate_limit(request: Request, record: AgentTokenRecord) -> None:
+    """将 RateLimit 头写入 request.state，供外层中间件注入到 response"""
+    headers = AgentAuthManager.get_rate_limit_headers(record)
+    if not hasattr(request.state, "agent_headers"):
+        request.state.agent_headers = {}
+    request.state.agent_headers.update(headers)
 
 
 # ─────────────────────────── audit middleware ───────────────────────────
@@ -109,8 +120,12 @@ router.include_router(trading_router, prefix="/trading", tags=["Agent-交易"])
 # ─────────────────────────── whoami ───────────────────────────
 
 @router.get("/whoami")
-async def agent_whoami(record: AgentTokenRecord = Depends(verify_agent_token)):
+async def agent_whoami(
+    request: Request,
+    record: AgentTokenRecord = Depends(verify_agent_token),
+):
     """返回当前 Token 的身份、Scope 和白名单信息"""
+    _inject_rate_limit(request, record)
     return {
         "name": record.name,
         "scopes": record.scopes,
@@ -119,10 +134,10 @@ async def agent_whoami(record: AgentTokenRecord = Depends(verify_agent_token)):
         "paper_only": record.paper_only,
         "status": record.status,
         "rate_limit_per_min": record.rate_limit_per_min,
-        "created_at": record.created_at,
-        "expires_at": record.expires_at,
-        "last_used_at": record.last_used_at,
-        "use_count": record.use_count,
+        "created_at": record.created_at.isoformat() if hasattr(record.created_at, "isoformat") else record.created_at,
+        "expires_at": record.expires_at.isoformat() if record.expires_at and hasattr(record.expires_at, "isoformat") else record.expires_at,
+        "last_used_at": record.last_used_at.isoformat() if record.last_used_at and hasattr(record.last_used_at, "isoformat") else record.last_used_at,
+        "use_count": getattr(record, "use_count", 0),
     }
 
 
@@ -130,37 +145,73 @@ async def agent_whoami(record: AgentTokenRecord = Depends(verify_agent_token)):
 
 @router.get("/admin/tokens")
 async def admin_list_tokens(
+    request: Request,
     record: AgentTokenRecord = Depends(require_scope(AgentScope.CREDENTIALS)),
 ):
     """列出所有 Agent Token（需要 C scope 或 CREDENTIALS 权限）"""
+    _inject_rate_limit(request, record)
     return {"tokens": AgentAuthManager.list_tokens()}
 
 
 @router.post("/admin/tokens/{token_hash}/revoke")
 async def admin_revoke_token(
+    request: Request,
     token_hash: str,
     record: AgentTokenRecord = Depends(require_scope(AgentScope.CREDENTIALS)),
 ):
     """吊销指定 Token"""
+    _inject_rate_limit(request, record)
     ok = AgentAuthManager.revoke_token(token_hash)
     return {"revoked": ok}
 
 
 @router.post("/admin/tokens/{token_hash}/activate")
 async def admin_activate_token(
+    request: Request,
     token_hash: str,
     record: AgentTokenRecord = Depends(require_scope(AgentScope.CREDENTIALS)),
 ):
     """激活指定 Token"""
+    _inject_rate_limit(request, record)
     ok = AgentAuthManager.activate_token(token_hash)
     return {"activated": ok}
 
 
 @router.post("/admin/tokens/{token_hash}/deactivate")
 async def admin_deactivate_token(
+    request: Request,
     token_hash: str,
     record: AgentTokenRecord = Depends(require_scope(AgentScope.CREDENTIALS)),
 ):
     """停用指定 Token"""
+    _inject_rate_limit(request, record)
     ok = AgentAuthManager.deactivate_token(token_hash)
     return {"deactivated": ok}
+
+
+# ─────────────────────────── jobs ───────────────────────────
+
+@router.get("/jobs/{job_id}")
+async def agent_get_job(
+    request: Request,
+    job_id: str,
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
+):
+    """查询异步任务状态"""
+    _inject_rate_limit(request, record)
+    job = AgentAuthManager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.get("/jobs")
+async def agent_list_jobs(
+    request: Request,
+    kind: str | None = None,
+    limit: int = 50,
+    record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
+):
+    """列出最近任务"""
+    _inject_rate_limit(request, record)
+    return {"jobs": AgentAuthManager.list_jobs(kind=kind, limit=limit)}

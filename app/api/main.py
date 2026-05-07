@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AssistantException
 from app.core.logging import get_logger, setup_logging
 
-from .routers import billing, chat, crypto, market, stock, strategy, trading, upload
+from .routers import billing, chat, credentials, crypto, market, stock, strategy, trading, upload
 from .agent import router as agent_router
 
 logger = get_logger("app.api.main")
@@ -39,6 +39,11 @@ async def lifespan(app: FastAPI):
     worker = get_usdt_order_worker()
     worker.start()
     logger.info("usdt_order_worker_started")
+
+    # 初始化交易模块数据库表
+    from app.trading.models import init_trading_tables
+    init_trading_tables()
+    logger.info("trading_tables_initialized")
 
     yield
 
@@ -88,6 +93,17 @@ async def log_requests(request: Request, call_next):
         status=response.status_code,
         duration_ms=duration,
     )
+    return response
+
+
+# Agent Gateway 响应头注入中间件（RateLimit 等）
+@app.middleware("http")
+async def inject_agent_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/agent/v1"):
+        agent_headers = getattr(request.state, "agent_headers", {})
+        for key, value in agent_headers.items():
+            response.headers[key] = str(value)
     return response
 
 
@@ -155,6 +171,7 @@ app.include_router(stock.router, prefix="/api/v1", tags=["股票数据"])
 app.include_router(market.router, prefix="/api/v1", tags=["市场数据"])
 app.include_router(crypto.router, prefix="/api/v1", tags=["虚拟货币"])
 app.include_router(trading.router, prefix="/api/v1", tags=["交易"])
+app.include_router(credentials.router, prefix="/api/v1", tags=["凭证管理"])
 app.include_router(strategy.router, prefix="/api/v1", tags=["策略"])
 app.include_router(upload.router, prefix="/api/v1", tags=["文件上传"])
 app.include_router(billing.router, prefix="/api/v1", tags=["计费"])
