@@ -88,6 +88,7 @@
 | status | string | 状态（默认 paid） |
 | created_at | datetime | 创建时间 |
 | paid_at | datetime | 支付/确认时间 |
+| refunded_at | datetime | 退款时间（null 表示未退款） |
 
 ### 3.3 credits_log（积分日志表）
 
@@ -120,6 +121,7 @@
 | paid_at | datetime | 标记 paid 时间 |
 | confirmed_at | datetime | 标记 confirmed 时间 |
 | expires_at | datetime | 订单过期时间 |
+| refunded_at | datetime | 退款时间（null 表示未退款） |
 
 ---
 
@@ -261,8 +263,8 @@ STOCK_ASSISTANT_USDT_PAY_ENABLED=true
 STOCK_ASSISTANT_USDT_TRC20_XPUB=your-xpub-here
 STOCK_ASSISTANT_USDT_TRONGRID_API_KEY=your-key-here
 
-# USDT 调试（启用后将对账日志写入文件，便于排查链上匹配问题）
-STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG=true
+# USDT 对账日志级别（none/error/warn/info/debug）
+STOCK_ASSISTANT_USDT_DEBUG_RECONCILE_LOG=info
 
 # 管理接口 API Key（X-Admin-Key 校验用，留空则管理接口返回 503）
 STOCK_ASSISTANT_BILLING_ADMIN_API_KEY=change-me-in-production
