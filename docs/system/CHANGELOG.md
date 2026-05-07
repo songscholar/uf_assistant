@@ -3,6 +3,22 @@
 ## [0.1.0] — 2026-05-07
 
 ### Added
+- **用户认证与权限系统**（完整迁移自 QuantDinger）
+  - JWT 认证：HS256 签名、7 天过期、token_version 单客户端登录失效
+  - 密码管理：bcrypt 12 轮哈希、SHA-256 legacy 兼容、密码强度校验
+  - RBAC 权限：viewer / user / manager / admin 四级角色，`require_permission` 工厂
+  - OAuth 2.0：Google + GitHub 第三方登录，DB-backed CSRF state 防护
+  - 邮箱验证：6 位验证码、频率限制（1/60s）、防暴力破解（5 次锁 30 分钟）
+  - 安全基础设施：IP 封锁（10 次/5 分钟→15 分钟）、账户锁定（5 次/60 分钟→30 分钟）、Turnstile CAPTCHA、审计日志
+  - 用户生命周期：CRUD、积分系统、VIP 会员、推荐返利、管理员自举
+  - 认证 API：`/api/v1/auth/login`, `/register`, `/send-code`, `/change-password`, `/oauth/google`, `/oauth/github`, `/logout`, `/info`, `/security-config`
+  - 用户管理 API：`/api/v1/users/list`, `/create`, `/update`, `/delete`, `/reset-password`, `/set-credits`, `/set-vip` + 自助端点
+  - 单用户模式：`STOCK_ASSISTANT_AUTH_SINGLE_USER_MODE=true` 跳过数据库，使用环境变量认证
+  - 全量路由保护：113 个业务 API 路由全部需 JWT Bearer token
+  - 前端：authStore（Zustand）、LoginPage、RegisterPage、ProtectedRoute、UserMenu、API 拦截器
+  - 数据库：9 张 SQLAlchemy 表（uf_users / uf_verification_codes / uf_login_attempts / uf_oauth_links / uf_oauth_states / uf_security_logs / uf_agent_tokens / uf_agent_audit / uf_credits_log）
+  - 单元测试：44 个用例（密码哈希/验证、JWT 生成/验证、API 登录/注册/改密）
+
 - **计费与商业化系统**（新模块）
   - 积分系统：功能按次扣费、积分充值/赠送、变动日志分页查询
   - 会员系统：月付/年付/终身会员，支持叠加与按月发放
