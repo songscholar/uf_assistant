@@ -419,7 +419,7 @@ async def logout() -> dict[str, str]:
 
 @router.get("/auth/info")
 async def get_user_info(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    _ensure(); u = _fu("id = :i", {"i": user["id"]})
+    _ensure(); u = _fu("id = :i", {"i": user["user_id"]})
     if not u:
         raise HTTPException(404, detail="user_not_found")
     return {k: u.get(k) for k in ("id", "username", "email", "role", "nickname", "avatar")}
