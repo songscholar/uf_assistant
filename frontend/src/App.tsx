@@ -5,8 +5,12 @@ import ChatPage from '@/pages/ChatPage'
 import MarketPage from '@/pages/MarketPage'
 import StockPage from '@/pages/StockPage'
 import StrategyPage from '@/pages/StrategyPage'
+import AnalysisPage from '@/pages/AnalysisPage'
 import TradingPage from '@/pages/TradingPage'
 import CryptoPage from '@/pages/CryptoPage'
+import BillingPage from '@/pages/BillingPage'
+import ProfilePage from '@/pages/ProfilePage'
+import AdminUsersPage from '@/pages/AdminUsersPage'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import ProtectedRoute from '@/components/auth/ProtectedRoute'
@@ -57,8 +61,12 @@ export default function App() {
             <Route path="/market" element={<MarketPage />} />
             <Route path="/stock/:symbol" element={<StockPage />} />
             <Route path="/strategy" element={<StrategyPage />} />
+            <Route path="/analysis" element={<AnalysisPage />} />
             <Route path="/trading" element={<TradingPage />} />
             <Route path="/crypto" element={<CryptoPage />} />
+            <Route path="/billing" element={<BillingPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/" element={<Navigate to="/chat" replace />} />
           </Route>
         </Routes>

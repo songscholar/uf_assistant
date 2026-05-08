@@ -32,7 +32,9 @@
       "Bash(pip list *)",
       "Bash(echo \"exit: $?\")",
       "Bash(node -e \"const lc = require\\('lightweight-charts'\\); console.log\\(Object.keys\\(lc\\).filter\\(k => /Series|Color|Area/.test\\(k\\)\\).join\\(', '\\)\\)\")",
-      "Bash(npx ts-node *)"
+      "Bash(npx ts-node *)",
+      "Bash(npm install *)",
+      "Bash(npm test *)"
     ]
   }
 }

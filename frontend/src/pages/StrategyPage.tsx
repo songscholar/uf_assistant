@@ -3,7 +3,6 @@ import {
   Brain,
   Play,
   Search,
-  ArrowRight,
   FlaskConical,
   BarChart3,
   Activity,
@@ -29,7 +28,6 @@ import type {
   StrategyPositionItem,
   StrategyTrade,
   RuntimeMetrics,
-  CodeQuality,
   EquityPoint,
 } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
@@ -83,14 +81,14 @@ function EquityChart({ data }: { data: EquityPoint[] }) {
 
     let disposed = false
 
-    import('lightweight-charts').then(({ createChart }) => {
+    import('lightweight-charts').then(({ createChart, ColorType, AreaSeries }) => {
       if (disposed || !containerRef.current) return
 
       const chart = createChart(containerRef.current, {
         width: containerRef.current.clientWidth,
         height: 260,
         layout: {
-          background: { type: 'solid' as const, color: 'transparent' },
+          background: { type: ColorType.Solid, color: 'transparent' },
           textColor: getComputedStyle(document.documentElement).getPropertyValue('--color-text-secondary').trim() || '#94a3b8',
         },
         grid: {
@@ -103,7 +101,7 @@ function EquityChart({ data }: { data: EquityPoint[] }) {
 
       chartRef.current = chart
 
-      const series = chart.addAreaSeries({
+      const series = chart.addSeries(AreaSeries, {
         lineColor: getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#60a5fa',
         topColor: 'rgba(96,165,250,0.25)',
         bottomColor: 'rgba(96,165,250,0.02)',

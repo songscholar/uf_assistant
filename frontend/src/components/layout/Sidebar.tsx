@@ -13,6 +13,9 @@ import {
   Trash2,
   Pin,
   Pencil,
+  BarChart3,
+  Crown,
+  User,
 } from 'lucide-react'
 import { useChatStore } from '@/stores/chatStore'
 import { useThemeStore, getThemeLabel } from '@/stores/themeStore'
@@ -22,7 +25,7 @@ import { cn } from '@/lib/utils'
 import type { Conversation } from '@/types'
 
 const iconMap: Record<string, React.ElementType> = {
-  MessageSquare, TrendingUp, Brain, Wallet, Bitcoin,
+  MessageSquare, TrendingUp, Brain, Wallet, Bitcoin, BarChart3, Crown, User,
 }
 
 interface SidebarProps {

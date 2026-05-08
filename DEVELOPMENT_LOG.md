@@ -1681,3 +1681,64 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 
 ### 测试验证
 - 所有 11 个文件通过 `python3 -m py_compile` 语法检查
+
+---
+
+## 2026-05-08 — 前端功能扩展（P0/P1/P2）
+
+后端 Phase 1-6 完成后，实现前端 UI 覆盖后端 52 个未对接端点。
+
+### P0: 策略引擎 UI + 分析历史（20 端点）
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `frontend/src/pages/StrategyPage.tsx` | 重构 147→~900 行 | 5 Tab 结构（策略库/回测/指标/运行中/持仓交易） |
+| `frontend/src/pages/AnalysisPage.tsx` | 新建 ~280 行 | 统计卡片 + 搜索 + 分析历史表格 + 展开详情 |
+
+- StrategyPage 回测 Tab: 代码编辑器 + 参数 JSON + lightweight-charts 权益曲线
+- StrategyPage 指标 Tab: 指标卡片网格 + 执行面板
+- StrategyPage 运行中 Tab: 策略状态卡片 + 启停控制 + 运行指标
+- StrategyPage 持仓/交易 Tab: 持仓表格 + 交易记录表格（子 Tab 切换）
+- AnalysisPage: BUY/SELL/HOLD 信号 Badge + 置信度进度条 + 反馈按钮 + 分页
+
+### P1: 会员/积分 + 个人中心（17 端点）
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `frontend/src/pages/BillingPage.tsx` | 新建 ~350 行 | 3 Tab（会员套餐/积分记录/USDT 充值） |
+| `frontend/src/pages/ProfilePage.tsx` | 新建 ~300 行 | 个人信息/通知开关/图表模板管理 |
+
+- BillingPage 套餐 Tab: 套餐卡片网格 + 当前会员状态
+- BillingPage 积分 Tab: 余额摘要卡片 + 积分记录表格 + 分页
+- BillingPage 充值 Tab: USDT 金额输入 + 收款地址 + 复制按钮
+- ProfilePage: 个人信息编辑、3 个通知 toggle 开关、图表模板 CRUD
+- ProfilePage admin 角色显示「用户管理」入口
+
+### P2: 用户管理后台（11 端点）
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `frontend/src/pages/AdminUsersPage.tsx` | 新建 ~450 行 | 统计卡片 + 用户表格 + CRUD 弹窗 |
+
+- 统计卡片: 总用户数、VIP 用户、今日活跃
+- 用户表格: 搜索 + 角色筛选 + 分页
+- 新建/编辑用户弹窗: 用户名、邮箱、密码、角色选择
+- 积分设置弹窗 + VIP 切换按钮
+
+### 公共变更
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `frontend/src/types/index.ts` | +15 接口 | StrategyListItem, BacktestResult, AnalysisRecord, BillingPlan, AdminUser 等 |
+| `frontend/src/lib/api.ts` | +5 API 对象 | strategyEngineApi, analysisApi, billingApi, userApi, userAdminApi |
+| `frontend/src/lib/constants.ts` | NAV_ITEMS +3 | /analysis, /billing, /profile |
+| `frontend/src/App.tsx` | +4 路由 | /analysis, /billing, /profile, /admin/users |
+| `frontend/src/components/layout/Sidebar.tsx` | iconMap +3 | BarChart3, Crown, User |
+
+### 主题兼容
+- 所有新页面使用 CSS 变量（bg-bg-card, text-text-primary, border-border 等）
+- 兼容 light/dark/rain 三主题，无硬编码颜色
+
+### 测试验证
+- `npx tsc --noEmit` 通过
+- `npm run build` 通过（632KB JS + 46KB CSS）
