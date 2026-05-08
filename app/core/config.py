@@ -147,6 +147,9 @@ class AuthSettings(BaseSettings):
     smtp_from: str = Field(default="", description="发件人地址")
     smtp_use_tls: bool = Field(default=True, description="SMTP 是否使用 TLS")
     email_code_expire_minutes: int = Field(default=10, description="邮箱验证码有效期(分钟)")
+    # Resend (第三方邮件服务，优先于 SMTP)
+    resend_api_key: str = Field(default="", description="Resend API Key")
+    resend_from: str = Field(default="noreply@uf-assistant.dev", description="Resend 发件人地址")
     # Credits
     credits_register_bonus: float = Field(default=100, description="注册赠送积分")
     credits_referral_bonus: float = Field(default=50, description="邀请赠送积分")

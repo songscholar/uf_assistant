@@ -50,18 +50,35 @@ def verify_token_version(payload: dict) -> bool:
     if settings.auth.single_user_mode:
         return True
 
-    from app.auth.models import User, get_auth_db_session
-
     user_id = payload.get("user_id")
     token_version = payload.get("token_version")
     if user_id is None or token_version is None:
         return False
 
+    # 先查询 uf_users（SQLAlchemy ORM 表）
+    from app.auth.models import User, get_auth_db_session
+
     session = get_auth_db_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
-        if not user:
-            return False
-        return user.token_version == token_version
+        if user:
+            return user.token_version == token_version
     finally:
         session.close()
+
+    # fallback: 查询 users 表（auth.py 直接 SQL 操作）
+    try:
+        import sqlite3
+        db_path = str(settings.database.url).replace("sqlite:///", "")
+        conn = sqlite3.connect(db_path, timeout=5)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT token_version FROM users WHERE id = ?", (user_id,))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return row["token_version"] == token_version
+    except Exception:
+        pass
+
+    return False

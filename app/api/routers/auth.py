@@ -51,10 +51,10 @@ def _cpw(pw: str, h: str) -> bool:
     return bcrypt.checkpw(pw.encode(), h.encode())
 
 
-def _jwt(uid: str, name: str, role: str = "user") -> str:
+def _jwt(uid: str, name: str, role: str = "user", token_version: int = 0) -> str:
     s = get_settings().auth
     now = datetime.now(timezone.utc)
-    return jwt.encode({"sub": uid, "username": name, "role": role, "iat": now, "exp": now + timedelta(days=s.jwt_expire_days)}, s.secret_key, algorithm=s.jwt_algorithm)
+    return jwt.encode({"sub": name, "user_id": int(uid), "role": role, "token_version": token_version, "iat": now, "exp": now + timedelta(days=s.jwt_expire_days)}, s.secret_key, algorithm=s.jwt_algorithm)
 
 
 def _rip(ip: str) -> None:
@@ -117,11 +117,11 @@ def _e(sql: str, p: dict[str, Any]) -> int | None:
         s.close()
 
 
-_UC = "id, username, email, password_hash, role, nickname, avatar, is_active"
+_UC = "id, username, email, password_hash, role, nickname, avatar, is_active, token_version"
 
 
 def _ur(r: Any) -> dict[str, Any]:
-    return dict(zip(("id", "username", "email", "password_hash", "role", "nickname", "avatar", "is_active"), r[:8]))
+    return dict(zip(("id", "username", "email", "password_hash", "role", "nickname", "avatar", "is_active", "token_version"), r[:9]))
 
 
 def _fu(where: str, p: dict[str, Any]) -> dict[str, Any] | None:
@@ -130,29 +130,46 @@ def _fu(where: str, p: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _ensure() -> None:
-    _e("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(50) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE, password_hash TEXT NOT NULL, role VARCHAR(20) DEFAULT 'user', nickname VARCHAR(100) DEFAULT '', avatar TEXT DEFAULT '', timezone VARCHAR(50) DEFAULT 'Asia/Shanghai', is_active BOOLEAN DEFAULT 1, created_at DATETIME, updated_at DATETIME, metadata TEXT)", {})
+    _e("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(50) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE, password_hash TEXT NOT NULL, role VARCHAR(20) DEFAULT 'user', nickname VARCHAR(100) DEFAULT '', avatar TEXT DEFAULT '', timezone VARCHAR(50) DEFAULT 'Asia/Shanghai', is_active BOOLEAN DEFAULT 1, token_version INTEGER DEFAULT 1, created_at DATETIME, updated_at DATETIME, metadata TEXT)", {})
 
 
 def _cu(username: str, email: str | None, ph: str, role: str = "user", nn: str = "") -> dict[str, Any] | None:
     now = datetime.now(timezone.utc)
-    uid = _e("INSERT INTO users (username,email,password_hash,role,nickname,created_at,updated_at) VALUES (:u,:e,:p,:r,:n,:t,:t)", {"u": username, "e": email, "p": ph, "r": role, "n": nn or username, "t": now})
-    return {"id": uid, "username": username, "email": email, "role": role, "nickname": nn or username} if uid else None
+    uid = _e("INSERT INTO users (username,email,password_hash,role,nickname,token_version,created_at,updated_at) VALUES (:u,:e,:p,:r,:n,0,:t,:t)", {"u": username, "e": email, "p": ph, "r": role, "n": nn or username, "t": now})
+    return {"id": uid, "username": username, "email": email, "role": role, "nickname": nn or username, "token_version": 0} if uid else None
 
 
 async def _mail(to: str, subj: str, body: str) -> bool:
     s = get_settings().auth
-    if not s.smtp_host:
-        return False
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"], msg["From"], msg["To"] = subj, s.smtp_from, to
-    try:
-        srv = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10)
-        if s.smtp_use_tls:
-            srv.starttls()
-        srv.login(s.smtp_user, s.smtp_password); srv.sendmail(s.smtp_from, [to], msg.as_string()); srv.quit()
-        return True
-    except Exception as e:
-        logger.error("email_failed", error=str(e)); return False
+    # 优先使用 Resend（第三方邮件服务 API）
+    if getattr(s, "resend_api_key", None):
+        try:
+            import resend
+            resend.api_key = s.resend_api_key
+            resend.Emails.send({
+                "from": getattr(s, "resend_from", "noreply@uf-assistant.dev"),
+                "to": [to],
+                "subject": subj,
+                "text": body,
+            })
+            logger.info("email_sent_resend", to=to)
+            return True
+        except Exception as e:
+            logger.error("resend_failed", error=str(e))
+    # fallback: SMTP
+    if s.smtp_host:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"], msg["From"], msg["To"] = subj, s.smtp_from, to
+        try:
+            srv = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10)
+            if s.smtp_use_tls:
+                srv.starttls()
+            srv.login(s.smtp_user, s.smtp_password); srv.sendmail(s.smtp_from, [to], msg.as_string()); srv.quit()
+            logger.info("email_sent_smtp", to=to)
+            return True
+        except Exception as e:
+            logger.error("email_failed", error=str(e))
+    return False
 
 
 async def _turnstile(token: str, ip: str) -> bool:
@@ -243,7 +260,7 @@ async def login(request: LoginRequest, req: Request) -> dict[str, Any]:
     s = get_settings().auth; ip = get_client_ip(req)
     if s.single_user_mode:
         if request.username == s.admin_user and request.password == s.admin_password:
-            return {"token": _jwt("0", request.username, "admin"), "user": {"id": 0, "username": request.username, "role": "admin"}}
+            return {"token": _jwt("0", request.username, "admin", 0), "user": {"id": 0, "username": request.username, "role": "admin"}}
         raise HTTPException(401, detail="invalid_credentials")
     if s.turnstile_secret_key and request.turnstile_token and not await _turnstile(request.turnstile_token, ip):
         raise HTTPException(400, detail="turnstile_failed")
@@ -254,7 +271,7 @@ async def login(request: LoginRequest, req: Request) -> dict[str, Any]:
     if not user.get("is_active", True):
         raise HTTPException(403, detail="account_disabled")
     logger.info("login_ok", uid=user["id"])
-    return {"token": _jwt(str(user["id"]), user["username"], user.get("role", "user")), "user": {k: user[k] for k in ("id", "username", "email", "role", "nickname")}}
+    return {"token": _jwt(str(user["id"]), user["username"], user.get("role", "user"), user.get("token_version", 0)), "user": {k: user[k] for k in ("id", "username", "email", "role", "nickname")}}
 
 
 @router.post("/auth/login-code")
@@ -275,7 +292,7 @@ async def login_with_code(request: LoginCodeRequest, req: Request) -> dict[str, 
             raise HTTPException(500, detail="account_creation_failed")
     if not user.get("is_active", True):
         raise HTTPException(403, detail="account_disabled")
-    return {"token": _jwt(str(user["id"]), user["username"], user.get("role", "user")), "user": {k: user[k] for k in ("id", "username", "email", "role")}}
+    return {"token": _jwt(str(user["id"]), user["username"], user.get("role", "user"), user.get("token_version", 0)), "user": {k: user[k] for k in ("id", "username", "email", "role")}}
 
 
 @router.post("/auth/send-code")
@@ -321,7 +338,7 @@ async def register(request: RegisterRequest, req: Request) -> dict[str, Any]:
         raise HTTPException(500, detail="registration_failed")
     if request.referral_code:
         logger.info("referral", uid=user["id"], code=request.referral_code)
-    return {"token": _jwt(str(user["id"]), user["username"]), "user": {"id": user["id"], "username": user["username"], "email": email, "role": "user"}}
+    return {"token": _jwt(str(user["id"]), user["username"], "user", user.get("token_version", 0)), "user": {"id": user["id"], "username": user["username"], "email": email, "role": "user"}}
 
 
 @router.post("/auth/reset-password")
@@ -375,7 +392,7 @@ async def _oauth_cb(provider: str, code: str, state: str) -> RedirectResponse:
         raise HTTPException(400, detail="oauth_no_email")
     _ensure()
     user = _ensure_user(info["email"], info["name"], info["login"])
-    return RedirectResponse(url=f"/auth/callback?token={_jwt(str(user['id']), user['username'], user.get('role', 'user'))}")
+    return RedirectResponse(url=f"/auth/callback?token={_jwt(str(user['id']), user['username'], user.get('role', 'user'), user.get('token_version', 0))}")
 
 
 @router.get("/auth/oauth/google")
