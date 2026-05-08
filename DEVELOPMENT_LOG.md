@@ -1846,3 +1846,90 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - pytest：557 passed，1 pre-existing failure (test_llm_adapter 环境变量测试)
 
 **Commits:** `39ca54e`, `15827de`
+
+## 2026-05-08 — 接口解耦 + 修复 financial/capital-flow 返回类型
+
+**问题：** 后端部分接口返回 200，但前端不渲染数据；一个接口失败拖累全部。
+
+**根因 1：** MarketPage 用 `Promise.all` 但 `getIndices()`/`getSectors()` 没有 `.catch()`， sectors 504 导致全部数据丢弃。
+**根因 2：** StockPage 用 `Promise.all([getInfo, getRealtime, getHistory])` 一个 catch 包全部，三个都 500 时只显示 demo 数据。
+**根因 3：** `get_stock_financial` / `get_capital_flow` 返回 `json.dumps()` 字符串，前端 `res.data` 拿到字符串，`financial?.profit?.length` 判断失败。
+**根因 4：** StockPage 没有调用 `getCapitalFlow` 接口。
+
+**修复：**
+- `frontend/src/pages/MarketPage.tsx`：5 个接口全部独立 `.catch()`，各自设置状态
+- `frontend/src/pages/StockPage.tsx`：info/realtime/history 独立 catch；新增"资金流向" Tab + capital-flow 渲染
+- `app/tools/stock_data.py`：`get_stock_financial`/`get_capital_flow` 直接返回 dict
+- `frontend/src/lib/api.ts`：新增 `stockApi.getCapitalFlow()`
+
+**验证：**
+- /stock/600519/financial → dict, profit count: 4 ✅
+- /stock/600519/capital-flow → dict, flow count: 5 ✅
+- /market/sectors 504 不再影响 indices/overview/longhu/northbound ✅
+
+**Commit:** `ffe44a9`
+
+## 2026-05-08 — 修复 AKShare 数据源稳定性，接入腾讯财经 + Tushare Pro
+
+**问题：** AKShare 东方财富接口在当前网络环境频繁 `RemoteDisconnected`，导致市场数据大面积失败。
+
+**根因：** `stock_zh_a_spot_em`、`stock_sector_spot`、`stock_hsgt_hist_em` 等接口均依赖东方财富服务器，当前网络环境被限制。
+
+### 修复 1：市场概况涨跌家数 → 腾讯财经自统计
+
+- `app/tools/market.py`：新增 `_get_tencent_market_stats()`
+  - 通过 `ak.stock_info_a_code_name()` 获取全市场代码列表
+  - 分批调用 `qt.gtimg.cn`（每批 800 只），解析 `~` 分隔格式
+  - 自统计涨跌家数、涨跌停家数
+- `get_market_overview()`：改为 `stats + eastmoney_api.get_indices()` 组合
+
+### 修复 2：热门板块 → 同花顺 THS 接口
+
+- `get_sector_hot()`：改用 `ak.stock_board_industry_summary_ths()`
+  - 返回字段：板块名、涨跌幅、涨跌家数、净流入、领涨股
+  - 当前军工装备 +3.31% 等数据正常
+
+### 修复 3：北向资金 → 修复列名 + 倒序遍历
+
+- `get_northbound_flow()`：
+  - 修复列名匹配 `"当日成交净买额"` / `"历史累计净买额"`
+  - 数据源从 2024-08 后断档，将 `df.tail(20)` 改为 `df.iloc[::-1]` 倒序遍历全表
+  - 返回最近 5 条有效历史数据
+
+### 修复 4：个股实时行情 → 腾讯财经 fallback
+
+- `app/tools/eastmoney_api.py`：新增 `_get_stock_realtime_tencent()`
+  - 解析 `qt.gtimg.cn` 单股行情（`v_sh600519="..."`）
+  - 字段映射：name[1] code[2] price[3] prev[4] open[5] high[33] low[34] change_pct[32] volume[36] amount[37] pe[39] pb[46] turnover[38] market_cap[44] float_cap[45] limit_up[47] limit_down[48]
+  - `get_stock_realtime()` 优先东财，fallback 到腾讯财经
+
+### 新功能：接入 Tushare Pro 作为长期兜底数据源
+
+- `pyproject.toml`：新增 `tushare>=1.3.0`
+- `.env.example`：新增 `STOCK_ASSISTANT_TUSHARE_TOKEN`
+- `app/core/config.py`：`AppSettings` 新增 `tushare_token`
+- `app/tools/tushare_provider.py`：新建 Tushare 数据提供层
+  - `get_indices()` → `index_daily`（A 股指数日线）
+  - `get_northbound_flow()` → `moneyflow_hsgt`（北向资金）
+  - `get_longhu_bang()` → `top_list`（龙虎榜）
+  - `get_stock_latest()` → `daily`（个股最新日线）
+  - `get_capital_flow()` → `moneyflow`（个股资金流向）
+- `app/tools/market.py`：
+  - `get_market_index()` 东财失败后 fallback 到 Tushare
+  - `get_northbound_flow()` AKShare 断档/失败后 fallback 到 Tushare
+  - `get_longhu_bang()` 东财失败后 fallback 到 Tushare
+- `app/tools/stock_data.py`：
+  - `get_stock_realtime()` 东财失败后 fallback 到 Tushare
+  - `get_capital_flow()` AKShare 失败后 fallback 到 Tushare
+
+**验证：**
+- /market/overview → live, up=3375/down=1682/flat=144 ✅
+- /market/sectors → live, 军工装备+3.31% ✅
+- /market/northbound → live, 5 条历史数据 ✅
+- /market/indices → live, 上证 4179.95 ✅
+- /stock/600519/realtime → tencent, PE=20.79/市值=1.72万亿 ✅
+- /stock/000001/realtime → tencent, PB=0.47/涨停=12.51 ✅
+- /stock/600519/capital-flow → 5 条资金流向 ✅
+- pytest: 557 passed, 1 pre-existing failure ✅
+
+**Commits:** (待生成)

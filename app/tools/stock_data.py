@@ -13,6 +13,7 @@ from app.core.cache import ensure_cache
 from app.core.exceptions import StockDataError
 from app.core.logging import get_logger
 from app.tools import eastmoney_api
+from app.tools import tushare_provider
 
 logger = get_logger("app.tools.stock_data")
 
@@ -95,7 +96,7 @@ def get_stock_info(symbol: str) -> str:
 def get_stock_realtime(symbol: str | None = None) -> str | dict:
     """
     获取股票实时行情
-    单只股票走东财直连 API（~130ms），无需拉取全市场数据
+    单只股票走东财直连 API（~130ms），fallback 到 Tushare Pro 日线
     """
     try:
         if symbol:
@@ -125,8 +126,17 @@ def get_stock_realtime(symbol: str | None = None) -> str | dict:
         return json.dumps(data, ensure_ascii=False, default=str)
 
     except Exception as exc:
-        logger.error("realtime_data_failed", symbol=symbol, error=str(exc))
-        raise StockDataError(f"获取实时行情失败: {exc}") from exc
+        logger.warning("realtime_eastmoney_failed", symbol=symbol, error=str(exc))
+
+    # Fallback: Tushare Pro（日线级最新数据）
+    if symbol:
+        ts_data = tushare_provider.get_stock_latest(symbol)
+        if ts_data:
+            logger.info("realtime_data_fetched", symbol=symbol, source="tushare")
+            return ts_data
+
+    logger.error("realtime_all_failed", symbol=symbol)
+    raise StockDataError(f"获取实时行情失败: 所有数据源均不可用")
 
 
 # =============================================================================
@@ -238,26 +248,31 @@ def get_stock_financial(symbol: str) -> dict:
 
 def get_capital_flow(symbol: str) -> dict:
     """
-    获取个股资金流向
+    获取个股资金流向（AKShare / Tushare fallback）
     """
     try:
         ak = _get_ak()
         df = ak.stock_individual_fund_flow(stock=symbol, market="sh" if symbol.startswith("6") else "sz")
 
-        if df.empty:
-            return {"symbol": symbol, "flow": []}
-
-        records = []
-        for _, row in df.head(5).iterrows():
-            records.append({
-                "date": row.get("日期"),
-                "main_inflow": row.get("主力净流入-净额"),
-                "main_inflow_pct": row.get("主力净流入-净占比"),
-                "retail_inflow": row.get("散户净流入-净额"),
-            })
-
-        return {"symbol": symbol, "flow": records}
-
+        if not df.empty:
+            records = []
+            for _, row in df.head(5).iterrows():
+                records.append({
+                    "date": row.get("日期"),
+                    "main_inflow": row.get("主力净流入-净额"),
+                    "main_inflow_pct": row.get("主力净流入-净占比"),
+                    "retail_inflow": row.get("散户净流入-净额"),
+                })
+            logger.info("capital_flow_fetched", symbol=symbol, count=len(records), source="akshare")
+            return {"symbol": symbol, "flow": records}
     except Exception as exc:
-        logger.error("capital_flow_failed", symbol=symbol, error=str(exc))
-        raise StockDataError(f"获取资金流向失败: {exc}") from exc
+        logger.warning("capital_flow_akshare_failed", symbol=symbol, error=str(exc))
+
+    # Fallback: Tushare Pro
+    ts_records = tushare_provider.get_capital_flow(symbol, limit=5)
+    if ts_records is not None:
+        logger.info("capital_flow_fetched", symbol=symbol, count=len(ts_records), source="tushare")
+        return {"symbol": symbol, "flow": ts_records}
+
+    logger.error("capital_flow_all_failed", symbol=symbol)
+    raise StockDataError(f"获取资金流向失败: 所有数据源均不可用")

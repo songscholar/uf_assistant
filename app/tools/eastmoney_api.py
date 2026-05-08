@@ -56,9 +56,78 @@ def _fetch_json(url: str, timeout: float = 10, retries: int = 2) -> dict[str, An
 # 单股实时行情
 # =============================================================================
 
+def _get_stock_realtime_tencent(symbol: str) -> dict[str, Any]:
+    """腾讯财经单股实时行情（国内直连，~80ms）"""
+    prefix = "sh" if symbol.startswith("6") else "sz"
+    url = f"https://qt.gtimg.cn/q={prefix}{symbol}"
+
+    t0 = time.time()
+    req = request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://finance.qq.com/",
+    })
+    with request.urlopen(req, timeout=10) as resp:
+        text = resp.read().decode("gbk", errors="replace")
+    elapsed_ms = int((time.time() - t0) * 1000)
+
+    lines = [l.strip() for l in text.split(";") if l.strip() and "v_" in l]
+    if not lines:
+        raise ValueError(f"腾讯财经未返回股票 {symbol} 数据")
+
+    line = lines[0]
+    eq = line.index("=")
+    raw = line[eq + 2 : -1]  # 去掉引号
+    fields = raw.split("~")
+    if len(fields) < 55:
+        raise ValueError(f"腾讯财经返回字段不足: {symbol}")
+
+    def _f(idx: int) -> str:
+        return fields[idx] if idx < len(fields) else ""
+
+    def _flt(idx: int) -> float | None:
+        v = _f(idx)
+        try:
+            return float(v) if v else None
+        except ValueError:
+            return None
+
+    price = _flt(3)
+    prev_close = _flt(4)
+    change_pct = _flt(32)
+
+    result = {
+        "symbol": symbol,
+        "name": _f(1),
+        "price": price,
+        "open": _flt(5),
+        "high": _flt(33),
+        "low": _flt(34),
+        "prev_close": prev_close,
+        "change_pct": change_pct,
+        "change": round(price - prev_close, 2) if price and prev_close else None,
+        "amplitude": None,
+        "volume": int(_flt(36) or 0) * 100,  # 手 → 股
+        "amount": round((_flt(37) or 0) * 10000, 2),  # 万元 → 元
+        "pe_ttm": _flt(39),
+        "pb": _flt(46),
+        "turnover": _flt(38),
+        "market_cap": round((_flt(44) or 0) * 100000000, 2),  # 亿 → 元
+        "float_cap": round((_flt(45) or 0) * 100000000, 2),
+        "limit_up": _flt(47),
+        "limit_down": _flt(48),
+        "timestamp": datetime.now().isoformat(),
+        "latency_ms": elapsed_ms,
+        "source": "tencent",
+    }
+
+    logger.info("tencent_stock_realtime", symbol=symbol, latency_ms=elapsed_ms)
+    return result
+
+
 def get_stock_realtime(symbol: str) -> dict[str, Any]:
     """
     获取单股实时行情（~130ms）
+    优先东方财富，fallback 到腾讯财经
 
     Args:
         symbol: 股票代码，如 "600570"
@@ -66,52 +135,59 @@ def get_stock_realtime(symbol: str) -> dict[str, Any]:
     Returns:
         包含价格、涨跌幅、成交量等的字典
     """
-    prefix = "1" if symbol.startswith("6") else "0"
-    url = (
-        f"https://push2.eastmoney.com/api/qt/stock/get"
-        f"?secid={prefix}.{symbol}&fields={STOCK_FIELDS}"
-        f"&_={int(time.time() * 1000)}"
-    )
+    # 优先东方财富
+    try:
+        prefix = "1" if symbol.startswith("6") else "0"
+        url = (
+            f"https://push2.eastmoney.com/api/qt/stock/get"
+            f"?secid={prefix}.{symbol}&fields={STOCK_FIELDS}"
+            f"&_={int(time.time() * 1000)}"
+        )
 
-    t0 = time.time()
-    data = _fetch_json(url)
-    elapsed_ms = int((time.time() - t0) * 1000)
+        t0 = time.time()
+        data = _fetch_json(url)
+        elapsed_ms = int((time.time() - t0) * 1000)
 
-    raw = data.get("data")
-    if not raw:
-        raise ValueError(f"未找到股票 {symbol}")
+        raw = data.get("data")
+        if not raw:
+            raise ValueError(f"未找到股票 {symbol}")
 
-    def _div100(v: Any) -> float | None:
-        if isinstance(v, (int, float)) and v != "-":
-            return v / 100
-        return None
+        def _div100(v: Any) -> float | None:
+            if isinstance(v, (int, float)) and v != "-":
+                return v / 100
+            return None
 
-    result = {
-        "symbol": str(raw.get("f57", symbol)),
-        "name": str(raw.get("f58", "")),
-        "price": _div100(raw.get("f43")),
-        "open": _div100(raw.get("f46")),
-        "high": _div100(raw.get("f44")),
-        "low": _div100(raw.get("f45")),
-        "prev_close": _div100(raw.get("f60")),
-        "change_pct": _div100(raw.get("f170")),
-        "amplitude": _div100(raw.get("f171")),
-        "volume": raw.get("f47"),  # 手
-        "amount": raw.get("f48"),  # 元
-        "pe_ttm": _div100(raw.get("f162")),
-        "pb": _div100(raw.get("f167")),
-        "turnover": _div100(raw.get("f168")),
-        "market_cap": raw.get("f116"),
-        "float_cap": raw.get("f117"),
-        "limit_up": _div100(raw.get("f51")),
-        "limit_down": _div100(raw.get("f52")),
-        "timestamp": datetime.now().isoformat(),
-        "latency_ms": elapsed_ms,
-        "source": "eastmoney",
-    }
+        result = {
+            "symbol": str(raw.get("f57", symbol)),
+            "name": str(raw.get("f58", "")),
+            "price": _div100(raw.get("f43")),
+            "open": _div100(raw.get("f46")),
+            "high": _div100(raw.get("f44")),
+            "low": _div100(raw.get("f45")),
+            "prev_close": _div100(raw.get("f60")),
+            "change_pct": _div100(raw.get("f170")),
+            "amplitude": _div100(raw.get("f171")),
+            "volume": raw.get("f47"),  # 手
+            "amount": raw.get("f48"),  # 元
+            "pe_ttm": _div100(raw.get("f162")),
+            "pb": _div100(raw.get("f167")),
+            "turnover": _div100(raw.get("f168")),
+            "market_cap": raw.get("f116"),
+            "float_cap": raw.get("f117"),
+            "limit_up": _div100(raw.get("f51")),
+            "limit_down": _div100(raw.get("f52")),
+            "timestamp": datetime.now().isoformat(),
+            "latency_ms": elapsed_ms,
+            "source": "eastmoney",
+        }
 
-    logger.info("em_stock_realtime", symbol=symbol, latency_ms=elapsed_ms)
-    return result
+        logger.info("em_stock_realtime", symbol=symbol, latency_ms=elapsed_ms)
+        return result
+    except Exception as exc:
+        logger.warning("em_stock_realtime_failed", symbol=symbol, error=str(exc))
+
+    # Fallback: 腾讯财经
+    return _get_stock_realtime_tencent(symbol)
 
 
 # =============================================================================

@@ -173,6 +173,9 @@ class AppSettings(BaseSettings):
     # LLM Provider 选择
     llm_provider: str = Field(default="kimi", description="默认LLM提供商")
     
+    # 数据源配置
+    tushare_token: str = Field(default="", description="Tushare Pro API Token")
+    
     # 子配置
     log: LogSettings = Field(default_factory=LogSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)

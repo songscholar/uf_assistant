@@ -33,6 +33,7 @@ dependencies = [
   # 数据与金融
   "akshare>=1.15.0",
   "ccxt>=4.4.0",
+  "tushare>=1.3.0",
   "pandas>=2.2.0",
   "numpy>=1.26.0",
   # 文件解析
