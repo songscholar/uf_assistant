@@ -41,13 +41,14 @@ export default function AnalysisPage() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [searchSymbol, setSearchSymbol] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const [historyRes, statsRes] = await Promise.all([
-        analysisApi.getHistory({ page, limit: 15, symbol: searchSymbol || undefined }).catch(() => ({ data: { data: { items: [], total: 0 } } })),
+        analysisApi.getHistory({ page, limit: 15, symbol: searchQuery || undefined }).catch(() => ({ data: { data: { items: [], total: 0 } } })),
         analysisApi.getStats().catch(() => ({ data: { data: {} } })),
       ])
 
@@ -63,13 +64,13 @@ export default function AnalysisPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, searchSymbol])
+  }, [page, searchQuery])
 
   useEffect(() => { fetchData() }, [fetchData])
 
   const handleSearch = () => {
     setPage(1)
-    fetchData()
+    setSearchQuery(searchSymbol)
   }
 
   const handleDelete = async (id: number) => {

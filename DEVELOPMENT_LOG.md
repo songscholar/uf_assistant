@@ -1986,3 +1986,25 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - `/analysis/history?symbol=600570` 返回 1 条 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复 AnalysisPage 输入框防抖 + 字段映射
+
+**问题 1：** 用户在输入框每输入一个字符就触发一次 `/analysis/history` 请求。
+
+**根因：** `fetchData` 的 `useCallback` 依赖数组包含 `searchSymbol`，每次输入字符都会重新创建 `fetchData`，然后 `useEffect` 触发请求。
+
+**修复：** `frontend/src/pages/AnalysisPage.tsx`
+- 引入 `searchQuery` 状态，与 `searchSymbol` 分离
+- 只在点击搜索按钮或按回车时，`setSearchQuery(searchSymbol)`
+- `fetchData` 只依赖 `[page, searchQuery]`，输入字符不再触发请求
+
+**问题 2：** 分析历史返回数据后，信号标签显示 `--`，置信度进度条满格。
+
+**根因：**
+- 后端 `_row_to_dict` 返回 `decision` 字段，前端读取 `record.signal`
+- 后端 `confidence` 是整数 0-100，前端期望 0-1 小数
+
+**修复：**
+- `app/services/analysis_memory.py`：`_row_to_dict` 增加 `signal` 别名，并将 `confidence` 归一化为 0-1 小数
+
+**Commits:** (待生成)

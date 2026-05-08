@@ -463,11 +463,16 @@ def _deep_get(d: Dict[str, Any], *keys: str, default: Any = None) -> Any:
 
 
 def _row_to_dict(row: AnalysisMemoryModel, full: bool = False) -> Dict[str, Any]:
-    """ORM 行转字典"""
+    """ORM 行转字典（前端兼容格式）"""
+    # confidence 数据库存的是 0-100 整数，前端期望 0-1 小数
+    confidence_raw = row.confidence or 0
+    confidence_normalized = confidence_raw / 100.0 if confidence_raw <= 100 else confidence_raw
+
     d: Dict[str, Any] = {
         "id": row.id,
         "decision": row.decision,
-        "confidence": row.confidence,
+        "signal": row.decision,  # 前端兼容字段
+        "confidence": confidence_normalized,
         "price": float(row.price_at_analysis) if row.price_at_analysis else None,
         "summary": row.summary,
         "was_correct": row.was_correct,
