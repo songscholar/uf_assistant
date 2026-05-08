@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
@@ -43,10 +43,11 @@ async def get_analysis_history(
     user: dict = Depends(get_current_user),
     page: int = 1,
     page_size: int = 20,
+    symbol: str | None = Query(None, description="股票代码过滤"),
 ) -> dict[str, Any]:
     """获取用户分析历史"""
     svc = AnalysisMemoryService()
-    data = svc.get_history(user_id=str(user["user_id"]), page=page, page_size=page_size)
+    data = svc.get_history(user_id=str(user["user_id"]), symbol=symbol, page=page, page_size=page_size)
     return {"code": "success", "data": data}
 
 

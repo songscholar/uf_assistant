@@ -41,6 +41,44 @@ def _vol_bands_similar(a: str, b: str) -> bool:
     return (a in low and b in low) or (a in high and b in high)
 
 
+class _AnalysisMemoryAdapter:
+    """适配 fast_analysis.py 的 store(symbol=..., market=..., ...) 调用方式"""
+
+    def __init__(self) -> None:
+        self._svc = AnalysisMemoryService()
+
+    def store(
+        self,
+        symbol: str,
+        market: str,
+        decision: str,
+        price: float,
+        confidence: int = 50,
+        technical_score: float = 0,
+        fundamental_score: float = 0,
+        sentiment_score: float = 0,
+        summary: str = "",
+        user_id: str | None = None,
+    ) -> int | None:
+        """将扁平参数转换为 AnalysisMemoryService.store 期望的 dict 格式"""
+        analysis_result = {
+            "symbol": symbol,
+            "market": market,
+            "decision": decision,
+            "confidence": confidence,
+            "summary": summary,
+            "scores": {
+                "technical_score": technical_score,
+                "fundamental_score": fundamental_score,
+                "sentiment_score": sentiment_score,
+            },
+            "market_data": {
+                "current_price": price,
+            },
+        }
+        return self._svc.store(analysis_result, user_id=user_id)
+
+
 class AnalysisMemoryService:
     """AI 分析记忆服务"""
 
@@ -114,7 +152,7 @@ class AnalysisMemoryService:
             logger.error(f"Failed to get recent memories: {e}")
             return []
 
-    def get_history(self, user_id: str | None = None, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+    def get_history(self, user_id: str | None = None, symbol: str | None = None, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
         """分页查询分析历史"""
         try:
             offset = (page - 1) * page_size
@@ -122,6 +160,8 @@ class AnalysisMemoryService:
             query = session.query(AnalysisMemoryModel)
             if user_id:
                 query = query.filter_by(user_id=user_id)
+            if symbol:
+                query = query.filter_by(symbol=symbol)
             total = query.count()
             rows = (
                 query.order_by(AnalysisMemoryModel.created_at.desc())
@@ -372,6 +412,11 @@ class AnalysisMemoryService:
 # ------------------------------------------------------------------
 # 辅助函数
 # ------------------------------------------------------------------
+
+def get_analysis_memory() -> _AnalysisMemoryAdapter:
+    """返回兼容 fast_analysis.py 调用方式的适配器实例"""
+    return _AnalysisMemoryAdapter()
+
 
 def _extract_price(analysis_result: Dict[str, Any]) -> Decimal | None:
     """从分析结果中提取价格"""

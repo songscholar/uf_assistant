@@ -1962,3 +1962,27 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - 前端构建通过 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复 /analysis/history 接口无数据 + symbol 过滤失效
+
+**问题：** 用户反馈 `/analysis/history?symbol=600570` 瞬间返回但数据为空。
+
+**根因 1：** `fast_analysis.py` 中 `_store_memory` 调用 `from app.services.analysis_memory import get_analysis_memory`，但 `get_analysis_memory()` 函数**根本不存在**，导致每次分析后存储数据时直接 `ImportError`，分析记录永远写不进数据库。
+
+**根因 2：** `fast_analysis.py` 期望的 `store(symbol=..., market=..., decision=..., ...)` 接口与 `AnalysisMemoryService.store(analysis_result: dict, user_id)` 的签名完全不同，即使修复导入，参数也对不上。
+
+**根因 3：** `/analysis/history` 接口只接收 `page`/`page_size`，**没有 `symbol` 查询参数**，前端传的 `symbol=600570` 被完全忽略。
+
+**修复：**
+- `app/services/analysis_memory.py`：
+  - 新增 `_AnalysisMemoryAdapter` 类，适配 `fast_analysis.py` 的扁平参数调用方式
+  - 新增 `get_analysis_memory()` 工厂函数
+  - `get_history()` 增加 `symbol` 过滤参数
+- `app/api/routers/analysis.py`：`/history` 接口新增 `symbol: str | None = Query(None)` 参数
+
+**验证：**
+- 手动写入 2 条测试数据 ✅
+- `/analysis/history` 返回 2 条 ✅
+- `/analysis/history?symbol=600570` 返回 1 条 ✅
+
+**Commits:** (待生成)
