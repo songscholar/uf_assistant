@@ -104,12 +104,18 @@ _UC = "id, username, email, password_hash, role, nickname, avatar, timezone, is_
 
 
 def _ur(r: Any) -> dict[str, Any]:
+    def _fmt_dt(v: Any) -> str:
+        if not v:
+            return ""
+        if hasattr(v, "isoformat"):
+            return v.isoformat()
+        return str(v)
     return {
         "id": r[0], "username": r[1], "email": r[2], "role": r[4],
         "nickname": r[5] or "", "avatar": r[6] or "", "timezone": r[7] or "Asia/Shanghai",
         "is_active": bool(r[8]),
-        "created_at": r[9].isoformat() if r[9] else "",
-        "updated_at": r[10].isoformat() if r[10] else "",
+        "created_at": _fmt_dt(r[9]),
+        "updated_at": _fmt_dt(r[10]),
     }
 
 
@@ -292,12 +298,12 @@ async def get_credits_log(user_id: int, _admin: dict[str, Any] = Depends(require
 @router.get("/users/profile")
 async def get_profile(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Get own profile with billing info."""
-    rows = _q(f"SELECT {_UC} FROM users WHERE id = :id", {"id": user["id"]})
+    rows = _q(f"SELECT {_UC} FROM users WHERE id = :id", {"id": user["user_id"]})
     if not rows:
         raise HTTPException(404, detail="user_not_found")
     profile = _ur(rows[0])
     if get_settings().billing.enabled:
-        br = _q("SELECT credits,vip_expires_at,vip_is_lifetime,vip_plan FROM user_credits WHERE user_id = :uid", {"uid": str(user["id"])})
+        br = _q("SELECT credits,vip_expires_at,vip_is_lifetime,vip_plan FROM user_credits WHERE user_id = :uid", {"uid": str(user["user_id"])})
         if br:
             b = br[0]
             profile["billing"] = {"credits": float(b[0]), "vip_expires_at": b[1].isoformat() if b[1] else None, "vip_is_lifetime": bool(b[2]), "vip_plan": b[3] or ""}
@@ -309,7 +315,7 @@ async def get_profile(user: dict[str, Any] = Depends(get_current_user)) -> dict[
 @router.put("/users/profile/update")
 async def update_profile(request: UpdateProfileRequest, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     """Update own profile (nickname, avatar, timezone)."""
-    sets: list[str] = []; p: dict[str, Any] = {"id": user["id"], "now": datetime.now(timezone.utc)}
+    sets: list[str] = []; p: dict[str, Any] = {"id": user["user_id"], "now": datetime.now(timezone.utc)}
     if request.nickname is not None:
         sets.append("nickname = :n"); p["n"] = request.nickname
     if request.avatar is not None:
@@ -320,17 +326,17 @@ async def update_profile(request: UpdateProfileRequest, user: dict[str, Any] = D
         raise HTTPException(400, detail="no_fields_to_update")
     sets.append("updated_at = :now")
     _e(f"UPDATE users SET {', '.join(sets)} WHERE id = :id", p)
-    logger.info("profile_updated", uid=user["id"])
+    logger.info("profile_updated", uid=user["user_id"])
     return {"message": "profile_updated"}
 
 
 @router.post("/users/change-password")
 async def change_password(request: ChangePasswordRequest, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     """Change own password."""
-    rows = _q("SELECT password_hash FROM users WHERE id = :id", {"id": user["id"]})
+    rows = _q("SELECT password_hash FROM users WHERE id = :id", {"id": user["user_id"]})
     if not rows or not _cpw(request.old_password, rows[0][0]):
         raise HTTPException(400, detail="old_password_incorrect")
-    _e("UPDATE users SET password_hash = :p, updated_at = :now WHERE id = :id", {"p": _hpw(request.new_password), "id": user["id"], "now": datetime.now(timezone.utc)})
+    _e("UPDATE users SET password_hash = :p, updated_at = :now WHERE id = :id", {"p": _hpw(request.new_password), "id": user["user_id"], "now": datetime.now(timezone.utc)})
     return {"message": "password_changed"}
 
 
@@ -339,7 +345,7 @@ async def change_password(request: ChangePasswordRequest, user: dict[str, Any] =
 @router.get("/users/notification-settings")
 async def get_notification_settings(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Get notification settings for current user."""
-    meta = _get_meta(user["id"])
+    meta = _get_meta(user["user_id"])
     defaults = {"email_on_login": True, "email_on_credits_change": True, "email_on_vip_change": True, "push_enabled": False}
     return {"notifications": {**defaults, **meta.get("notifications", {})}}
 
@@ -347,10 +353,10 @@ async def get_notification_settings(user: dict[str, Any] = Depends(get_current_u
 @router.put("/users/notification-settings")
 async def update_notification_settings(request: dict[str, Any], user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     """Update notification settings for current user."""
-    meta = _get_meta(user["id"])
+    meta = _get_meta(user["user_id"])
     meta["notifications"] = request
-    _save_meta(user["id"], meta)
-    logger.info("notification_settings_updated", uid=user["id"])
+    _save_meta(user["user_id"], meta)
+    logger.info("notification_settings_updated", uid=user["user_id"])
     return {"message": "notification_settings_updated"}
 
 
@@ -359,13 +365,13 @@ async def update_notification_settings(request: dict[str, Any], user: dict[str, 
 @router.get("/users/chart-templates")
 async def get_chart_templates(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Get chart templates for current user."""
-    return {"templates": _get_meta(user["id"]).get("chart_templates", [])}
+    return {"templates": _get_meta(user["user_id"]).get("chart_templates", [])}
 
 
 @router.post("/users/chart-templates")
 async def save_chart_template(request: dict[str, Any], user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Save a chart template."""
-    meta = _get_meta(user["id"])
+    meta = _get_meta(user["user_id"])
     templates: list[dict[str, Any]] = meta.get("chart_templates", [])
     tid = request.get("id")
     if tid:
@@ -378,18 +384,18 @@ async def save_chart_template(request: dict[str, Any], user: dict[str, Any] = De
         request["id"] = max((t.get("id", 0) for t in templates), default=0) + 1
         templates.append(request)
     meta["chart_templates"] = templates
-    _save_meta(user["id"], meta)
-    logger.info("chart_template_saved", uid=user["id"], tid=request.get("id"))
+    _save_meta(user["user_id"], meta)
+    logger.info("chart_template_saved", uid=user["user_id"], tid=request.get("id"))
     return {"message": "template_saved", "id": request.get("id")}
 
 
 @router.delete("/users/chart-templates")
 async def delete_chart_template(template_id: int, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     """Delete a chart template."""
-    meta = _get_meta(user["id"])
+    meta = _get_meta(user["user_id"])
     meta["chart_templates"] = [t for t in meta.get("chart_templates", []) if t.get("id") != template_id]
-    _save_meta(user["id"], meta)
-    logger.info("chart_template_deleted", uid=user["id"], tid=template_id)
+    _save_meta(user["user_id"], meta)
+    logger.info("chart_template_deleted", uid=user["user_id"], tid=template_id)
     return {"message": "template_deleted"}
 
 

@@ -1816,3 +1816,15 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - `python3 -m py_compile` 通过
 - `npm run build` 通过
 - **69 个前端测试全部通过**
+
+## 2026-05-06 — 修复 ProfilePage / BillingPage 404
+
+**问题：** 前端调用 `/user/profile`、`/user/notification-settings`、`/user/chart-templates`、`/billing/membership` 报 404。
+
+**根因：** 后端路由使用 `/users/...`（复数），前端使用 `/user/...`（单数）；`/billing/membership` 后端未实现。
+
+**修复：**
+- `app/api/routers/user.py`：为 `/users/profile`、`/users/notification-settings`、`/users/chart-templates` 添加 `/user/...` 别名路由，并补充 PUT/DELETE `/user/chart-templates/{id}` 路径参数版本（前端使用路径参数而非 query param）。
+- `app/api/routers/billing.py`：新增 `/billing/membership` 路由，返回当前用户计费信息。
+
+**Commit:** `00d0a50`
