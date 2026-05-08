@@ -202,7 +202,7 @@ def get_stock_history(
 # 财务数据
 # =============================================================================
 
-def get_stock_financial(symbol: str) -> str:
+def get_stock_financial(symbol: str) -> dict:
     """
     获取股票财务数据
     """
@@ -225,7 +225,7 @@ def get_stock_financial(symbol: str) -> str:
                 })
 
         logger.info("financial_fetched", symbol=symbol)
-        return json.dumps(financial, ensure_ascii=False, default=str)
+        return financial
 
     except Exception as exc:
         logger.error("financial_failed", symbol=symbol, error=str(exc))
@@ -236,7 +236,7 @@ def get_stock_financial(symbol: str) -> str:
 # 资金流向
 # =============================================================================
 
-def get_capital_flow(symbol: str) -> str:
+def get_capital_flow(symbol: str) -> dict:
     """
     获取个股资金流向
     """
@@ -245,7 +245,7 @@ def get_capital_flow(symbol: str) -> str:
         df = ak.stock_individual_fund_flow(stock=symbol, market="sh" if symbol.startswith("6") else "sz")
 
         if df.empty:
-            return json.dumps({"symbol": symbol, "flow": []}, ensure_ascii=False)
+            return {"symbol": symbol, "flow": []}
 
         records = []
         for _, row in df.head(5).iterrows():
@@ -256,7 +256,7 @@ def get_capital_flow(symbol: str) -> str:
                 "retail_inflow": row.get("散户净流入-净额"),
             })
 
-        return json.dumps({"symbol": symbol, "flow": records}, ensure_ascii=False, default=str)
+        return {"symbol": symbol, "flow": records}
 
     except Exception as exc:
         logger.error("capital_flow_failed", symbol=symbol, error=str(exc))

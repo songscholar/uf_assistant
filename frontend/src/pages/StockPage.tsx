@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Search, TrendingUp, TrendingDown, FileText } from 'lucide-react'
+import { Search, TrendingUp, TrendingDown, FileText, Wallet } from 'lucide-react'
 import { stockApi } from '@/lib/api'
 import type { StockRealtime, KlineData, StockInfo } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
@@ -13,40 +13,25 @@ export default function StockPage() {
   const [history, setHistory] = useState<KlineData[]>([])
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
 
-  // Financial data
-  const [activeTab, setActiveTab] = useState<'chart' | 'financial'>('chart')
+  // Financial & Capital flow data
+  const [activeTab, setActiveTab] = useState<'chart' | 'financial' | 'capital'>('chart')
   const [financial, setFinancial] = useState<any>(null)
   const [financialLoading, setFinancialLoading] = useState(false)
+  const [capitalFlow, setCapitalFlow] = useState<any>(null)
+  const [capitalFlowLoading, setCapitalFlowLoading] = useState(false)
 
   useEffect(() => {
     if (!symbol) return
     const fetchData = async () => {
-      try {
-        const [infoRes, realtimeRes, historyRes] = await Promise.all([
-          stockApi.getInfo(symbol),
-          stockApi.getRealtime(symbol),
-          stockApi.getHistory(symbol, period),
-        ])
-        setStockInfo(infoRes.data)
-        setRealtime(realtimeRes.data)
-        setHistory(historyRes.data || [])
-      } catch (err) {
-        // Demo data
-        setStockInfo({ symbol, name: '贵州茅台', industry: '白酒', market: '沪市' })
-        setRealtime({
-          symbol,
-          name: '贵州茅台',
-          current_price: 1688.0,
-          change: 20.5,
-          change_percent: 1.23,
-          open: 1670,
-          high: 1695,
-          low: 1665,
-          prev_close: 1667.5,
-          volume: 25432,
-          amount: 428000000,
-        })
-      }
+      // 各接口独立请求，失败互不影响
+      const [infoRes, realtimeRes, historyRes] = await Promise.all([
+        stockApi.getInfo(symbol).catch(() => null),
+        stockApi.getRealtime(symbol).catch(() => null),
+        stockApi.getHistory(symbol, period).catch(() => null),
+      ])
+      if (infoRes) setStockInfo(infoRes.data)
+      if (realtimeRes) setRealtime(realtimeRes.data)
+      if (historyRes) setHistory(historyRes.data || [])
     }
     fetchData()
   }, [symbol, period])
@@ -60,21 +45,29 @@ export default function StockPage() {
         const res = await stockApi.getFinancial(symbol)
         setFinancial(res.data)
       } catch (err) {
-        // Demo data
-        setFinancial({
-          symbol,
-          profit: [
-            { date: '2024-09-30', revenue: 1207.76, net_profit: 608.28 },
-            { date: '2024-06-30', revenue: 819.31, net_profit: 416.96 },
-            { date: '2024-03-31', revenue: 464.85, net_profit: 240.65 },
-            { date: '2023-12-31', revenue: 1505.60, net_profit: 747.34 },
-          ],
-        })
+        setFinancial(null)
       } finally {
         setFinancialLoading(false)
       }
     }
     fetchFinancial()
+  }, [symbol, activeTab])
+
+  // Fetch capital flow when tab switches to capital
+  useEffect(() => {
+    if (!symbol || activeTab !== 'capital') return
+    const fetchCapitalFlow = async () => {
+      setCapitalFlowLoading(true)
+      try {
+        const res = await stockApi.getCapitalFlow(symbol)
+        setCapitalFlow(res.data)
+      } catch (err) {
+        setCapitalFlow(null)
+      } finally {
+        setCapitalFlowLoading(false)
+      }
+    }
+    fetchCapitalFlow()
   }, [symbol, activeTab])
 
   const handleSearch = () => {
@@ -155,11 +148,12 @@ export default function StockPage() {
             </div>
           </div>
 
-          {/* Tabs: Chart / Financial */}
+          {/* Tabs: Chart / Financial / Capital Flow */}
           <div className="flex items-center gap-1 mb-4 border-b border-border">
             {[
               { key: 'chart' as const, label: '行情', icon: TrendingUp },
               { key: 'financial' as const, label: '财务', icon: FileText },
+              { key: 'capital' as const, label: '资金流向', icon: Wallet },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -235,6 +229,43 @@ export default function StockPage() {
                 </table>
               ) : (
                 <div className="text-center py-8 text-text-tertiary text-sm">暂无财务数据</div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'capital' && (
+            <div className="bg-bg-card border border-border rounded-xl overflow-hidden">
+              {capitalFlowLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <div className="animate-shimmer w-8 h-8 rounded-full" />
+                </div>
+              ) : capitalFlow?.flow?.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-bg-secondary text-text-secondary text-xs">
+                      <th className="text-left px-4 py-2 font-medium">日期</th>
+                      <th className="text-right px-4 py-2 font-medium">主力净流入</th>
+                      <th className="text-right px-4 py-2 font-medium">主力占比 (%)</th>
+                      <th className="text-right px-4 py-2 font-medium">散户净流入</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-light">
+                    {capitalFlow.flow.map((item: any, i: number) => (
+                      <tr key={i} className="hover:bg-bg-hover transition-colors duration-150">
+                        <td className="px-4 py-3 text-text-primary">{item.date}</td>
+                        <td className={cn('px-4 py-3 text-right font-medium', (item.main_inflow || 0) >= 0 ? 'text-success' : 'text-danger')}>
+                          {(item.main_inflow || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right text-text-primary">{item.main_inflow_pct?.toFixed(2)}%</td>
+                        <td className={cn('px-4 py-3 text-right font-medium', (item.retail_inflow || 0) >= 0 ? 'text-success' : 'text-danger')}>
+                          {(item.retail_inflow || 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-center py-8 text-text-tertiary text-sm">暂无资金流向数据</div>
               )}
             </div>
           )}

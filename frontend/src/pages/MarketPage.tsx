@@ -122,34 +122,37 @@ export default function MarketPage() {
     else setRefreshing(true)
     setError('')
 
-    try {
-      const [indicesRes, sectorsRes, northboundRes, overviewRes, longhuRes] = await Promise.all([
-        marketApi.getIndices(),
-        marketApi.getSectors(),
-        marketApi.getNorthbound().catch(() => ({ data: null })),
-        marketApi.getOverview().catch(() => ({ data: null })),
-        marketApi.getLonghu().catch(() => ({ data: null })),
-      ])
+    // 每个接口独立请求，失败互不影响
+    const [indicesRes, sectorsRes, northboundRes, overviewRes, longhuRes] = await Promise.all([
+      marketApi.getIndices().catch(() => ({ data: null })),
+      marketApi.getSectors().catch(() => ({ data: null })),
+      marketApi.getNorthbound().catch(() => ({ data: null })),
+      marketApi.getOverview().catch(() => ({ data: null })),
+      marketApi.getLonghu().catch(() => ({ data: null })),
+    ])
 
-      const idxData = indicesRes.data || {}
-      const secData = sectorsRes.data || {}
+    const idxData = indicesRes?.data || {}
+    const secData = sectorsRes?.data || {}
+    const nbData = northboundRes?.data || null
+    const ovData = overviewRes?.data || null
+    const lhData = longhuRes?.data || null
 
-      setIndices(idxData.indices || [])
-      setSectors(secData.sectors || [])
-      setNorthbound(northboundRes.data)
-      setOverview(overviewRes.data)
-      setLonghu(longhuRes.data)
+    // 只有成功获取到数据才更新状态
+    if (idxData && idxData.indices) setIndices(idxData.indices)
+    if (secData && secData.sectors) setSectors(secData.sectors)
+    if (nbData) setNorthbound(nbData)
+    if (ovData) setOverview(ovData)
+    if (lhData) setLonghu(lhData)
 
-      // 只要任一接口是 demo，就标记为 demo
-      const isDemo = idxData.source === 'demo' || secData.source === 'demo'
-      setDataSource(isDemo ? 'demo' : 'live')
-      setLastUpdated(idxData.timestamp || new Date().toISOString())
-    } catch (err: any) {
-      setError(err.message || '获取数据失败')
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
+    // 根据有数据的接口判断来源
+    const hasLive = idxData?.source === 'live' || secData?.source === 'live'
+    const hasDemo = idxData?.source === 'demo' || secData?.source === 'demo'
+    if (hasLive) setDataSource('live')
+    else if (hasDemo) setDataSource('demo')
+    setLastUpdated(idxData?.timestamp || new Date().toISOString())
+
+    setLoading(false)
+    setRefreshing(false)
   }, [])
 
   useEffect(() => {

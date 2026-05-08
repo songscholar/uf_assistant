@@ -1828,3 +1828,21 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - `app/api/routers/billing.py`：新增 `/billing/membership` 路由，返回当前用户计费信息。
 
 **Commit:** `00d0a50`
+
+## 2026-05-08 — 修复 /user/* 500 错误
+
+**问题：** 404 修复后，/user/profile、/user/notification-settings、/user/chart-templates 报 500。
+
+**根因 1：** `get_current_user()` 返回 `{"user_id", "username", "role"}`，但 `user.py` 全篇使用 `user["id"]` → KeyError `'id'`。
+**根因 2：** SQLite 文本查询返回的日期是字符串，`_ur()` 直接调用 `.isoformat()` → `'str' object has no attribute 'isoformat'`。
+
+**修复：**
+- `user.py`：17 处 `user["id"]` → `user["user_id"]`
+- `user.py`：`_ur()` 添加 `_fmt_dt()` 安全格式化，兼容 datetime 对象和字符串
+- 移除误提交的 `<MagicMock ...>` 零字节文件
+
+**验证：**
+- curl 测试：/user/profile (200)、/user/notification-settings (200)、/user/chart-templates (200)、/billing/membership (200)
+- pytest：557 passed，1 pre-existing failure (test_llm_adapter 环境变量测试)
+
+**Commits:** `39ca54e`, `15827de`
