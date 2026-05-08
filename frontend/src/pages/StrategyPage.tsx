@@ -219,7 +219,7 @@ function BacktestTab() {
           <>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: '总收益', value: formatPercent(result.total_return), color: result.total_return >= 0 ? 'text-success' : 'text-danger' },
+                { label: '总收益', value: formatPercent(result.total_return), color: result.total_return >= 0 ? 'text-rise' : 'text-fall' },
                 { label: '最大回撤', value: formatPercent(-result.max_drawdown), color: 'text-danger' },
                 { label: '夏普比率', value: result.sharpe_ratio.toFixed(2), color: 'text-text-primary' },
                 { label: '胜率', value: formatPercent(result.win_rate), color: 'text-text-primary' },
@@ -530,7 +530,7 @@ function PositionsTradesTab() {
                   <td className="px-4 py-3 text-right text-text-secondary">{pos.entry_price?.toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-text-secondary">{pos.highest_price?.toFixed(2) ?? '--'}</td>
                   <td className="px-4 py-3 text-right text-text-secondary">{pos.lowest_price?.toFixed(2) ?? '--'}</td>
-                  <td className={cn('px-4 py-3 text-right font-medium', pos.unrealized_pnl >= 0 ? 'text-success' : 'text-danger')}>
+                  <td className={cn('px-4 py-3 text-right font-medium', pos.unrealized_pnl >= 0 ? 'text-rise' : 'text-fall')}>
                     {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-right text-text-tertiary text-xs">
@@ -572,7 +572,7 @@ function PositionsTradesTab() {
                   </td>
                   <td className="px-4 py-3 text-right text-text-primary">{t.price.toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-text-primary">{t.quantity}</td>
-                  <td className={cn('px-4 py-3 text-right font-medium', t.pnl >= 0 ? 'text-success' : 'text-danger')}>
+                  <td className={cn('px-4 py-3 text-right font-medium', t.pnl >= 0 ? 'text-rise' : 'text-fall')}>
                     {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}
                   </td>
                 </tr>
@@ -943,7 +943,7 @@ function LibraryTab() {
                       <td className="py-1.5 px-2 text-text-primary font-mono">{item.symbol || item.代码}</td>
                       <td className="py-1.5 px-2 text-text-primary">{item.name || item.名称}</td>
                       <td className="py-1.5 px-2 text-right text-text-primary">{item.price || item.最新价}</td>
-                      <td className={cn('py-1.5 px-2 text-right font-medium', (item.change_pct || item.涨跌幅) >= 0 ? 'text-success' : 'text-danger')}>
+                      <td className={cn('py-1.5 px-2 text-right font-medium', (item.change_pct || item.涨跌幅) >= 0 ? 'text-rise' : 'text-fall')}>
                         {(item.change_pct || item.涨跌幅) >= 0 ? '+' : ''}{item.change_pct || item.涨跌幅}%
                       </td>
                     </tr>

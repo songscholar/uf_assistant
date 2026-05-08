@@ -32,15 +32,15 @@ function IndexCard({ index }: { index: MarketIndex }) {
           )}
         </div>
         {isUp ? (
-          <TrendingUp className="w-4 h-4 text-success" />
+          <TrendingUp className="w-4 h-4 text-rise" />
         ) : (
-          <TrendingDown className="w-4 h-4 text-danger" />
+          <TrendingDown className="w-4 h-4 text-fall" />
         )}
       </div>
       <div className="text-2xl font-bold text-text-primary mb-1">
         {formatNumber(index.value)}
       </div>
-      <div className={cn('text-sm font-medium', isUp ? 'text-success' : 'text-danger')}>
+      <div className={cn('text-sm font-medium', isUp ? 'text-rise' : 'text-fall')}>
         {isUp ? '▲' : '▼'} {formatPercent(index.change_percent)}
       </div>
     </div>
@@ -55,7 +55,7 @@ function SectorRow({ sector, rank }: { sector: SectorData; rank: number }) {
         <span className="w-5 text-xs text-text-tertiary text-center font-mono">{rank}</span>
         <span className="text-sm text-text-primary">{sector.name}</span>
       </div>
-      <span className={cn('text-sm font-medium', isUp ? 'text-success' : 'text-danger')}>
+      <span className={cn('text-sm font-medium', isUp ? 'text-rise' : 'text-fall')}>
         {isUp ? '+' : ''}{sector.change_percent.toFixed(2)}%
       </span>
     </div>
@@ -223,11 +223,11 @@ export default function MarketPage() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
-              { label: '上涨', value: summary.up || 0, color: 'text-success', bg: 'bg-success/10' },
-              { label: '下跌', value: summary.down || 0, color: 'text-danger', bg: 'bg-danger/10' },
+              { label: '上涨', value: summary.up || 0, color: 'text-rise', bg: 'bg-rise/10' },
+              { label: '下跌', value: summary.down || 0, color: 'text-fall', bg: 'bg-fall/10' },
               { label: '平盘', value: summary.flat || 0, color: 'text-text-secondary', bg: 'bg-bg-hover' },
-              { label: '涨停', value: summary.limit_up || 0, color: 'text-success', bg: 'bg-success/10' },
-              { label: '跌停', value: summary.limit_down || 0, color: 'text-danger', bg: 'bg-danger/10' },
+              { label: '涨停', value: summary.limit_up || 0, color: 'text-rise', bg: 'bg-rise/10' },
+              { label: '跌停', value: summary.limit_down || 0, color: 'text-fall', bg: 'bg-fall/10' },
             ].map((item) => (
               <div key={item.label} className={cn('border border-border rounded-xl p-4 card-hover', item.bg)}>
                 <div className="text-xs text-text-tertiary mb-1">{item.label}</div>
@@ -285,7 +285,7 @@ export default function MarketPage() {
                   <span
                     className={cn(
                       'text-sm font-medium',
-                      item.net_inflow >= 0 ? 'text-success' : 'text-danger'
+                      item.net_inflow >= 0 ? 'text-rise' : 'text-fall'
                     )}
                   >
                     {item.net_inflow >= 0 ? '+' : ''}
@@ -329,7 +329,7 @@ export default function MarketPage() {
                       <td className="py-2.5 px-3 text-text-primary font-mono">{item.symbol}</td>
                       <td className="py-2.5 px-3 text-text-primary">{item.name}</td>
                       <td className="py-2.5 px-3 text-right text-text-primary">{item.close_price?.toFixed ? item.close_price.toFixed(2) : item.close_price}</td>
-                      <td className={cn('py-2.5 px-3 text-right font-medium', isUp ? 'text-success' : 'text-danger')}>
+                      <td className={cn('py-2.5 px-3 text-right font-medium', isUp ? 'text-rise' : 'text-fall')}>
                         {isUp ? '+' : ''}{item.change_pct?.toFixed ? item.change_pct.toFixed(2) : item.change_pct}%
                       </td>
                       <td className="py-2.5 px-3 text-text-secondary max-w-xs truncate" title={item.reason}>

@@ -172,7 +172,7 @@ export default function CryptoPage() {
                       <span
                         className={cn(
                           'flex items-center justify-end gap-1 font-medium',
-                          isUp ? 'text-success' : 'text-danger'
+                          isUp ? 'text-rise' : 'text-fall'
                         )}
                       >
                         {isUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}

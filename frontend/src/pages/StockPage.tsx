@@ -114,7 +114,7 @@ export default function StockPage() {
                 <div className="text-2xl font-bold text-text-primary">
                   ¥{formatNumber(realtime.current_price)}
                 </div>
-                <div className={cn('text-sm font-medium flex items-center justify-end gap-1', isUp ? 'text-success' : 'text-danger')}>
+                <div className={cn('text-sm font-medium flex items-center justify-end gap-1', isUp ? 'text-rise' : 'text-fall')}>
                   {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                   {isUp ? '+' : ''}{formatNumber(realtime.change)} ({formatPercent(realtime.change_percent)})
                 </div>
@@ -253,11 +253,11 @@ export default function StockPage() {
                     {capitalFlow.flow.map((item: any, i: number) => (
                       <tr key={i} className="hover:bg-bg-hover transition-colors duration-150">
                         <td className="px-4 py-3 text-text-primary">{item.date}</td>
-                        <td className={cn('px-4 py-3 text-right font-medium', (item.main_inflow || 0) >= 0 ? 'text-success' : 'text-danger')}>
+                        <td className={cn('px-4 py-3 text-right font-medium', (item.main_inflow || 0) >= 0 ? 'text-rise' : 'text-fall')}>
                           {(item.main_inflow || 0).toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-right text-text-primary">{item.main_inflow_pct?.toFixed(2)}%</td>
-                        <td className={cn('px-4 py-3 text-right font-medium', (item.retail_inflow || 0) >= 0 ? 'text-success' : 'text-danger')}>
+                        <td className={cn('px-4 py-3 text-right font-medium', (item.retail_inflow || 0) >= 0 ? 'text-rise' : 'text-fall')}>
                           {(item.retail_inflow || 0).toLocaleString()}
                         </td>
                       </tr>

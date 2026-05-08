@@ -227,7 +227,7 @@ export default function TradingPage() {
             { label: '总资产', value: `¥${formatNumber(portfolio.total_assets)}` },
             { label: '可用资金', value: `¥${formatNumber(portfolio.available_cash)}` },
             { label: '持仓市值', value: `¥${formatNumber(portfolio.position_value)}` },
-            { label: '累计收益', value: `${portfolio.total_pnl >= 0 ? '+' : ''}${formatPercent(portfolio.total_pnl_percent)}`, color: portfolio.total_pnl >= 0 ? 'text-success' : 'text-danger' },
+            { label: '累计收益', value: `${portfolio.total_pnl >= 0 ? '+' : ''}${formatPercent(portfolio.total_pnl_percent)}`, color: portfolio.total_pnl >= 0 ? 'text-rise' : 'text-fall' },
           ].map((item) => (
             <div key={item.label} className="bg-bg-card border border-border rounded-xl p-4 card-hover cursor-pointer">
               <div className="text-xs text-text-tertiary mb-1">{item.label}</div>
@@ -241,19 +241,19 @@ export default function TradingPage() {
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
           <div className="bg-bg-card border border-border rounded-xl p-4">
             <div className="text-xs text-text-tertiary mb-1">已实现盈亏</div>
-            <div className={cn('text-xl font-bold', (pnl?.total_realized ?? 0) >= 0 ? 'text-success' : 'text-danger')}>
+            <div className={cn('text-xl font-bold', (pnl?.total_realized ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
               {pnl?.total_realized?.toFixed(2) ?? '0.00'}
             </div>
           </div>
           <div className="bg-bg-card border border-border rounded-xl p-4">
             <div className="text-xs text-text-tertiary mb-1">未实现盈亏</div>
-            <div className={cn('text-xl font-bold', (pnl?.total_unrealized ?? 0) >= 0 ? 'text-success' : 'text-danger')}>
+            <div className={cn('text-xl font-bold', (pnl?.total_unrealized ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
               {pnl?.total_unrealized?.toFixed(2) ?? '0.00'}
             </div>
           </div>
           <div className="bg-bg-card border border-border rounded-xl p-4">
             <div className="text-xs text-text-tertiary mb-1">总盈亏</div>
-            <div className={cn('text-xl font-bold', (pnl?.total_pnl ?? 0) >= 0 ? 'text-success' : 'text-danger')}>
+            <div className={cn('text-xl font-bold', (pnl?.total_pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
               {pnl?.total_pnl?.toFixed(2) ?? '0.00'}
             </div>
           </div>
@@ -393,7 +393,7 @@ export default function TradingPage() {
                       <td className="px-4 py-3 text-right text-text-primary">{pos.quantity}</td>
                       <td className="px-4 py-3 text-right text-text-secondary">{pos.avg_cost?.toFixed(2)}</td>
                       <td className="px-4 py-3 text-right text-text-primary">{pos.current_price?.toFixed(2) ?? '--'}</td>
-                      <td className={cn('px-4 py-3 text-right font-medium', (pos.unrealized_pnl ?? 0) >= 0 ? 'text-success' : 'text-danger')}>
+                      <td className={cn('px-4 py-3 text-right font-medium', (pos.unrealized_pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
                         {pos.unrealized_pnl?.toFixed(2) ?? '--'}
                       </td>
                     </tr>
@@ -406,7 +406,7 @@ export default function TradingPage() {
                       <td className="px-4 py-3 text-right text-text-secondary">{formatNumber(pos.avg_cost)}</td>
                       <td className="px-4 py-3 text-right text-text-primary">{formatNumber(pos.current_price)}</td>
                       <td className="px-4 py-3 text-right text-text-primary">{formatNumber(pos.market_value)}</td>
-                      <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-success' : 'text-danger')}>
+                      <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
                         {pos.pnl >= 0 ? '+' : ''}{formatPercent(pos.pnl_percent)}
                       </td>
                     </tr>

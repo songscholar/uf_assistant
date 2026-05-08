@@ -204,12 +204,12 @@ function CreditsTab() {
                   <td className="px-4 py-3">
                     <span className={cn(
                       'px-2 py-0.5 rounded text-xs font-medium',
-                      log.amount > 0 ? 'bg-success-bg text-success' : 'bg-danger-bg text-danger'
+                      log.amount > 0 ? 'bg-rise-bg text-rise' : 'bg-fall-bg text-fall'
                     )}>
                       {log.type}
                     </span>
                   </td>
-                  <td className={cn('px-4 py-3 text-right font-medium', log.amount > 0 ? 'text-success' : 'text-danger')}>
+                  <td className={cn('px-4 py-3 text-right font-medium', log.amount > 0 ? 'text-rise' : 'text-fall')}>
                     {log.amount > 0 ? '+' : ''}{log.amount}
                   </td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{log.description}</td>

@@ -28,6 +28,12 @@
   --color-warning: #f59e0b;
   --color-info: #3b82f6;
 
+  /* 股票涨跌配色：中国股市惯例 涨红跌绿 */
+  --color-rise: #ef4444;
+  --color-rise-bg: rgba(239, 68, 68, 0.08);
+  --color-fall: #22c55e;
+  --color-fall-bg: rgba(34, 197, 94, 0.08);
+
   /* Spacing */
   --spacing-18: 4.5rem;
   --spacing-22: 5.5rem;
@@ -69,6 +75,12 @@
   --color-danger: #f87171;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
+
+  /* 股票涨跌配色：中国股市惯例 涨红跌绿 */
+  --color-rise: #f87171;
+  --color-rise-bg: rgba(248, 113, 113, 0.12);
+  --color-fall: #4ade80;
+  --color-fall-bg: rgba(74, 222, 128, 0.12);
 }
 
 /* Rain theme overrides */
@@ -96,6 +108,12 @@
   --color-danger: #f87171;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
+
+  /* 股票涨跌配色：中国股市惯例 涨红跌绿 */
+  --color-rise: #f87171;
+  --color-rise-bg: rgba(248, 113, 113, 0.12);
+  --color-fall: #4ade80;
+  --color-fall-bg: rgba(74, 222, 128, 0.12);
 }
 
 /* ===== Base ===== */
