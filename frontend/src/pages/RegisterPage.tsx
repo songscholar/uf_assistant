@@ -15,9 +15,12 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [codeSent, setCodeSent] = useState(false)
   const [codeCooldown, setCodeCooldown] = useState(0)
+  const [codeLoading, setCodeLoading] = useState(false)
 
   const sendCode = async () => {
-    if (!email) return
+    if (!email || codeLoading) return
+    setCodeLoading(true)
+    setError('')
     try {
       await api.post('/auth/send-code', { email, code_type: 'register' })
       setCodeSent(true)
@@ -28,9 +31,11 @@ export default function RegisterPage() {
           return prev - 1
         })
       }, 1000)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '发送验证码失败'
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || (err instanceof Error ? err.message : '发送验证码失败')
       setError(msg)
+    } finally {
+      setCodeLoading(false)
     }
   }
 
@@ -91,10 +96,13 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={sendCode}
-                disabled={codeCooldown > 0}
-                className="px-3 py-2 rounded-lg bg-[var(--color-accent)] text-white text-sm whitespace-nowrap disabled:opacity-50"
+                disabled={codeCooldown > 0 || codeLoading}
+                className="px-3 py-2 rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 text-sm whitespace-nowrap font-medium
+                           hover:bg-[var(--color-accent)]/25 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] hover:-translate-y-[1px]
+                           active:scale-[0.985] active:bg-[var(--color-accent)]/35 active:translate-y-0
+                           disabled:opacity-50 transition-all duration-200"
               >
-                {codeCooldown > 0 ? `${codeCooldown}s` : '发送验证码'}
+                {codeLoading ? '发送中...' : codeCooldown > 0 ? `${codeCooldown}s` : '发送验证码'}
               </button>
             </div>
           </div>
@@ -140,13 +148,16 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading || !codeSent}
-            className="w-full py-2.5 rounded-lg bg-[var(--color-accent)] text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="w-full py-2.5 rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 font-medium
+                       hover:bg-[var(--color-accent)]/25 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] hover:-translate-y-[1px]
+                       active:scale-[0.985] active:bg-[var(--color-accent)]/35 active:translate-y-0
+                       disabled:opacity-50 transition-all duration-200"
           >
             {loading ? '注册中...' : '注册'}
           </button>
 
           <div className="text-sm text-center">
-            <Link to="/login" className="text-[var(--color-accent)] hover:underline">已有账号？登录</Link>
+            <Link to="/login" className="text-[var(--color-accent)] hover:underline hover:opacity-80 transition-opacity">已有账号？登录</Link>
           </div>
         </form>
       </div>

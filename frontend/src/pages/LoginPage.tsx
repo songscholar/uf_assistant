@@ -64,13 +64,16 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg bg-[var(--color-accent)] text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="w-full py-2.5 rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 font-medium
+                       hover:bg-[var(--color-accent)]/25 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] hover:-translate-y-[1px]
+                       active:scale-[0.985] active:bg-[var(--color-accent)]/35 active:translate-y-0
+                       disabled:opacity-50 transition-all duration-200"
           >
             {loading ? '登录中...' : '登录'}
           </button>
 
           <div className="flex items-center justify-between text-sm">
-            <Link to="/register" className="text-[var(--color-accent)] hover:underline">注册账号</Link>
+            <Link to="/register" className="text-[var(--color-accent)] hover:underline hover:opacity-80 transition-opacity">注册账号</Link>
           </div>
         </form>
       </div>
