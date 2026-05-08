@@ -332,8 +332,18 @@ export default function MarketPage() {
                       <td className={cn('py-2.5 px-3 text-right font-medium', isUp ? 'text-rise' : 'text-fall')}>
                         {isUp ? '+' : ''}{item.change_pct?.toFixed ? item.change_pct.toFixed(2) : item.change_pct}%
                       </td>
-                      <td className="py-2.5 px-3 text-text-secondary max-w-xs truncate" title={item.reason}>
-                        {item.reason}
+                      <td className="py-2.5 px-3 text-text-secondary max-w-xs">
+                        {Array.isArray(item.reason) ? (
+                          <div className="flex flex-wrap gap-1">
+                            {item.reason.map((r: string, ri: number) => (
+                              <span key={ri} className="inline-block px-1.5 py-0.5 rounded bg-bg-secondary text-xs text-text-secondary whitespace-nowrap">
+                                {r}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="truncate block" title={item.reason}>{item.reason}</span>
+                        )}
                       </td>
                     </tr>
                   )

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from urllib import error, request
 
@@ -284,21 +284,59 @@ def get_longhu_bang(date: str | None = None, limit: int = 20) -> list[dict[str, 
     data = _fetch_json(url)
     elapsed_ms = int((time.time() - t0) * 1000)
 
-    records = data.get("result", {}).get("data", [])
+    result_obj = data.get("result")
+    if result_obj is None:
+        # 当日无数据（休市），回退到最近交易日
+        logger.warning("em_longhu_no_data", date=date, message=data.get("message"))
+        # 尝试往前找最近 5 个交易日
+        for back in range(1, 6):
+            back_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=back)).strftime("%Y-%m-%d")
+            back_url = (
+                f"https://datacenter-web.eastmoney.com/api/data/v1/get"
+                f"?sortColumns=TURNOVERRATE&sortTypes=-1&pageSize={limit}&pageNumber=1"
+                f"&reportName=RPT_DAILYBILLBOARD_DETAILSNEW"
+                f"&columns=ALL&filter=(TRADE_DATE%3E%3D%27{back_date}%27)"
+                f"&source=WEB&client=WEB&_={int(time.time() * 1000)}"
+            )
+            try:
+                back_data = _fetch_json(back_url)
+                back_result = back_data.get("result")
+                if back_result is not None:
+                    data = back_data
+                    date = back_date
+                    result_obj = back_result
+                    logger.info("em_longhu_fallback_date", date=back_date)
+                    break
+            except Exception:
+                continue
+        else:
+            return []
 
-    results: list[dict[str, Any]] = []
+    records = result_obj.get("data", [])
+
+    # 同一只股票同一天可能因多个原因上榜，按代码去重并合并原因
+    merged: dict[str, dict[str, Any]] = {}
     for r in records:
-        results.append({
-            "symbol": r.get("SECURITY_CODE", ""),
-            "name": r.get("SECURITY_NAME_ABBR", ""),
-            "close_price": r.get("CLOSE_PRICE"),
-            "change_pct": r.get("CHANGE_RATE"),
-            "reason": r.get("EXPLANATION", ""),
-            "turnover_rate": r.get("TURNOVERRATE"),
-        })
+        code = str(r.get("SECURITY_CODE", ""))
+        if not code:
+            continue
+        if code not in merged:
+            merged[code] = {
+                "symbol": code,
+                "name": r.get("SECURITY_NAME_ABBR", ""),
+                "close_price": r.get("CLOSE_PRICE"),
+                "change_pct": r.get("CHANGE_RATE"),
+                "reason": [str(r.get("EXPLANATION", ""))],
+                "turnover_rate": r.get("TURNOVERRATE"),
+            }
+        else:
+            reason = str(r.get("EXPLANATION", ""))
+            if reason and reason not in merged[code]["reason"]:
+                merged[code]["reason"].append(reason)
 
-    logger.info("em_longhu", date=date, count=len(results), latency_ms=elapsed_ms)
-    return results
+    results = list(merged.values())
+    logger.info("em_longhu", date=date, raw_count=len(records), merged_count=len(results), latency_ms=elapsed_ms)
+    return {"data": results, "date": date}
 
 
 # =============================================================================

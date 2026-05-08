@@ -1933,3 +1933,32 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - pytest: 557 passed, 1 pre-existing failure ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复龙虎榜重复数据 + 休市回退
+
+**问题 1：** 用户反馈龙虎榜有重复数据。
+
+**根因：** 东方财富龙虎榜 API 中，同一只股票同一天可能因多个原因上榜（如同时满足"日涨幅15%"和"连续三日涨幅偏离30%"），导致原始数据中出现重复股票代码。
+
+**修复：**
+- `app/tools/eastmoney_api.py`：`get_longhu_bang()` 中按 `SECURITY_CODE` 去重，合并 `EXPLANATION`（上榜原因）为数组
+- `frontend/src/pages/MarketPage.tsx`：龙虎榜原因展示改为多个小标签（badge），兼容字符串/数组两种格式
+
+**问题 2：** 周日调用龙虎榜接口报错 `AttributeError: 'NoneType' object has no attribute 'get'`。
+
+**根因：** 周日股市休市，东方财富返回 `{"result": null, "message": "返回数据为空"}`，但代码未做空值保护，直接 `data.get("result").get("data")` 导致 `NoneType` 报错。
+
+**修复：**
+- `app/tools/eastmoney_api.py`：
+  - 添加 `result` 为 `None` 时的空值保护
+  - 当日无数据时自动回退查找最近 5 个交易日
+  - 返回值改为 `{"data": [...], "date": actual_date}`，确保前端日期正确
+- `app/tools/market.py`：适配新的返回值格式
+
+**验证：**
+- 周日调用 → 自动回退到 2026-05-08（周五）✅
+- 去重后 16 条，原始 20 条 ✅
+- 振宏股份原因合并为 ["当日换手率达到20%", "当日收盘价跌幅达到-20%"] ✅
+- 前端构建通过 ✅
+
+**Commits:** (待生成)

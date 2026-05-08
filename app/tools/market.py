@@ -134,9 +134,9 @@ def get_longhu_bang(date: str | None = None) -> dict:
     获取龙虎榜数据（东方财富 / Tushare fallback）
     """
     try:
-        records = eastmoney_api.get_longhu_bang(date)
-        logger.info("longhu_bang_fetched", date=date, records=len(records), source="eastmoney")
-        return {"date": date, "data": records}
+        result = eastmoney_api.get_longhu_bang(date)
+        logger.info("longhu_bang_fetched", date=result.get("date"), records=len(result.get("data", [])), source="eastmoney")
+        return result
     except Exception as exc:
         logger.warning("longhu_bang_eastmoney_failed", date=date, error=str(exc))
 
