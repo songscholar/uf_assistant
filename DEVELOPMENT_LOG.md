@@ -1742,3 +1742,77 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 ### 测试验证
 - `npx tsc --noEmit` 通过
 - `npm run build` 通过（632KB JS + 46KB CSS）
+
+### 前端测试基础设施
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/vitest.config.ts` | Vitest 配置：jsdom 环境、路径别名、覆盖率设置 |
+| `frontend/src/test/setup.ts` | 测试初始化：`import '@testing-library/jest-dom/vitest'` |
+| `frontend/src/test/render.tsx` | `renderWithRouter` 辅助函数：包裹 BrowserRouter |
+| `frontend/src/lib/__tests__/utils.test.ts` | 工具函数测试（10 个用例） |
+| `frontend/src/lib/__tests__/api.test.ts` | API 模块导出测试（20 个用例） |
+| `frontend/src/pages/__tests__/StrategyPage.test.tsx` | StrategyPage 测试（5 个用例） |
+| `frontend/src/pages/__tests__/AnalysisPage.test.tsx` | AnalysisPage 测试（6 个用例） |
+| `frontend/src/pages/__tests__/BillingPage.test.tsx` | BillingPage 测试（5 个用例） |
+| `frontend/src/pages/__tests__/ProfilePage.test.tsx` | ProfilePage 测试（6 个用例） |
+| `frontend/src/pages/__tests__/AdminUsersPage.test.tsx` | AdminUsersPage 测试（9 个用例） |
+
+- `frontend/package.json` 新增 devDependencies：vitest、@testing-library/react、@testing-library/jest-dom、@testing-library/user-event、jsdom、@types/jsdom
+- 测试脚本：`npm run test`（单次）、`npm run test:watch`（监听）、`npm run test:coverage`（覆盖率）
+
+### 测试结果
+- **69 个测试全部通过**
+- 7 个测试文件：2 个 lib + 5 个 pages
+
+---
+
+## 2026-05-08 — 币圈/市场数据 Bug 修复
+
+### 变更摘要
+
+测试交易所行情和币圈行情数据流时发现并修复 4 个 bug。
+
+### Bug 1: 交易所默认值不匹配（CRITICAL）
+
+| 文件 | 变更 |
+|------|------|
+| `frontend/src/lib/api.ts` | `cryptoApi` 4 个方法的 `exchange` 默认值从 `'binance'` 改为 `'gate'` |
+
+- 后端 `app/api/routers/crypto.py` 默认 `exchange: str = Query("gate")`
+- Gate.io 国内可直连、无需 API Key；Binance 国内无法访问
+- 前后端默认值不一致导致前端请求发到 binance 而后端处理为 gate，或前端显式传 binance 导致连接失败
+
+### Bug 2: CryptoPrice 字段名不匹配
+
+| 文件 | 变更 |
+|------|------|
+| `frontend/src/types/index.ts` | `CryptoPrice` 接口：`change_24h_percent` → `change_pct_24h`，移除 `market_cap`，新增 `quote_volume_24h` |
+| `frontend/src/pages/CryptoPage.tsx` | 表格列读取 `change_pct_24h` 和 `quote_volume_24h`，市值列显示 `--` |
+
+- 后端 `list_top_cryptos()` 返回 `change_pct_24h`（非 `change_24h_percent`），无 `market_cap` 字段
+- 前端读取不存在的字段导致 24h 涨跌始终显示 0%，市值列始终为空
+
+### Bug 3: 龙虎榜双重编码
+
+| 文件 | 变更 |
+|------|------|
+| `app/tools/market.py` | `get_longhu_bang()` 返回类型从 `str`（`json.dumps()`）改为 `dict`；移除未使用的 `json` 和 `timedelta` 导入 |
+
+- `get_longhu_bang()` 返回 `json.dumps({"date": ..., "data": ...})`（字符串）
+- FastAPI 自动将 dict 序列化为 JSON，导致字符串被再次序列化（双重编码）
+- 前端收到的是字符串 `"{\"date\": ...}"` 而非对象
+
+### Bug 4: 币圈行情无降级数据
+
+| 文件 | 变更 |
+|------|------|
+| `app/tools/crypto_data.py` | `list_top_cryptos()` 失败时返回 5 个主流币的 demo 数据（`source: "demo"`），不再抛出 `CryptoDataError` |
+
+- 市场行情端点（指数/板块/概况）均有 demo fallback，但币圈端点没有
+- 网络异常时前端直接报错白屏，与其他端点行为不一致
+
+### 验证结果
+- `python3 -m py_compile` 通过
+- `npm run build` 通过
+- **69 个前端测试全部通过**

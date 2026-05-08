@@ -151,7 +151,7 @@ export default function CryptoPage() {
           <tbody className="divide-y divide-border-light">
             {cryptos.length > 0 ? (
               cryptos.map((crypto, index) => {
-                const isUp = (crypto.change_24h_percent || 0) >= 0
+                const isUp = (crypto.change_pct_24h || 0) >= 0
                 return (
                   <tr key={crypto.symbol} className="hover:bg-bg-hover transition-smooth">
                     <td className="px-4 py-3 text-text-tertiary">{index + 1}</td>
@@ -177,15 +177,13 @@ export default function CryptoPage() {
                       >
                         {isUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                         {isUp ? '+' : ''}
-                        {(crypto.change_24h_percent || 0).toFixed(2)}%
+                        {(crypto.change_pct_24h || 0).toFixed(2)}%
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-text-secondary">
-                      ${crypto.volume_24h ? (crypto.volume_24h / 1e9).toFixed(2) : '--'}B
+                      ${crypto.quote_volume_24h ? (crypto.quote_volume_24h / 1e9).toFixed(2) : '--'}B
                     </td>
-                    <td className="px-4 py-3 text-right text-text-secondary">
-                      ${crypto.market_cap ? (crypto.market_cap / 1e9).toFixed(2) : '--'}B
-                    </td>
+                    <td className="px-4 py-3 text-right text-text-secondary">--</td>
                   </tr>
                 )
               })

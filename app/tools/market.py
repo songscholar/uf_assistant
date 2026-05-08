@@ -5,8 +5,7 @@ UF Stock Assistant — 市场数据工具
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from app.core.cache import ensure_cache
@@ -136,7 +135,7 @@ def get_sector_hot() -> dict:
 # 龙虎榜
 # =============================================================================
 
-def get_longhu_bang(date: str | None = None) -> str:
+def get_longhu_bang(date: str | None = None) -> dict:
     """
     获取龙虎榜数据
     """
@@ -144,7 +143,7 @@ def get_longhu_bang(date: str | None = None) -> str:
         records = eastmoney_api.get_longhu_bang(date)
 
         logger.info("longhu_bang_fetched", date=date, records=len(records))
-        return json.dumps({"date": date, "data": records}, ensure_ascii=False, default=str)
+        return {"date": date, "data": records}
 
     except Exception as exc:
         logger.error("longhu_bang_failed", date=date, error=str(exc))

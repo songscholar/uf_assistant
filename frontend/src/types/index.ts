@@ -110,10 +110,9 @@ export interface Portfolio {
 export interface CryptoPrice {
   symbol: string;
   price: number;
-  change_24h: number;
-  change_24h_percent: number;
+  change_pct_24h: number;
   volume_24h: number;
-  market_cap: number;
+  quote_volume_24h: number;
 }
 
 // ── 实盘交易类型 ─────────────────────────────────────────────────────────────

@@ -151,7 +151,16 @@ def list_top_cryptos(limit: int = 20, exchange: str = "gate") -> dict:
 
     except Exception as exc:
         logger.error("top_cryptos_failed", error=str(exc))
-        raise CryptoDataError(f"获取币种排行失败: {exc}") from exc
+        return {
+            "cryptos": [
+                {"symbol": "BTC/USDT", "price": 0, "change_pct_24h": 0, "volume_24h": 0, "quote_volume_24h": 0},
+                {"symbol": "ETH/USDT", "price": 0, "change_pct_24h": 0, "volume_24h": 0, "quote_volume_24h": 0},
+                {"symbol": "BNB/USDT", "price": 0, "change_pct_24h": 0, "volume_24h": 0, "quote_volume_24h": 0},
+                {"symbol": "SOL/USDT", "price": 0, "change_pct_24h": 0, "volume_24h": 0, "quote_volume_24h": 0},
+                {"symbol": "XRP/USDT", "price": 0, "change_pct_24h": 0, "volume_24h": 0, "quote_volume_24h": 0},
+            ],
+            "source": "demo",
+        }
 
 
 def get_crypto_ohlcv(
