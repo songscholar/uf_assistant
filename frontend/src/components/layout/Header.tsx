@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Share2, MoreHorizontal, Settings, Copy, Check, MessageCircle, AtSign, LogOut, User } from 'lucide-react'
+import { Menu, Share2, MoreHorizontal, Settings, LogOut, User } from 'lucide-react'
 import { useChatStore } from '@/stores/chatStore'
 import { useRainStore } from '@/stores/rainStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -25,16 +25,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const { togglePanel } = useRainStore()
   const { user, logout } = useAuthStore()
 
-  const [shareOpen, setShareOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  const shareRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (shareRef.current && !shareRef.current.contains(e.target as Node)) setShareOpen(false)
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
     }
     document.addEventListener('mousedown', handler)
@@ -55,21 +50,15 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const handleShare = async () => {
     const url = window.location.href
     const text = `${title} - UF Stock Assistant`
-    if (navigator.share) {
-      try {
-        await navigator.share({ title, text, url })
-        return
-      } catch { /* fallback */ }
-    }
-    setShareOpen(true)
-  }
-
-  const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch { /* ignore */ }
+      if (navigator.share) {
+        await navigator.share({ title, text, url })
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url)
+      }
+    } catch {
+      // 用户取消或浏览器不支持，静默处理
+    }
   }
 
   const handleLogout = () => {
@@ -104,43 +93,13 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <Settings className="w-4 h-4" />
         </button>
 
-        {/* Share Button */}
-        <div ref={shareRef} className="relative">
-          <button
-            onClick={handleShare}
-            className="p-2 rounded-lg hover:bg-bg-hover transition-smooth text-text-secondary"
-            title="分享"
-          >
-            <Share2 className="w-4 h-4" />
-          </button>
-
-          {shareOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-bg-card border border-border shadow-xl py-2 z-50">
-              <div className="px-3 py-1.5 text-xs font-medium text-text-tertiary">分享到</div>
-              <button
-                onClick={handleCopy}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-bg-hover transition-colors"
-              >
-                {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                {copied ? '已复制链接' : '复制链接'}
-              </button>
-              <button
-                onClick={() => { handleCopy(); setShareOpen(false) }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-bg-hover transition-colors"
-              >
-                <MessageCircle className="w-4 h-4 text-green-500" />
-                微信
-              </button>
-              <button
-                onClick={() => { handleCopy(); setShareOpen(false) }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-bg-hover transition-colors"
-              >
-                <AtSign className="w-4 h-4 text-blue-500" />
-                QQ
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={handleShare}
+          className="p-2 rounded-lg hover:bg-bg-hover transition-smooth text-text-secondary"
+          title="分享"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
 
         {/* More Menu */}
         <div ref={menuRef} className="relative">
