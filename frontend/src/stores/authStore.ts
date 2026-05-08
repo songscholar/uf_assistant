@@ -25,10 +25,13 @@ interface AuthState {
   fetchUserInfo: () => Promise<void>
 }
 
+// 初始化时从 localStorage 同步读取 token，避免刷新后 ProtectedRoute 先重定向
+const _initToken = localStorage.getItem('token')
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: null,
-  isAuthenticated: false,
+  token: _initToken,
+  isAuthenticated: !!_initToken,
 
   login: async (username, password) => {
     const resp = await api.post('/auth/login', { username, password })

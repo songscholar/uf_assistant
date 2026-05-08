@@ -44,6 +44,7 @@ export default function App() {
   const isRain = theme === 'rain'
 
   useEffect(() => {
+    // store 初始化时已同步读取 token，这里只需恢复用户信息
     loadFromStorage()
   }, [loadFromStorage])
 
