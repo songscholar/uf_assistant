@@ -85,6 +85,21 @@ async def get_membership_plans(user: dict = Depends(get_current_user)) -> dict[s
         raise BillingError(str(e))
 
 
+@router.get("/membership")
+async def get_membership(user: dict = Depends(get_current_user)) -> dict[str, Any]:
+    """获取当前用户会员/计费信息（/billing/membership）"""
+    try:
+        svc = get_billing_service()
+        billing_info = svc.get_user_billing_info(str(user["user_id"]))
+        return {
+            "code": "success",
+            "data": billing_info,
+        }
+    except Exception as e:
+        logger.error(f"get_membership failed: {e}", exc_info=True)
+        raise BillingError(str(e))
+
+
 @router.get("/credits")
 async def get_credits(user: dict = Depends(get_current_user)) -> dict[str, Any]:
     """获取用户积分余额与 VIP 状态"""

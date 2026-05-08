@@ -391,3 +391,60 @@ async def delete_chart_template(template_id: int, user: dict[str, Any] = Depends
     _save_meta(user["id"], meta)
     logger.info("chart_template_deleted", uid=user["id"], tid=template_id)
     return {"message": "template_deleted"}
+
+
+# ── /user/* aliases (frontend compatibility) ──────────────────────────────────
+
+@router.get("/user/profile")
+async def alias_get_profile(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Alias: GET /user/profile → /users/profile"""
+    return await get_profile(user)
+
+
+@router.put("/user/profile")
+async def alias_update_profile(request: UpdateProfileRequest, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+    """Alias: PUT /user/profile → /users/profile/update"""
+    return await update_profile(request, user)
+
+
+@router.post("/user/change-password")
+async def alias_change_password(request: ChangePasswordRequest, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+    """Alias: POST /user/change-password → /users/change-password"""
+    return await change_password(request, user)
+
+
+@router.get("/user/notification-settings")
+async def alias_get_notification_settings(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Alias: GET /user/notification-settings → /users/notification-settings"""
+    return await get_notification_settings(user)
+
+
+@router.put("/user/notification-settings")
+async def alias_update_notification_settings(request: dict[str, Any], user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+    """Alias: PUT /user/notification-settings → /users/notification-settings"""
+    return await update_notification_settings(request, user)
+
+
+@router.get("/user/chart-templates")
+async def alias_get_chart_templates(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Alias: GET /user/chart-templates → /users/chart-templates"""
+    return await get_chart_templates(user)
+
+
+@router.post("/user/chart-templates")
+async def alias_save_chart_template(request: dict[str, Any], user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Alias: POST /user/chart-templates → /users/chart-templates"""
+    return await save_chart_template(request, user)
+
+
+@router.put("/user/chart-templates/{template_id}")
+async def alias_update_chart_template(template_id: int, request: dict[str, Any], user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Update chart template via path param (frontend compatibility)."""
+    request["id"] = template_id
+    return await save_chart_template(request, user)
+
+
+@router.delete("/user/chart-templates/{template_id}")
+async def alias_delete_chart_template(template_id: int, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+    """Delete chart template via path param (frontend compatibility)."""
+    return await delete_chart_template(template_id, user)
