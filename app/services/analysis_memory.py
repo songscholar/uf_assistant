@@ -176,6 +176,27 @@ class AnalysisMemoryService:
             logger.error(f"Failed to get history: {e}")
             return {"items": [], "total": 0, "page": page, "page_size": page_size}
 
+    def delete(self, memory_id: int, user_id: str | None = None) -> bool:
+        """删除分析记录，仅允许删除自己的记录"""
+        try:
+            session = self._get_session()
+            row = session.query(AnalysisMemoryModel).filter_by(id=memory_id).first()
+            if not row:
+                session.close()
+                return False
+            # Ownership check: only delete own records
+            if user_id is not None and row.user_id != user_id:
+                session.close()
+                return False
+            session.delete(row)
+            session.commit()
+            session.close()
+            logger.info(f"Deleted analysis memory #{memory_id} by user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete analysis memory #{memory_id}: {e}", exc_info=True)
+            return False
+
     # ------------------------------------------------------------------
     # 验证与反思
     # ------------------------------------------------------------------

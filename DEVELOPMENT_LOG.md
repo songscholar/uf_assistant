@@ -2081,3 +2081,19 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - TypeScript 编译通过 ✅，Vite 构建通过 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复删除分析记录 404 Not Found
+
+**问题：** 前端调用 `DELETE /api/v1/analysis/{id}` 返回 `{"detail":"Not Found"}`。
+
+**根因：** 后端 `app/api/routers/analysis.py` 没有定义 `DELETE /analysis/{id}` 路由，同时 `AnalysisMemoryService` 也没有 `delete` 方法。
+
+**修复：**
+- `app/services/analysis_memory.py`：新增 `delete(memory_id, user_id)` 方法，支持按 ID 删除记录，并校验用户所有权
+- `app/api/routers/analysis.py`：新增 `@router.delete("/{memory_id}")` 端点，调用 `AnalysisMemoryService.delete`，无权限或记录不存在时返回 404
+
+**验证：**
+- 删除 ID=13 ✅，历史总数从 11 → 10 ✅
+- 再次查询确认记录已移除 ✅
+
+**Commits:** (待生成)

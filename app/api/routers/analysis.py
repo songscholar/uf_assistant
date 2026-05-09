@@ -113,6 +113,19 @@ async def get_similar_patterns(
     return {"code": "success", "data": {"patterns": patterns}}
 
 
+@router.delete("/{memory_id}")
+async def delete_analysis(
+    memory_id: int,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """删除分析记录"""
+    svc = AnalysisMemoryService()
+    ok = svc.delete(memory_id=memory_id, user_id=str(user["user_id"]))
+    if not ok:
+        raise HTTPException(status_code=404, detail="记录不存在或无权限删除")
+    return {"code": "success", "data": {"deleted": True}}
+
+
 # ------------------------------------------------------------------
 # 反馈与统计
 # ------------------------------------------------------------------
