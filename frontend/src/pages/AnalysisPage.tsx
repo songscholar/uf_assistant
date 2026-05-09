@@ -102,14 +102,15 @@ export default function AnalysisPage() {
     } catch { /* silent */ }
   }
 
-  const handleFeedback = async (id: number, feedback: string) => {
+  const [feedbackMap, setFeedbackMap] = useState<Record<number, 'helpful' | 'not_helpful'>>({})
+
+  const handleFeedback = async (id: number, feedback: 'helpful' | 'not_helpful') => {
     try {
-      await fetch(`/api/v1/analysis/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memory_id: id, feedback }),
-      })
-    } catch { /* silent */ }
+      await analysisApi.feedback(id, feedback)
+      setFeedbackMap((prev) => ({ ...prev, [id]: feedback }))
+    } catch {
+      /* silent — could add toast here */
+    }
   }
 
   const normalizeConfidence = (confidence: number) => {
@@ -507,14 +508,24 @@ export default function AnalysisPage() {
                             <span className="text-xs text-text-tertiary">这个分析有用吗？</span>
                             <button
                               onClick={() => handleFeedback(record.id, 'helpful')}
-                              className="p-1 rounded hover:bg-success-bg text-text-tertiary hover:text-success transition-all"
+                              className={cn(
+                                'p-1 rounded transition-all',
+                                feedbackMap[record.id] === 'helpful'
+                                  ? 'bg-success-bg text-success'
+                                  : 'text-text-tertiary hover:bg-success-bg hover:text-success'
+                              )}
                               title="有帮助"
                             >
                               <ThumbsUp className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleFeedback(record.id, 'not_helpful')}
-                              className="p-1 rounded hover:bg-danger-bg text-text-tertiary hover:text-danger transition-all"
+                              className={cn(
+                                'p-1 rounded transition-all',
+                                feedbackMap[record.id] === 'not_helpful'
+                                  ? 'bg-danger-bg text-danger'
+                                  : 'text-text-tertiary hover:bg-danger-bg hover:text-danger'
+                              )}
                               title="没帮助"
                             >
                               <ThumbsDown className="w-3.5 h-3.5" />

@@ -2097,3 +2097,22 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - 再次查询确认记录已移除 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复分析记录点赞/点踩功能失效
+
+**问题：** 用户反馈历史分析记录的点赞（👍）和点踩（👎）按钮点击无反应。
+
+**根因：** `AnalysisPage.tsx` 的 `handleFeedback` 使用了原生 `fetch` 直接请求 `/api/v1/analysis/feedback`，但**未携带 `Authorization: Bearer <token>` header**，导致后端 JWT 认证失败（401），请求被静默吞掉。
+
+**修复：**
+- `frontend/src/lib/api.ts`：`analysisApi` 新增 `feedback(memoryId, feedback)` 方法，复用已配置 JWT 拦截器的 axios 实例
+- `frontend/src/pages/AnalysisPage.tsx`：
+  - `handleFeedback` 改为调用 `analysisApi.feedback()`
+  - 新增 `feedbackMap` 本地状态，记录用户已反馈的记录 ID
+  - 反馈按钮增加选中状态样式（高亮显示已选中的 👍 / 👎）
+
+**验证：**
+- POST `/analysis/feedback` 返回 `recorded: true` ✅
+- 再次查询历史，`user_feedback: helpful` 已写入 ✅
+
+**Commits:** (待生成)
