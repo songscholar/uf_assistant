@@ -145,10 +145,11 @@ async def get_performance_stats(
     market: str | None = None,
     symbol: str | None = None,
     days: int = 30,
+    user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """获取 AI 性能统计"""
     svc = AnalysisMemoryService()
-    stats = svc.get_performance_stats(market=market, symbol=symbol, days=days)
+    stats = svc.get_performance_stats(market=market, symbol=symbol, days=days, user_id=str(user["user_id"]))
     return {"code": "success", "data": stats}
 
 

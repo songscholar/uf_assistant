@@ -408,7 +408,7 @@ export default function AnalysisPage() {
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
           { label: '总分析次数', value: stats?.total_analyses?.toLocaleString() ?? '--', icon: BarChart3 },
-          { label: '平均置信度', value: stats?.avg_confidence != null ? formatPercent(stats.avg_confidence / 100) : '--', icon: Target },
+          { label: '平均置信度', value: stats?.avg_confidence != null ? `${Math.round(stats.avg_confidence)}%` : '--', icon: Target },
           { label: '买入信号', value: stats?.signal_distribution?.BUY?.toLocaleString() ?? '--', icon: TrendingUp },
           { label: '卖出信号', value: stats?.signal_distribution?.SELL?.toLocaleString() ?? '--', icon: TrendingUp },
         ].map((item) => (

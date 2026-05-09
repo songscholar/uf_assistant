@@ -770,18 +770,10 @@ Provide analysis. Entry/SL/TP within 10% of {current_price}."""
             market_type: "stock" or "crypto"
             data_meta: data collection metadata with "success" and "failed" lists
         """
-        # 1. Signal strength component (0-70)
+        # 1. Signal strength component (20-70) — linear mapping for smooth gradation
         abs_score = abs(overall_score)
-        if abs_score >= 50:
-            signal_conf = 70
-        elif abs_score >= 30:
-            signal_conf = 58
-        elif abs_score >= 15:
-            signal_conf = 45
-        elif abs_score >= 5:
-            signal_conf = 35
-        else:
-            signal_conf = 25
+        # Map 0-100 abs_score to 20-70 (minimum 20 even for neutral signals)
+        signal_conf = 20 + (abs_score / 100.0) * 50
 
         # 2. Data completeness component (0-30)
         success_modules = data_meta.get("success", []) if data_meta else []
@@ -793,16 +785,16 @@ Provide analysis. Entry/SL/TP within 10% of {current_price}."""
             completeness = 0.0
 
         # Map completeness to 0-30 points
-        completeness_conf = int(completeness * 30)
+        completeness_conf = completeness * 30
 
         # 3. LLM component (0-20), only if LLM was actually called successfully
-        llm_conf = 0
+        llm_conf = 0.0
         if llm_confidence >= 50:  # LLM responded with reasonable confidence
-            llm_conf = min(20, int((llm_confidence - 50) * 0.4))
+            llm_conf = min(20, (llm_confidence - 50) * 0.4)
 
         # Total: signal + completeness + llm_bonus
         calibrated = signal_conf + completeness_conf + llm_conf
-        return max(15, min(95, calibrated))
+        return max(15, min(95, round(calibrated)))
 
     # ── Memory Storage ──────────────────────────────────────────────────────
 

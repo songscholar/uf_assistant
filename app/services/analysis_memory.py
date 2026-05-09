@@ -337,13 +337,15 @@ class AnalysisMemoryService:
     # 性能统计
     # ------------------------------------------------------------------
 
-    def get_performance_stats(self, market: str | None = None, symbol: str | None = None, days: int = 30) -> Dict[str, Any]:
+    def get_performance_stats(self, market: str | None = None, symbol: str | None = None, days: int = 30, user_id: str | None = None) -> Dict[str, Any]:
         """获取 AI 性能统计（基于全量分析记录，不限于已验证）"""
         from sqlalchemy import func
         try:
             session = self._get_session()
             # 查询全量记录（不限于已验证）
             query = session.query(AnalysisMemoryModel)
+            if user_id:
+                query = query.filter_by(user_id=user_id)
             if market:
                 query = query.filter_by(market=market)
             if symbol:

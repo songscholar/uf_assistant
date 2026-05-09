@@ -1932,7 +1932,33 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - /stock/600519/capital-flow → 5 条资金流向 ✅
 - pytest: 557 passed, 1 pre-existing failure ✅
 
-**Commits:** (待生成)
+---
+
+## 2026-05-06 20:05 — 手风琴展开 + AI结果持久化修复
+
+**Commit:** `a996b5e`
+
+### 问题1：历史记录展开位置错误
+**根因：** `handleRecordClick` 把历史记录数据 `setAnalysisResult(...)`，导致详情显示在顶部的实时分析区，而非当前行下方。
+
+**修复：**
+- `handleRecordClick` 不再操作 `analysisResult`，只做 `expandedId` 切换
+- 展开详情直接在表格行下方渲染（`<tr>` 内嵌套 `<td colSpan={7}>`）
+- 新记录使用 `AnalysisDetailCard` 组件展示完整详情
+- 旧记录保持简要信息展示
+
+### 问题2：AI分析结果点击历史后消失
+**根因：** 同上，`handleRecordClick` 覆盖 `analysisResult` 导致实时分析结果丢失。
+
+**修复：**
+- `analysisResult` 只保留实时 AI 分析结果，与历史记录完全隔离
+- 点击历史记录不再影响实时分析结果的展示
+- 实时分析结果保持展示直到用户执行新的分析或刷新页面
+
+**验证：**
+- TypeScript 编译通过 ✅
+
+**Commits:** `a996b5e`
 
 ## 2026-05-09 — 修复龙虎榜重复数据 + 休市回退
 
