@@ -312,21 +312,36 @@ export default function AnalysisPage() {
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<any>(null)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (opts?: { page?: number; symbol?: string; autoExpandSymbol?: string }) => {
+    const targetPage = opts?.page ?? page
+    const targetSymbol = opts?.symbol ?? searchQuery
     setLoading(true)
     try {
       const [historyRes, statsRes] = await Promise.all([
-        analysisApi.getHistory({ page, limit: 15, symbol: searchQuery || undefined }).catch(() => ({ data: { data: { items: [], total: 0 } } })),
+        analysisApi.getHistory({ page: targetPage, limit: 15, symbol: targetSymbol || undefined }).catch(() => ({ data: { data: { items: [], total: 0 } } })),
         analysisApi.getStats().catch(() => ({ data: { data: {} } })),
       ])
 
       const historyData = historyRes.data?.data || historyRes.data || {}
-      setRecords(historyData.items || historyData.records || [])
+      const items = historyData.items || historyData.records || []
+      setRecords(items)
       const total = historyData.total || 0
       setTotalPages(Math.max(1, Math.ceil(total / 15)))
 
+      // 更新 page state（如果外部指定了 page）
+      if (opts?.page !== undefined && opts.page !== page) {
+        setPage(opts.page)
+      }
+
       const statsData = statsRes.data?.data || statsRes.data || {}
       setStats(statsData.total_analyses != null ? statsData : null)
+
+      // 自动展开指定 symbol 的最新记录（items 已按 created_at desc 排序）
+      if (opts?.autoExpandSymbol && items.length > 0) {
+        const target = opts.autoExpandSymbol.toUpperCase()
+        const match = items.find((r: AnalysisRecord) => r.symbol.toUpperCase() === target)
+        if (match) setExpandedId(match.id)
+      }
     } catch {
       setRecords([])
     } finally {
@@ -352,7 +367,8 @@ export default function AnalysisPage() {
       const res = await analysisApi.analyze(symbol)
       const data = res.data?.data || res.data
       setAnalysisResult(data)
-      // 不自动加载历史记录（用户手动点击"搜索历史"才加载）
+      // 分析完成后：刷新第1页列表 + 统计 + 自动展开本次记录
+      await fetchData({ page: 1, autoExpandSymbol: symbol })
     } catch (err: any) {
       setAnalysisResult({ error: err.response?.data?.detail || '分析失败' })
     } finally {
