@@ -2033,3 +2033,22 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - `analysisResult` 字段映射正确（`decision`/`confidence`/`summary`/`overall_score`）✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复 market_data_collector 数据收集全部失败
+
+**问题：** 用户反馈 `/analysis/analyze` 返回 `failed: ["kline", "price", "fundamental"]`，所有 objective_score 为 0，分析结果为空。
+
+**根因：** `app/strategies/market_data_collector.py` 的三个核心方法全部直接调用 AKShare 的东方财富接口（`_em` 后缀），在当前网络环境下东财接口被限制（`RemoteDisconnected`），导致价格、K线、基本面数据全部获取失败。
+
+**修复：** `app/strategies/market_data_collector.py`
+- `_get_stock_price`：改为调用 `eastmoney_api.get_stock_realtime()`（自带东财→腾讯 fallback 链）
+- `_get_stock_kline`：新增 `_get_stock_kline_tencent()` 直接请求腾讯财经 K 线 API（`web.ifzq.gtimg.cn`），绕过 AKShare；失败后再 fallback 到 AKShare
+- `_get_fundamental`：改为从 `eastmoney_api.get_stock_realtime()` 提取 PE/PB/市值/换手率等基本面数据
+- 新增导入：`json`, `timedelta`, `urllib.request`
+
+**验证：**
+- `collect_all('600570')` → `success: ['kline', 'price', 'indicators', 'fundamental']`, `failed: []` ✅
+- `overall_score: -2.13`（不再为 0）✅
+- API 接口 `/analysis/analyze` 返回正常 ✅
+
+**Commits:** (待生成)

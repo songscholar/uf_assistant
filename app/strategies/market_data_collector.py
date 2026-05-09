@@ -9,10 +9,12 @@ Technical indicators are computed inline — no external TA library required.
 
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+from urllib import request
 
 from app.core.logging import get_logger
 
@@ -120,26 +122,26 @@ class MarketDataCollector:
             return None
 
     def _get_stock_price(self, symbol: str) -> dict[str, Any] | None:
-        """Fetch A-stock price via AKShare."""
+        """Fetch A-stock price via eastmoney_api (with tencent fallback)."""
         try:
-            import akshare as ak
+            from app.tools import eastmoney_api
 
-            # akshare realtime quote
-            df = ak.stock_zh_a_spot_em()
-            row = df[df["代码"] == symbol]
-            if row.empty:
+            raw = eastmoney_api.get_stock_realtime(symbol)
+            if not raw:
                 return None
-            r = row.iloc[0]
+
+            price = raw.get("price")
+            prev_close = raw.get("prev_close")
             return {
-                "price": float(r.get("最新价", 0)),
-                "change": float(r.get("涨跌额", 0)),
-                "changePercent": float(r.get("涨跌幅", 0)),
-                "high": float(r.get("最高", 0)),
-                "low": float(r.get("最低", 0)),
-                "open": float(r.get("今开", 0)),
-                "volume": float(r.get("成交量", 0)),
-                "amount": float(r.get("成交额", 0)),
-                "source": "akshare",
+                "price": price,
+                "change": round(price - prev_close, 2) if price and prev_close else None,
+                "changePercent": raw.get("change_pct"),
+                "high": raw.get("high"),
+                "low": raw.get("low"),
+                "open": raw.get("open"),
+                "volume": raw.get("volume"),
+                "amount": raw.get("amount"),
+                "source": raw.get("source", "eastmoney"),
             }
         except Exception as exc:
             logger.warning("stock_price_failed", symbol=symbol, error=str(exc))
@@ -181,39 +183,89 @@ class MarketDataCollector:
     def _get_stock_kline(
         self, symbol: str, timeframe: str, limit: int
     ) -> list[dict[str, Any]] | None:
-        """Fetch A-stock kline via AKShare."""
+        """Fetch A-stock kline via tencent finance API (bypass AKShare EM restriction)."""
         try:
-            import akshare as ak
+            return self._get_stock_kline_tencent(symbol, timeframe, limit)
+        except Exception as exc:
+            logger.warning("stock_kline_tencent_failed", symbol=symbol, error=str(exc))
+            # Fallback: try AKShare if available
+            try:
+                import akshare as ak
 
-            period_map = {"1D": "daily", "1W": "weekly", "1M": "monthly"}
-            period = period_map.get(timeframe, "daily")
+                period_map = {"1D": "daily", "1W": "weekly", "1M": "monthly"}
+                period = period_map.get(timeframe, "daily")
+                df = ak.stock_zh_a_hist(symbol=symbol, period=period, adjust="qfq")
 
-            if period == "daily":
-                df = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="qfq")
-            elif period == "weekly":
-                df = ak.stock_zh_a_hist(symbol=symbol, period="weekly", adjust="qfq")
-            else:
-                df = ak.stock_zh_a_hist(symbol=symbol, period="monthly", adjust="qfq")
+                if df is None or df.empty:
+                    return None
 
-            if df is None or df.empty:
+                df = df.tail(limit)
+                klines: list[dict[str, Any]] = []
+                for _, row in df.iterrows():
+                    klines.append({
+                        "date": str(row.get("日期", "")),
+                        "open": float(row.get("开盘", 0)),
+                        "high": float(row.get("最高", 0)),
+                        "low": float(row.get("最低", 0)),
+                        "close": float(row.get("收盘", 0)),
+                        "volume": float(row.get("成交量", 0)),
+                        "amount": float(row.get("成交额", 0)),
+                    })
+                return klines
+            except Exception as exc2:
+                logger.warning("stock_kline_akshare_failed", symbol=symbol, error=str(exc2))
                 return None
 
-            df = df.tail(limit)
-            klines: list[dict[str, Any]] = []
-            for _, row in df.iterrows():
-                klines.append({
-                    "date": str(row.get("日期", "")),
-                    "open": float(row.get("开盘", 0)),
-                    "high": float(row.get("最高", 0)),
-                    "low": float(row.get("最低", 0)),
-                    "close": float(row.get("收盘", 0)),
-                    "volume": float(row.get("成交量", 0)),
-                    "amount": float(row.get("成交额", 0)),
-                })
-            return klines
-        except Exception as exc:
-            logger.warning("stock_kline_failed", symbol=symbol, error=str(exc))
-            return None
+    def _get_stock_kline_tencent(
+        self, symbol: str, timeframe: str, limit: int
+    ) -> list[dict[str, Any]] | None:
+        """Fetch A-stock kline via Tencent finance API (direct HTTP)."""
+        if timeframe not in ("1D", "day"):
+            # Tencent API only supports daily; fallback for weekly/monthly
+            raise ValueError("Tencent kline only supports daily timeframe")
+
+        prefix = "sh" if symbol.startswith("6") else "sz"
+        end = datetime.now()
+        start = end - timedelta(days=limit * 2 + 30)  # buffer for holidays
+        end_str = end.strftime("%Y-%m-%d")
+        start_str = start.strftime("%Y-%m-%d")
+
+        url = (
+            f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+            f"?param={prefix}{symbol},day,{start_str},{end_str},{limit},qfq"
+        )
+
+        req = request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://finance.qq.com/",
+        })
+        with request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+
+        if data.get("code") != 0:
+            raise ValueError(f"Tencent kline API error: {data.get('msg')}")
+
+        stock_data = data.get("data", {}).get(f"{prefix}{symbol}", {})
+        # Try qfqday first (前复权), then day (不复权)
+        rows = stock_data.get("qfqday") or stock_data.get("day")
+        if not rows:
+            raise ValueError("No kline data returned")
+
+        klines: list[dict[str, Any]] = []
+        for row in rows:
+            if len(row) < 6:
+                continue
+            klines.append({
+                "date": str(row[0]),
+                "open": float(row[1]),
+                "close": float(row[2]),
+                "high": float(row[3]),
+                "low": float(row[4]),
+                "volume": float(row[5]),
+            })
+
+        # Return last `limit` bars
+        return klines[-limit:] if len(klines) > limit else klines
 
     def _get_crypto_kline(
         self, symbol: str, timeframe: str, limit: int
@@ -247,30 +299,27 @@ class MarketDataCollector:
             return None
 
     def _get_fundamental(self, symbol: str) -> dict[str, Any] | None:
-        """Fetch A-stock fundamental data via AKShare."""
+        """Fetch A-stock fundamental data via eastmoney_api (real-time quote includes PE/PB/cap)."""
         try:
-            import akshare as ak
+            from app.tools import eastmoney_api
 
-            df = ak.stock_individual_info_em(symbol=symbol)
-            if df is None or df.empty:
+            raw = eastmoney_api.get_stock_realtime(symbol)
+            if not raw:
                 return None
 
             info: dict[str, Any] = {}
-            for _, row in df.iterrows():
-                key = str(row.get("item", ""))
-                val = row.get("value", "")
-                if key == "市盈率(动态)":
-                    info["pe_ratio"] = self._safe_float(val)
-                elif key == "市净率":
-                    info["pb_ratio"] = self._safe_float(val)
-                elif key == "总市值":
-                    info["market_cap"] = self._safe_float(val)
-                elif key == "流通市值":
-                    info["float_market_cap"] = self._safe_float(val)
-                elif key == "行业":
-                    info["industry"] = str(val)
-                elif key == "上市时间":
-                    info["ipo_date"] = str(val)
+            if raw.get("pe_ttm") is not None:
+                info["pe_ratio"] = raw["pe_ttm"]
+            if raw.get("pb") is not None:
+                info["pb_ratio"] = raw["pb"]
+            if raw.get("market_cap") is not None:
+                info["market_cap"] = raw["market_cap"]
+            if raw.get("float_cap") is not None:
+                info["float_market_cap"] = raw["float_cap"]
+            if raw.get("turnover") is not None:
+                info["turnover_rate"] = raw["turnover"]
+            if raw.get("name"):
+                info["name"] = raw["name"]
 
             return info if info else None
         except Exception as exc:
