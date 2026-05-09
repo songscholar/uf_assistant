@@ -198,6 +198,11 @@ class FastAnalysisService:
         weight_sum = 0.0
         details: list[str] = []
 
+        # Guard: no indicator data at all
+        if not indicators:
+            details.append("无技术指标数据（可能为非标准代码或数据暂不可用）")
+            return {"score": 0.0, "details": details}
+
         # RSI (weight 0.30)
         rsi_data = indicators.get("rsi") or {}
         rsi = rsi_data.get("value", 50)

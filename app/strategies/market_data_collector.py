@@ -216,6 +216,14 @@ class MarketDataCollector:
                 logger.warning("stock_kline_akshare_failed", symbol=symbol, error=str(exc2))
                 return None
 
+    @staticmethod
+    def _get_exchange_prefix(symbol: str) -> str:
+        """判断股票代码所属交易所前缀（腾讯财经格式）。
+        6/5/9 开头 → sh（上海），0/2/3 开头 → sz（深圳）"""
+        if symbol[0] in ("6", "5", "9"):
+            return "sh"
+        return "sz"
+
     def _get_stock_kline_tencent(
         self, symbol: str, timeframe: str, limit: int
     ) -> list[dict[str, Any]] | None:
@@ -224,7 +232,7 @@ class MarketDataCollector:
             # Tencent API only supports daily; fallback for weekly/monthly
             raise ValueError("Tencent kline only supports daily timeframe")
 
-        prefix = "sh" if symbol.startswith("6") else "sz"
+        prefix = self._get_exchange_prefix(symbol)
         end = datetime.now()
         start = end - timedelta(days=limit * 2 + 30)  # buffer for holidays
         end_str = end.strftime("%Y-%m-%d")

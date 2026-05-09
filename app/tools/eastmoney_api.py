@@ -56,9 +56,14 @@ def _fetch_json(url: str, timeout: float = 10, retries: int = 2) -> dict[str, An
 # 单股实时行情
 # =============================================================================
 
+def _get_exchange_prefix(symbol: str) -> str:
+    """判断交易所前缀：6/5/9 开头 → sh（上海），其他 → sz（深圳）"""
+    return "sh" if symbol[0] in ("6", "5", "9") else "sz"
+
+
 def _get_stock_realtime_tencent(symbol: str) -> dict[str, Any]:
     """腾讯财经单股实时行情（国内直连，~80ms）"""
-    prefix = "sh" if symbol.startswith("6") else "sz"
+    prefix = _get_exchange_prefix(symbol)
     url = f"https://qt.gtimg.cn/q={prefix}{symbol}"
 
     t0 = time.time()
@@ -137,7 +142,8 @@ def get_stock_realtime(symbol: str) -> dict[str, Any]:
     """
     # 优先东方财富
     try:
-        prefix = "1" if symbol.startswith("6") else "0"
+        # 东财 secid 规则：1.xxxxxx = 上海，0.xxxxxx = 深圳
+        prefix = "1" if symbol[0] in ("6", "5", "9") else "0"
         url = (
             f"https://push2.eastmoney.com/api/qt/stock/get"
             f"?secid={prefix}.{symbol}&fields={STOCK_FIELDS}"

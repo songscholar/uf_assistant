@@ -2116,3 +2116,22 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - 再次查询历史，`user_feedback: helpful` 已写入 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 修复分析 519001 等基金代码报错 NoneType.__format__
+
+**问题：** 分析 519001（上海基金）时返回 `error: "unsupported format string passed to NoneType.__format__"`，服务直接崩溃。
+
+**根因 1：** `_score_technical` 中当数据收集失败（`indicators` 为空 `{}`）时，`ma5 = ma_data.get("ma5")` 返回 `None`，然后 `f"MA5 {ma5:.2f}"` 对 `None` 使用格式说明符触发 `TypeError`。
+
+**根因 2：** 交易所前缀判断逻辑 `symbol.startswith("6")` 过于简单，把 `5` / `9` 开头的上海基金/ETF 代码错误路由到深圳（`sz`）。
+
+**修复：**
+- `app/strategies/fast_analysis.py`：`_score_technical` 开头增加空数据保护，当 `indicators` 为空时直接返回 `"无技术指标数据"` 提示
+- `app/strategies/market_data_collector.py`：新增 `_get_exchange_prefix()`，规则为 `6/5/9` 开头 → `sh`，其他 → `sz`
+- `app/tools/eastmoney_api.py`：`_get_stock_realtime_tencent` 和 `get_stock_realtime` 中的前缀判断同步修复
+
+**验证：**
+- 519001 不再崩溃，返回 `"无技术指标数据"` 友好提示 ✅
+- 600570 正常分析不受影响 ✅
+
+**Commits:** (待生成)
