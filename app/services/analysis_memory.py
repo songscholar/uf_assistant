@@ -59,6 +59,7 @@ class _AnalysisMemoryAdapter:
         sentiment_score: float = 0,
         summary: str = "",
         user_id: str | None = None,
+        **kwargs: Any,
     ) -> int | None:
         """将扁平参数转换为 AnalysisMemoryService.store 期望的 dict 格式"""
         analysis_result = {
@@ -75,6 +76,8 @@ class _AnalysisMemoryAdapter:
             "market_data": {
                 "current_price": price,
             },
+            # 透传完整的分析结果（score_breakdown, metrics_snapshot, trading_levels 等）
+            **kwargs,
         }
         return self._svc.store(analysis_result, user_id=user_id)
 
@@ -335,11 +338,12 @@ class AnalysisMemoryService:
     # ------------------------------------------------------------------
 
     def get_performance_stats(self, market: str | None = None, symbol: str | None = None, days: int = 30) -> Dict[str, Any]:
-        """获取 AI 性能统计"""
+        """获取 AI 性能统计（基于全量分析记录，不限于已验证）"""
         from sqlalchemy import func
         try:
             session = self._get_session()
-            query = session.query(AnalysisMemoryModel).filter(AnalysisMemoryModel.validated_at.isnot(None))
+            # 查询全量记录（不限于已验证）
+            query = session.query(AnalysisMemoryModel)
             if market:
                 query = query.filter_by(market=market)
             if symbol:
@@ -349,9 +353,26 @@ class AnalysisMemoryService:
 
             total = query.count()
             if total == 0:
-                return {"total_analyses": 0, "accuracy_pct": 0, "avg_return_pct": 0}
+                return {
+                    "total_analyses": 0,
+                    "avg_confidence": 0,
+                    "accuracy_pct": 0,
+                    "avg_return_pct": 0,
+                    "signal_distribution": {"BUY": 0, "SELL": 0, "HOLD": 0},
+                }
 
-            correct = query.filter(AnalysisMemoryModel.was_correct == True).count()
+            # 平均置信度（数据库存的是 0-100 整数）
+            avg_confidence_raw = query.with_entities(func.avg(AnalysisMemoryModel.confidence)).scalar()
+            avg_confidence = round(float(avg_confidence_raw or 0), 1)
+
+            # 已验证记录的准确率
+            validated_query = query.filter(AnalysisMemoryModel.validated_at.isnot(None))
+            validated_total = validated_query.count()
+            accuracy_pct = 0.0
+            if validated_total > 0:
+                correct = validated_query.filter(AnalysisMemoryModel.was_correct == True).count()
+                accuracy_pct = round(correct / validated_total * 100, 2)
+
             avg_return = query.with_entities(func.avg(AnalysisMemoryModel.actual_return_pct)).scalar() or 0
 
             buy_count = query.filter(AnalysisMemoryModel.decision == "BUY").count()
@@ -364,15 +385,17 @@ class AnalysisMemoryService:
             session.close()
             return {
                 "total_analyses": total,
-                "accuracy_pct": round(correct / total * 100, 2),
+                "avg_confidence": avg_confidence,
+                "accuracy_pct": accuracy_pct,
                 "avg_return_pct": round(float(avg_return), 2),
+                "signal_distribution": {"BUY": buy_count, "SELL": sell_count, "HOLD": hold_count},
                 "decision_distribution": {"buy": buy_count, "sell": sell_count, "hold": hold_count},
                 "user_satisfaction_pct": round(helpful / feedback_total * 100, 2) if feedback_total > 0 else 0,
                 "period_days": days,
             }
         except Exception as e:
             logger.error(f"Failed to get performance stats: {e}")
-            return {"total_analyses": 0, "accuracy_pct": 0, "error": str(e)}
+            return {"total_analyses": 0, "avg_confidence": 0, "accuracy_pct": 0, "error": str(e)}
 
     def get_adjusted_confidence(self, raw_confidence: int, market: str | None = None, symbol: str | None = None) -> int:
         """基于历史准确率桶校准置信度"""
@@ -501,6 +524,7 @@ def _row_to_dict(row: AnalysisMemoryModel, full: bool = False) -> Dict[str, Any]
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
     if full:
+        raw = _safe_json(row.raw_result, {})
         d.update({
             "market": row.market,
             "symbol": row.symbol,
@@ -509,5 +533,14 @@ def _row_to_dict(row: AnalysisMemoryModel, full: bool = False) -> Dict[str, Any]
             "indicators": _safe_json(row.indicators_snapshot, {}),
             "status": row.task_status or "completed",
             "user_feedback": row.user_feedback,
+            # 从 raw_result 中提取完整分析详情（新字段优先，旧记录可能为空）
+            "overall_rating": raw.get("overall_rating") or "",
+            "overall_score": raw.get("overall_score") or 0,
+            "score_breakdown": raw.get("score_breakdown") or {},
+            "metrics_snapshot": raw.get("metrics_snapshot") or {},
+            "trading_levels": raw.get("trading_levels") or {},
+            "key_reasons": raw.get("key_reasons") or [],
+            "risks": raw.get("risks") or [],
+            "data_meta": raw.get("data_meta") or {},
         })
     return d

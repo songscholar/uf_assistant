@@ -106,7 +106,10 @@ class FastAnalysisService:
             # 5. Calibrate confidence
             try:
                 result["confidence"] = self._calibrate_confidence(
-                    overall_score, result.get("confidence", 60), market_type
+                    overall_score,
+                    result.get("confidence", 0),
+                    market_type,
+                    data.get("_meta"),
                 )
             except Exception:
                 pass
@@ -757,23 +760,49 @@ Provide analysis. Entry/SL/TP within 10% of {current_price}."""
 
     @staticmethod
     def _calibrate_confidence(
-        overall_score: float, llm_confidence: int, market_type: str
+        overall_score: float, llm_confidence: int, market_type: str, data_meta: dict[str, Any] | None = None
     ) -> int:
-        """Calibrate confidence using objective score as anchor."""
-        # Objective-based confidence
+        """Calibrate confidence based on signal strength + data completeness.
+
+        Args:
+            overall_score: -100 to +100 objective score
+            llm_confidence: LLM raw confidence (0-100), ignored if LLM unavailable
+            market_type: "stock" or "crypto"
+            data_meta: data collection metadata with "success" and "failed" lists
+        """
+        # 1. Signal strength component (0-70)
         abs_score = abs(overall_score)
         if abs_score >= 50:
-            obj_confidence = 80
+            signal_conf = 70
         elif abs_score >= 30:
-            obj_confidence = 65
+            signal_conf = 58
         elif abs_score >= 15:
-            obj_confidence = 50
+            signal_conf = 45
+        elif abs_score >= 5:
+            signal_conf = 35
         else:
-            obj_confidence = 35
+            signal_conf = 25
 
-        # Blend: 60% objective + 40% LLM
-        calibrated = int(obj_confidence * 0.6 + llm_confidence * 0.4)
-        return max(10, min(95, calibrated))
+        # 2. Data completeness component (0-30)
+        success_modules = data_meta.get("success", []) if data_meta else []
+        failed_modules = data_meta.get("failed", []) if data_meta else []
+        total_modules = len(success_modules) + len(failed_modules)
+        if total_modules > 0:
+            completeness = len(success_modules) / total_modules
+        else:
+            completeness = 0.0
+
+        # Map completeness to 0-30 points
+        completeness_conf = int(completeness * 30)
+
+        # 3. LLM component (0-20), only if LLM was actually called successfully
+        llm_conf = 0
+        if llm_confidence >= 50:  # LLM responded with reasonable confidence
+            llm_conf = min(20, int((llm_confidence - 50) * 0.4))
+
+        # Total: signal + completeness + llm_bonus
+        calibrated = signal_conf + completeness_conf + llm_conf
+        return max(15, min(95, calibrated))
 
     # ── Memory Storage ──────────────────────────────────────────────────────
 
@@ -797,6 +826,15 @@ Provide analysis. Entry/SL/TP within 10% of {current_price}."""
                 sentiment_score=result.get("objective_score", {}).get("macro_score", 0),
                 summary=result.get("summary", ""),
                 user_id=user_id,
+                # 透传完整分析结果用于历史详情展示
+                score_breakdown=result.get("score_breakdown"),
+                metrics_snapshot=result.get("metrics_snapshot"),
+                trading_levels=result.get("trading_levels"),
+                key_reasons=result.get("key_reasons"),
+                risks=result.get("risks"),
+                overall_rating=result.get("overall_rating"),
+                overall_score=result.get("overall_score"),
+                data_meta=result.get("data_meta"),
             )
         except Exception as exc:
             logger.warning("memory_store_error", error=str(exc))

@@ -2135,3 +2135,58 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - 600570 正常分析不受影响 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — AnalysisPage 六 issue 集中修复
+
+### 问题1：统计卡片不渲染
+**根因：** 后端 `get_performance_stats` 返回的字段名和结构与前端期望的不匹配：
+- 前端要 `avg_confidence`，后端没有返回
+- 前端要 `signal_distribution.BUY/SELL`，后端返回 `decision_distribution.buy/sell`
+- 后端只查询 `validated_at` 不为空的记录，导致统计基数极小
+
+**修复：** `app/services/analysis_memory.py`
+- 查询全量记录（不限于已验证）
+- 新增返回 `avg_confidence`、`signal_distribution`（大写 BUY/SELL/HOLD）
+- 保留 `decision_distribution` 做向后兼容
+
+### 问题2：置信度总是45%
+**根因：** `_calibrate_confidence` 使用固定公式 `obj_confidence * 0.6 + llm_confidence * 0.4`，当 overall_score 在 -15~15（大多数 HOLD）时 obj_confidence=35，加上 LLM 默认 60，结果总是 45。
+
+**修复：** `app/strategies/fast_analysis.py`
+- 重新设计 confidence 计算：信号强度(0-70) + 数据完整度(0-30) + LLM 加分(0-20)
+- 传入 `data_meta` 让数据越完整 confidence 越高
+- 600570（数据全）→ confidence=65；519001（数据空）→ confidence=25
+
+### 问题3：执行AI分析时自动加载历史
+**根因：** `handleAnalyze` 调用了 `setSearchQuery(symbol)`，触发 `useEffect` 加载历史。
+
+**修复：** `frontend/src/pages/AnalysisPage.tsx`
+- `handleAnalyze` 不再设置 `searchQuery`
+- 分析结果和历史记录完全解耦
+
+### 问题4：数据获取失败无提示
+**根因：** 当所有数据模块失败时，仍然返回 `decision=HOLD` 和 `score=0`，用户看不出问题。
+
+**修复：**
+- 后端：`_score_technical` 增加空数据保护，返回 `"无技术指标数据"`
+- 前端：`AnalysisDetailCard` 增加 `allFailed` 判断，展示红色警告卡片
+
+### 问题5：历史记录点击展示详情
+**根因：** 历史记录只存储了 summary，没有存储 score_breakdown、metrics_snapshot 等详情。
+
+**修复：**
+- 后端：`fast_analysis._store_memory` 透传 `score_breakdown`、`metrics_snapshot`、`trading_levels`、`key_reasons`、`risks`、`overall_rating` 等字段到 `raw_result`
+- 后端：`analysis_memory._row_to_dict(full=True)` 从 `raw_result` 中提取详情字段返回
+- 前端：`AnalysisDetailCard` 组件化，复用于实时分析和历史详情；点击历史记录行时自动展示详情卡片
+
+### 问题6：分页
+**状态：** 已支持。后端 `get_history` 支持 `page`/`page_size`，前端传递 `page` 和 `limit=15`，并渲染分页按钮。
+
+**验证：**
+- stats 接口返回 `avg_confidence: 53.1`, `signal_distribution: {BUY: 1, SELL: 0, HOLD: 8}` ✅
+- 600570 confidence=65（非45）✅
+- 519001 confidence=25（数据空）✅
+- 历史记录 ID=21 包含 score_breakdown 和 metrics_snapshot ✅
+- TypeScript 编译通过 ✅
+
+**Commits:** (待生成)

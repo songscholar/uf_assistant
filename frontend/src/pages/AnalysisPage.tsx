@@ -23,11 +23,22 @@ interface AnalysisRecord {
   market: string
   symbol: string
   signal: string
+  decision?: string
   confidence: number
   summary: string
   indicators: Record<string, unknown>
   created_at: string
   user_feedback?: string
+  price?: number | null
+  // 详情字段（新记录才有）
+  overall_rating?: string
+  overall_score?: number
+  score_breakdown?: Record<string, any>
+  metrics_snapshot?: Record<string, any>
+  trading_levels?: Record<string, any>
+  key_reasons?: string[]
+  risks?: string[]
+  data_meta?: Record<string, any>
 }
 
 interface AnalysisStats {
@@ -37,6 +48,258 @@ interface AnalysisStats {
   accuracy_rate?: number
 }
 
+/* ── 分析详情卡片（复用于实时分析 + 历史详情） ── */
+function AnalysisDetailCard({ data, title }: { data: any; title?: string }) {
+  const normalizeConfidence = (confidence: number) => {
+    const c = confidence || 0
+    return c > 1 ? c / 100 : c
+  }
+
+  const signalBadge = (signal: string) => {
+    const s = signal?.toUpperCase()
+    return (
+      <span className={cn(
+        'px-2 py-0.5 rounded-md text-xs font-medium',
+        s === 'BUY' && 'bg-success-bg text-success',
+        s === 'SELL' && 'bg-danger-bg text-danger',
+        s === 'HOLD' && 'bg-bg-secondary text-text-secondary',
+        !['BUY', 'SELL', 'HOLD'].includes(s) && 'bg-bg-secondary text-text-tertiary'
+      )}>
+        {s || '--'}
+      </span>
+    )
+  }
+
+  // 数据获取失败提示
+  const successModules = data.data_meta?.success || []
+  const failedModules = data.data_meta?.failed || []
+  const hasData = successModules.length > 0
+  const allFailed = failedModules.length > 0 && successModules.length === 0
+
+  return (
+    <div className="mb-4 bg-bg-card border border-border rounded-xl p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+            <Brain className="w-4 h-4 text-accent" />
+            {title || data.symbol || '--'}
+          </h3>
+          {data.overall_rating && (
+            <span className={cn(
+              'px-2 py-0.5 rounded-md text-xs font-medium',
+              (data.overall_score ?? 0) >= 20 ? 'bg-success-bg text-success' :
+              (data.overall_score ?? 0) <= -20 ? 'bg-danger-bg text-danger' :
+              'bg-bg-secondary text-text-secondary'
+            )}>
+              {data.overall_rating}
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-text-tertiary">
+          {data.created_at ? new Date(data.created_at).toLocaleString('zh-CN') : '刚刚'}
+        </span>
+      </div>
+
+      {/* 数据获取失败警告 */}
+      {allFailed && (
+        <div className="bg-danger-bg/30 border border-danger/20 rounded-lg p-3 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-danger mt-0.5 shrink-0" />
+          <div>
+            <div className="text-sm font-medium text-danger">数据获取失败</div>
+            <p className="text-xs text-text-secondary mt-0.5">
+              无法获取该证券代码的行情数据，可能原因：代码不存在、非交易时间、或该代码类型暂不支持（如场外基金）。
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Key Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="bg-bg-secondary rounded-lg p-3">
+          <div className="text-xs text-text-tertiary mb-1">决策</div>
+          {signalBadge(data.decision)}
+        </div>
+        <div className="bg-bg-secondary rounded-lg p-3">
+          <div className="text-xs text-text-tertiary mb-1">置信度</div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-bg-card rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full rounded-full',
+                  normalizeConfidence(data.confidence) >= 0.7 ? 'bg-success' : normalizeConfidence(data.confidence) >= 0.4 ? 'bg-accent' : 'bg-danger'
+                )}
+                style={{ width: `${Math.min(100, normalizeConfidence(data.confidence) * 100)}%` }}
+              />
+            </div>
+            <span className="text-xs font-medium text-text-primary">{(normalizeConfidence(data.confidence) * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+        <div className="bg-bg-secondary rounded-lg p-3">
+          <div className="text-xs text-text-tertiary mb-1">综合评分</div>
+          <span className={cn(
+            'text-sm font-bold',
+            (data.overall_score ?? 0) >= 20 ? 'text-success' :
+            (data.overall_score ?? 0) <= -20 ? 'text-danger' : 'text-accent'
+          )}>
+            {(data.overall_score ?? 0).toFixed(1)}
+          </span>
+        </div>
+        <div className="bg-bg-secondary rounded-lg p-3">
+          <div className="text-xs text-text-tertiary mb-1">市场价</div>
+          <span className="text-sm font-bold text-text-primary">
+            {data.metrics_snapshot?.current_price?.toFixed(2) ??
+             (data.price != null ? data.price.toFixed(2) : '--')}
+          </span>
+        </div>
+        <div className="bg-bg-secondary rounded-lg p-3">
+          <div className="text-xs text-text-tertiary mb-1">涨跌</div>
+          <span className={cn(
+            'text-sm font-bold',
+            (data.metrics_snapshot?.change_percent ?? 0) >= 0 ? 'text-rise' : 'text-fall'
+          )}>
+            {(data.metrics_snapshot?.change_percent ?? 0) >= 0 ? '+' : ''}
+            {(data.metrics_snapshot?.change_percent ?? 0).toFixed(2)}%
+          </span>
+        </div>
+      </div>
+
+      {/* Summary */}
+      {data.summary && (
+        <div className="bg-accent-bg/50 border border-accent/20 rounded-lg p-3">
+          <div className="text-xs font-medium text-accent mb-1">分析摘要</div>
+          <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">{data.summary}</p>
+        </div>
+      )}
+
+      {/* Score Breakdown */}
+      {data.score_breakdown && Object.keys(data.score_breakdown).length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-text-secondary mb-2">评分明细</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { key: 'technical', label: '技术面', icon: TrendingUp },
+              { key: 'fundamental', label: '基本面', icon: BarChart3 },
+              { key: 'macro', label: '情绪面', icon: Target },
+            ].map(({ key, label, icon: Icon }) => {
+              const item = data.score_breakdown[key]
+              if (!item) return null
+              const s = item.score ?? 0
+              return (
+                <div key={key} className="bg-bg-secondary rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="w-3.5 h-3.5 text-text-tertiary" />
+                      <span className="text-xs font-medium text-text-secondary">{label}</span>
+                    </div>
+                    <span className={cn(
+                      'text-xs font-bold',
+                      s >= 10 ? 'text-success' : s <= -10 ? 'text-danger' : 'text-text-secondary'
+                    )}>
+                      {s >= 0 ? '+' : ''}{s.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {item.details?.slice(0, 3).map((d: string, i: number) => (
+                      <div key={i} className="text-xs text-text-secondary leading-relaxed flex items-start gap-1">
+                        <span className="text-text-tertiary mt-0.5">•</span>
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Key Metrics */}
+      {data.metrics_snapshot && Object.keys(data.metrics_snapshot).length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-text-secondary mb-2">关键指标</div>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            {[
+              { label: 'RSI(14)', value: data.metrics_snapshot.rsi?.toFixed(1) ?? '--', highlight: true },
+              { label: 'MACD', value: data.metrics_snapshot.macd_signal ?? '--' },
+              { label: 'MA趋势', value: data.metrics_snapshot.ma_trend ?? '--' },
+              { label: '市盈率', value: data.metrics_snapshot.pe_ratio?.toFixed(1) ?? '--' },
+              { label: '市净率', value: data.metrics_snapshot.pb_ratio?.toFixed(2) ?? '--' },
+              { label: '换手率', value: data.metrics_snapshot.turnover_rate ? `${data.metrics_snapshot.turnover_rate.toFixed(2)}%` : '--' },
+              { label: '支撑位', value: data.metrics_snapshot.support?.toFixed(2) ?? '--' },
+              { label: '阻力位', value: data.metrics_snapshot.resistance?.toFixed(2) ?? '--' },
+              { label: '波动率', value: data.metrics_snapshot.volatility_pct ? `${data.metrics_snapshot.volatility_pct.toFixed(1)}%` : '--' },
+              { label: '量比', value: data.metrics_snapshot.volume_ratio?.toFixed(2) ?? '--' },
+              { label: '价格位置', value: data.metrics_snapshot.price_position ? `${data.metrics_snapshot.price_position.toFixed(0)}%` : '--' },
+              { label: '布林带', value: data.metrics_snapshot.bollinger_upper && data.metrics_snapshot.bollinger_lower ? `${data.metrics_snapshot.bollinger_lower.toFixed(1)}-${data.metrics_snapshot.bollinger_upper.toFixed(1)}` : '--' },
+            ].map((m) => (
+              <div key={m.label} className="bg-bg-secondary rounded-lg p-2 text-center">
+                <div className="text-[10px] text-text-tertiary mb-0.5">{m.label}</div>
+                <div className={cn('text-xs font-semibold', m.highlight ? 'text-accent' : 'text-text-primary')}>
+                  {m.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Trading Levels */}
+      {data.trading_levels && Object.keys(data.trading_levels).length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-text-secondary mb-2">交易建议</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {[
+              { label: '参考入场价', value: data.trading_levels.entry_price, color: 'text-accent' },
+              { label: '止损价', value: data.trading_levels.stop_loss, color: 'text-danger' },
+              { label: '目标价', value: data.trading_levels.take_profit, color: 'text-success' },
+              { label: '盈亏比', value: data.trading_levels.risk_reward, color: 'text-text-primary' },
+            ].map((t) => (
+              <div key={t.label} className="bg-bg-secondary rounded-lg p-2 text-center">
+                <div className="text-[10px] text-text-tertiary mb-0.5">{t.label}</div>
+                <div className={cn('text-xs font-bold', t.color)}>
+                  {t.value != null ? (typeof t.value === 'number' ? t.value.toFixed(2) : t.value) : '--'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Key Reasons & Risks */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {data.key_reasons && data.key_reasons.length > 0 && (
+          <div className="bg-success-bg/30 border border-success/20 rounded-lg p-3">
+            <div className="text-xs font-medium text-success mb-2">看多理由</div>
+            <div className="space-y-1">
+              {data.key_reasons.map((r: string, i: number) => (
+                <div key={i} className="text-xs text-text-primary flex items-start gap-1">
+                  <span className="text-success mt-0.5">+</span>
+                  {r}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {data.risks && data.risks.length > 0 && (
+          <div className="bg-danger-bg/30 border border-danger/20 rounded-lg p-3">
+            <div className="text-xs font-medium text-danger mb-2">风险提示</div>
+            <div className="space-y-1">
+              {data.risks.map((r: string, i: number) => (
+                <div key={i} className="text-xs text-text-primary flex items-start gap-1">
+                  <span className="text-danger mt-0.5">-</span>
+                  {r}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── 主页面 ── */
 export default function AnalysisPage() {
   const [records, setRecords] = useState<AnalysisRecord[]>([])
   const [stats, setStats] = useState<AnalysisStats | null>(null)
@@ -63,7 +326,7 @@ export default function AnalysisPage() {
       setTotalPages(Math.max(1, Math.ceil(total / 15)))
 
       const statsData = statsRes.data?.data || statsRes.data || {}
-      setStats(statsData.total_analyses ? statsData : null)
+      setStats(statsData.total_analyses != null ? statsData : null)
     } catch {
       setRecords([])
     } finally {
@@ -76,19 +339,20 @@ export default function AnalysisPage() {
   const handleSearch = () => {
     setPage(1)
     setSearchQuery(searchSymbol)
+    setAnalysisResult(null)
   }
 
   const handleAnalyze = async () => {
     if (!searchSymbol.trim()) return
     setAnalyzing(true)
     setAnalysisResult(null)
+    setExpandedId(null)
     try {
       const symbol = searchSymbol.trim().toUpperCase()
       const res = await analysisApi.analyze(symbol)
-      setAnalysisResult(res.data?.data || res.data)
-      // 分析完成后自动搜索该股票的历史记录
-      setSearchQuery(symbol)
-      setPage(1)
+      const data = res.data?.data || res.data
+      setAnalysisResult(data)
+      // 不自动加载历史记录（用户手动点击"搜索历史"才加载）
     } catch (err: any) {
       setAnalysisResult({ error: err.response?.data?.detail || '分析失败' })
     } finally {
@@ -110,13 +374,36 @@ export default function AnalysisPage() {
       await analysisApi.feedback(id, feedback)
       setFeedbackMap((prev) => ({ ...prev, [id]: feedback }))
     } catch {
-      /* silent — could add toast here */
+      /* silent */
     }
   }
 
-  const normalizeConfidence = (confidence: number) => {
-    const c = confidence || 0
-    return c > 1 ? c / 100 : c
+  // 点击历史记录行：展示详情
+  const handleRecordClick = (record: AnalysisRecord) => {
+    if (expandedId === record.id) {
+      setExpandedId(null)
+      return
+    }
+    setExpandedId(record.id)
+    // 如果记录包含完整详情字段（新记录），直接展示
+    if (record.score_breakdown || record.metrics_snapshot) {
+      setAnalysisResult({
+        symbol: record.symbol,
+        decision: record.decision || record.signal,
+        confidence: record.confidence != null ? record.confidence * 100 : 50,
+        overall_rating: record.overall_rating,
+        overall_score: record.overall_score,
+        summary: record.summary,
+        score_breakdown: record.score_breakdown,
+        metrics_snapshot: record.metrics_snapshot,
+        trading_levels: record.trading_levels,
+        key_reasons: record.key_reasons,
+        risks: record.risks,
+        data_meta: record.data_meta,
+        created_at: record.created_at,
+        price: record.price,
+      })
+    }
   }
 
   const signalBadge = (signal: string) => {
@@ -140,7 +427,7 @@ export default function AnalysisPage() {
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
           { label: '总分析次数', value: stats?.total_analyses?.toLocaleString() ?? '--', icon: BarChart3 },
-          { label: '平均置信度', value: stats?.avg_confidence != null ? formatPercent(stats.avg_confidence) : '--', icon: Target },
+          { label: '平均置信度', value: stats?.avg_confidence != null ? formatPercent(stats.avg_confidence / 100) : '--', icon: Target },
           { label: '买入信号', value: stats?.signal_distribution?.BUY?.toLocaleString() ?? '--', icon: TrendingUp },
           { label: '卖出信号', value: stats?.signal_distribution?.SELL?.toLocaleString() ?? '--', icon: TrendingUp },
         ].map((item) => (
@@ -200,216 +487,12 @@ export default function AnalysisPage() {
         </button>
       </div>
 
-      {/* Analysis Result */}
+      {/* Analysis Result (实时分析) */}
       {analysisResult && !analysisResult.error && (
-        <div className="mb-4 bg-bg-card border border-border rounded-xl p-4 space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
-                <Brain className="w-4 h-4 text-accent" />
-                {analysisResult.symbol || searchSymbol.toUpperCase()}
-              </h3>
-              {analysisResult.overall_rating && (
-                <span className={cn(
-                  'px-2 py-0.5 rounded-md text-xs font-medium',
-                  (analysisResult.overall_score ?? 0) >= 20 ? 'bg-success-bg text-success' :
-                  (analysisResult.overall_score ?? 0) <= -20 ? 'bg-danger-bg text-danger' :
-                  'bg-bg-secondary text-text-secondary'
-                )}>
-                  {analysisResult.overall_rating}
-                </span>
-              )}
-            </div>
-            <span className="text-xs text-text-tertiary">
-              {analysisResult.created_at ? new Date(analysisResult.created_at).toLocaleString('zh-CN') : '刚刚'}
-            </span>
-          </div>
-
-          {/* Key Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-bg-secondary rounded-lg p-3">
-              <div className="text-xs text-text-tertiary mb-1">决策</div>
-              {signalBadge(analysisResult.decision)}
-            </div>
-            <div className="bg-bg-secondary rounded-lg p-3">
-              <div className="text-xs text-text-tertiary mb-1">置信度</div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-bg-card rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full',
-                      normalizeConfidence(analysisResult.confidence) >= 0.7 ? 'bg-success' : normalizeConfidence(analysisResult.confidence) >= 0.4 ? 'bg-accent' : 'bg-danger'
-                    )}
-                    style={{ width: `${Math.min(100, normalizeConfidence(analysisResult.confidence) * 100)}%` }}
-                  />
-                </div>
-                <span className="text-xs font-medium text-text-primary">{(normalizeConfidence(analysisResult.confidence) * 100).toFixed(0)}%</span>
-              </div>
-            </div>
-            <div className="bg-bg-secondary rounded-lg p-3">
-              <div className="text-xs text-text-tertiary mb-1">综合评分</div>
-              <span className={cn(
-                'text-sm font-bold',
-                (analysisResult.overall_score ?? 0) >= 20 ? 'text-success' :
-                (analysisResult.overall_score ?? 0) <= -20 ? 'text-danger' : 'text-accent'
-              )}>
-                {(analysisResult.overall_score ?? 0).toFixed(1)}
-              </span>
-            </div>
-            <div className="bg-bg-secondary rounded-lg p-3">
-              <div className="text-xs text-text-tertiary mb-1">市场价</div>
-              <span className="text-sm font-bold text-text-primary">
-                {analysisResult.metrics_snapshot?.current_price?.toFixed(2) ??
-                 (analysisResult.price != null ? analysisResult.price.toFixed(2) : '--')}
-              </span>
-            </div>
-            <div className="bg-bg-secondary rounded-lg p-3">
-              <div className="text-xs text-text-tertiary mb-1">涨跌</div>
-              <span className={cn(
-                'text-sm font-bold',
-                (analysisResult.metrics_snapshot?.change_percent ?? 0) >= 0 ? 'text-rise' : 'text-fall'
-              )}>
-                {(analysisResult.metrics_snapshot?.change_percent ?? 0) >= 0 ? '+' : ''}
-                {(analysisResult.metrics_snapshot?.change_percent ?? 0).toFixed(2)}%
-              </span>
-            </div>
-          </div>
-
-          {/* Summary */}
-          {analysisResult.summary && (
-            <div className="bg-accent-bg/50 border border-accent/20 rounded-lg p-3">
-              <div className="text-xs font-medium text-accent mb-1">分析摘要</div>
-              <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">{analysisResult.summary}</p>
-            </div>
-          )}
-
-          {/* Score Breakdown */}
-          {analysisResult.score_breakdown && (
-            <div>
-              <div className="text-xs font-medium text-text-secondary mb-2">评分明细</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {[
-                  { key: 'technical', label: '技术面', icon: TrendingUp },
-                  { key: 'fundamental', label: '基本面', icon: BarChart3 },
-                  { key: 'macro', label: '情绪面', icon: Target },
-                ].map(({ key, label, icon: Icon }) => {
-                  const item = analysisResult.score_breakdown[key]
-                  if (!item) return null
-                  const s = item.score ?? 0
-                  return (
-                    <div key={key} className="bg-bg-secondary rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <Icon className="w-3.5 h-3.5 text-text-tertiary" />
-                          <span className="text-xs font-medium text-text-secondary">{label}</span>
-                        </div>
-                        <span className={cn(
-                          'text-xs font-bold',
-                          s >= 10 ? 'text-success' : s <= -10 ? 'text-danger' : 'text-text-secondary'
-                        )}>
-                          {s >= 0 ? '+' : ''}{s.toFixed(1)}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        {item.details?.slice(0, 3).map((d: string, i: number) => (
-                          <div key={i} className="text-xs text-text-secondary leading-relaxed flex items-start gap-1">
-                            <span className="text-text-tertiary mt-0.5">•</span>
-                            {d}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Key Metrics */}
-          {analysisResult.metrics_snapshot && (
-            <div>
-              <div className="text-xs font-medium text-text-secondary mb-2">关键指标</div>
-              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                {[
-                  { label: 'RSI(14)', value: analysisResult.metrics_snapshot.rsi?.toFixed(1) ?? '--', highlight: true },
-                  { label: 'MACD', value: analysisResult.metrics_snapshot.macd_signal ?? '--' },
-                  { label: 'MA趋势', value: analysisResult.metrics_snapshot.ma_trend ?? '--' },
-                  { label: '市盈率', value: analysisResult.metrics_snapshot.pe_ratio?.toFixed(1) ?? '--' },
-                  { label: '市净率', value: analysisResult.metrics_snapshot.pb_ratio?.toFixed(2) ?? '--' },
-                  { label: '换手率', value: analysisResult.metrics_snapshot.turnover_rate ? `${analysisResult.metrics_snapshot.turnover_rate.toFixed(2)}%` : '--' },
-                  { label: '支撑位', value: analysisResult.metrics_snapshot.support?.toFixed(2) ?? '--' },
-                  { label: '阻力位', value: analysisResult.metrics_snapshot.resistance?.toFixed(2) ?? '--' },
-                  { label: '波动率', value: analysisResult.metrics_snapshot.volatility_pct ? `${analysisResult.metrics_snapshot.volatility_pct.toFixed(1)}%` : '--' },
-                  { label: '量比', value: analysisResult.metrics_snapshot.volume_ratio?.toFixed(2) ?? '--' },
-                  { label: '价格位置', value: analysisResult.metrics_snapshot.price_position ? `${analysisResult.metrics_snapshot.price_position.toFixed(0)}%` : '--' },
-                  { label: '布林带', value: analysisResult.metrics_snapshot.bollinger_upper && analysisResult.metrics_snapshot.bollinger_lower ? `${analysisResult.metrics_snapshot.bollinger_lower.toFixed(1)}-${analysisResult.metrics_snapshot.bollinger_upper.toFixed(1)}` : '--' },
-                ].map((m) => (
-                  <div key={m.label} className="bg-bg-secondary rounded-lg p-2 text-center">
-                    <div className="text-[10px] text-text-tertiary mb-0.5">{m.label}</div>
-                    <div className={cn('text-xs font-semibold', m.highlight ? 'text-accent' : 'text-text-primary')}>
-                      {m.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Trading Levels */}
-          {analysisResult.trading_levels && (
-            <div>
-              <div className="text-xs font-medium text-text-secondary mb-2">交易建议</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {[
-                  { label: '参考入场价', value: analysisResult.trading_levels.entry_price, color: 'text-accent' },
-                  { label: '止损价', value: analysisResult.trading_levels.stop_loss, color: 'text-danger' },
-                  { label: '目标价', value: analysisResult.trading_levels.take_profit, color: 'text-success' },
-                  { label: '盈亏比', value: analysisResult.trading_levels.risk_reward, color: 'text-text-primary' },
-                ].map((t) => (
-                  <div key={t.label} className="bg-bg-secondary rounded-lg p-2 text-center">
-                    <div className="text-[10px] text-text-tertiary mb-0.5">{t.label}</div>
-                    <div className={cn('text-xs font-bold', t.color)}>
-                      {t.value != null ? (typeof t.value === 'number' ? t.value.toFixed(2) : t.value) : '--'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Key Reasons & Risks */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {analysisResult.key_reasons && analysisResult.key_reasons.length > 0 && (
-              <div className="bg-success-bg/30 border border-success/20 rounded-lg p-3">
-                <div className="text-xs font-medium text-success mb-2">看多理由</div>
-                <div className="space-y-1">
-                  {analysisResult.key_reasons.map((r: string, i: number) => (
-                    <div key={i} className="text-xs text-text-primary flex items-start gap-1">
-                      <span className="text-success mt-0.5">+</span>
-                      {r}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {analysisResult.risks && analysisResult.risks.length > 0 && (
-              <div className="bg-danger-bg/30 border border-danger/20 rounded-lg p-3">
-                <div className="text-xs font-medium text-danger mb-2">风险提示</div>
-                <div className="space-y-1">
-                  {analysisResult.risks.map((r: string, i: number) => (
-                    <div key={i} className="text-xs text-text-primary flex items-start gap-1">
-                      <span className="text-danger mt-0.5">-</span>
-                      {r}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <AnalysisDetailCard data={analysisResult} />
       )}
 
+      {/* Error */}
       {analysisResult?.error && (
         <div className="mb-4 bg-danger-bg/30 border border-danger/20 rounded-xl p-4 flex items-center gap-2 text-sm text-danger">
           <AlertCircle className="w-4 h-4" />
@@ -445,7 +528,7 @@ export default function AnalysisPage() {
                   <tr
                     key={record.id}
                     className="hover:bg-bg-hover transition-colors duration-150 cursor-pointer"
-                    onClick={() => setExpandedId(expandedId === record.id ? null : record.id)}
+                    onClick={() => handleRecordClick(record)}
                   >
                     <td className="px-4 py-3 text-text-primary font-medium">{record.symbol}</td>
                     <td className="px-4 py-3 text-text-secondary text-xs">{record.market}</td>
@@ -489,21 +572,26 @@ export default function AnalysisPage() {
                     <tr key={`${record.id}-detail`}>
                       <td colSpan={7} className="px-4 py-4 bg-bg-secondary/50">
                         <div className="space-y-3">
-                          <div>
-                            <div className="text-xs text-text-tertiary mb-1">完整分析</div>
-                            <p className="text-sm text-text-primary">{record.summary || '无详细分析'}</p>
-                          </div>
-                          {record.indicators && Object.keys(record.indicators).length > 0 && (
-                            <div>
-                              <div className="text-xs text-text-tertiary mb-1">技术指标</div>
-                              <div className="flex flex-wrap gap-2">
-                                {Object.entries(record.indicators).map(([k, v]) => (
-                                  <span key={k} className="px-2 py-0.5 rounded bg-bg-card border border-border text-xs text-text-secondary">
-                                    {k}: {typeof v === 'number' ? v.toFixed(2) : String(v)}
-                                  </span>
-                                ))}
+                          {/* 旧记录没有详情字段，只展示简要信息 */}
+                          {!(record.score_breakdown || record.metrics_snapshot) && (
+                            <>
+                              <div>
+                                <div className="text-xs text-text-tertiary mb-1">完整分析</div>
+                                <p className="text-sm text-text-primary">{record.summary || '无详细分析'}</p>
                               </div>
-                            </div>
+                              {record.indicators && Object.keys(record.indicators).length > 0 && (
+                                <div>
+                                  <div className="text-xs text-text-tertiary mb-1">技术指标</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {Object.entries(record.indicators).map(([k, v]) => (
+                                      <span key={k} className="px-2 py-0.5 rounded bg-bg-card border border-border text-xs text-text-secondary">
+                                        {k}: {typeof v === 'number' ? v.toFixed(2) : String(v)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
                           )}
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-text-tertiary">这个分析有用吗？</span>
