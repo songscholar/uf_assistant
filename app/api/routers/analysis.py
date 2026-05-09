@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
@@ -32,6 +32,36 @@ class FeedbackRequest(BaseModel):
 
 class CalibrationQuery(BaseModel):
     market: str = Field(default="AStock", description="市场类型")
+
+
+class AnalyzeRequest(BaseModel):
+    symbol: str = Field(..., description="股票代码")
+    market_type: str = Field(default="stock", description="市场类型: stock / crypto")
+
+
+# ------------------------------------------------------------------
+# 执行分析
+# ------------------------------------------------------------------
+
+@router.post("/analyze")
+async def analyze_stock(
+    payload: AnalyzeRequest,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """执行单股票快速 AI 分析并保存结果"""
+    try:
+        from app.strategies.fast_analysis import get_fast_analysis_service
+
+        svc = get_fast_analysis_service()
+        result = svc.analyze(
+            symbol=payload.symbol,
+            market_type=payload.market_type,
+            user_id=str(user["user_id"]),
+        )
+        return {"code": "success", "data": result}
+    except Exception as exc:
+        logger.error("analyze_stock_error", symbol=payload.symbol, error=str(exc))
+        raise HTTPException(status_code=500, detail=f"分析失败: {exc}")
 
 
 # ------------------------------------------------------------------

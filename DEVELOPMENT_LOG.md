@@ -2052,3 +2052,32 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - API 接口 `/analysis/analyze` 返回正常 ✅
 
 **Commits:** (待生成)
+
+## 2026-05-09 — 优化 AI 分析结果可读性：评分明细 + 人类可读摘要
+
+**问题：** 用户反馈分析结果"看不懂"——`overall_score` 是 -6.1/100 的抽象数字，`summary` 是 "Objective score: -2.1 → HOLD" 的机器语言，没有评分明细和依据。
+
+**后端改动：** `app/strategies/fast_analysis.py`
+- `_score_technical` / `_score_fundamental` / `_score_macro`：返回 `{score, details: list[str]}`，每个评分项附带人类可读的解释（如"RSI 60.2 偏高，上涨动能减弱，偏空 -30分"）
+- `_calculate_objective_score`：新增返回 `score_breakdown` 字段（技术/基本面/情绪面三维评分明细）
+- 新增 `_score_to_rating`：将 -100~+100 分数映射为"强烈看多/看多/轻微偏多/中性观望/轻微偏空/看空/强烈看空"
+- 新增 `_build_human_report`：基于指标数据自动生成中文分析摘要、关键理由、风险提示、指标快照、交易建议
+- `analyze` 方法：LLM 失败时自动 fallback 到 `_build_human_report` 生成完整可读内容；始终返回 `score_breakdown` / `metrics_snapshot` / `trading_levels` / `overall_rating`
+
+**前端改动：** `frontend/src/pages/AnalysisPage.tsx`
+- 分析结果卡片重构为多区块布局：
+  - 顶部：股票代码 + 评级标签（如"轻微偏空"）+ 时间
+  - 关键数据：决策、置信度、综合评分、市场价、涨跌幅
+  - 分析摘要：高亮展示，保留换行格式
+  - 评分明细：技术面/基本面/情绪面三列卡片，每项展示分数 + top-3 依据
+  - 关键指标：12 格网格（RSI、MACD、MA趋势、PE、PB、换手率、支撑/阻力、波动率、量比、价格位置、布林带）
+  - 交易建议：入场价/止损/目标价/盈亏比
+  - 看多理由 & 风险提示：左右分栏
+
+**验证：**
+- `/analysis/analyze` 返回全部 11 个关键字段 ✅
+- `summary` 示例："综合评级：轻微偏空（评分 -6.1/100）\n技术面 +11.3分：MACD 金叉/看多信号..." ✅
+- `key_reasons`: 3 条，`risks`: 4 条 ✅
+- TypeScript 编译通过 ✅，Vite 构建通过 ✅
+
+**Commits:** (待生成)
