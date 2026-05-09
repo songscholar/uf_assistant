@@ -364,10 +364,9 @@ export default function AnalysisPage() {
     setExpandedId(null)
     try {
       const symbol = searchSymbol.trim().toUpperCase()
-      const res = await analysisApi.analyze(symbol)
-      const data = res.data?.data || res.data
-      setAnalysisResult(data)
-      // 分析完成后：刷新第1页列表 + 统计 + 自动展开本次记录
+      await analysisApi.analyze(symbol)
+      // 分析成功：刷新第1页列表 + 统计 + 自动展开本次记录
+      // 不再保留顶部实时卡片，记录已在历史列表中可展开查看
       await fetchData({ page: 1, autoExpandSymbol: symbol })
     } catch (err: any) {
       setAnalysisResult({ error: err.response?.data?.detail || '分析失败' })
