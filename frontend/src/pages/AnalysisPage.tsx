@@ -422,19 +422,19 @@ export default function AnalysisPage() {
       {/* Stats Cards */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
-          { label: '总分析次数', value: stats?.total_analyses?.toLocaleString() ?? '--', icon: BarChart3 },
-          { label: '平均置信度', value: stats?.avg_confidence != null ? `${Math.round(stats.avg_confidence)}%` : '--', icon: Target },
-          { label: '买入信号', value: stats?.signal_distribution?.BUY?.toLocaleString() ?? '--', icon: TrendingUp },
-          { label: '卖出信号', value: stats?.signal_distribution?.SELL?.toLocaleString() ?? '--', icon: TrendingUp },
-        ].map((item) => (
-          <div key={item.label} className="bg-bg-card border border-border rounded-xl p-4 card-hover">
+          { label: '总分析次数', value: stats?.total_analyses?.toLocaleString() ?? '--', icon: BarChart3, key: 'total' },
+          { label: '平均置信度', value: stats?.avg_confidence != null ? `${Math.round(stats.avg_confidence)}%` : '--', icon: Target, key: 'conf' },
+          { label: '买入信号', value: stats?.signal_distribution?.BUY?.toLocaleString() ?? '--', icon: TrendingUp, key: 'buy' },
+          { label: '卖出信号', value: stats?.signal_distribution?.SELL?.toLocaleString() ?? '--', icon: TrendingUp, key: 'sell' },
+        ].map((item, i) => (
+          <div key={item.label} className="bg-bg-card border border-border rounded-xl p-4 card-hover animate-fade-in-up" style={{ animationDelay: `${i * 80}ms` }}>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-accent-bg flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-accent-bg flex items-center justify-center transition-transform duration-200 group-hover:scale-110">
                 <item.icon className="w-4 h-4 text-accent" />
               </div>
               <span className="text-xs text-text-tertiary">{item.label}</span>
             </div>
-            <div className="text-xl font-bold text-text-primary">{item.value}</div>
+            <div className="text-xl font-bold text-text-primary animate-count-up" key={item.key + item.value}>{item.value}</div>
           </div>
         ))}
       </section>
@@ -448,7 +448,7 @@ export default function AnalysisPage() {
             onChange={(e) => setSearchSymbol(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="输入股票代码..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
+            className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent focus:shadow-[0_0_0_3px_rgba(200,85,61,0.08)]"
           />
         </div>
         <button
@@ -483,14 +483,9 @@ export default function AnalysisPage() {
         </button>
       </div>
 
-      {/* Analysis Result (实时分析) */}
-      {analysisResult && !analysisResult.error && (
-        <AnalysisDetailCard data={analysisResult} />
-      )}
-
       {/* Error */}
       {analysisResult?.error && (
-        <div className="mb-4 bg-danger-bg/30 border border-danger/20 rounded-xl p-4 flex items-center gap-2 text-sm text-danger">
+        <div className="mb-4 bg-danger-bg/30 border border-danger/20 rounded-xl p-4 flex items-center gap-2 text-sm text-danger animate-shake">
           <AlertCircle className="w-4 h-4" />
           {analysisResult.error}
         </div>
@@ -508,14 +503,23 @@ export default function AnalysisPage() {
           </thead>
           <tbody className="divide-y divide-border-light">
             {loading ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-text-tertiary text-sm">加载中...</td>
-              </tr>
+              <>
+                {[1, 2, 3].map((i) => (
+                  <tr key={`skel-${i}`}>
+                    {Array(7).fill(0).map((_, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 rounded animate-shimmer" style={{ width: `${60 + Math.random() * 30}%` }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </>
             ) : records.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-text-tertiary text-sm">
-                  <Brain className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                  暂无分析记录
+                <td colSpan={7} className="px-4 py-12 text-center text-text-tertiary text-sm animate-fade-in-up">
+                  <Brain className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p>暂无分析记录</p>
+                  <p className="text-xs mt-1 opacity-60">输入代码并点击「执行 AI 分析」开始</p>
                 </td>
               </tr>
             ) : (
@@ -523,40 +527,39 @@ export default function AnalysisPage() {
                 <>
                   <tr
                     key={record.id}
-                    className="hover:bg-bg-hover transition-colors duration-150 cursor-pointer"
+                    className="hover:bg-bg-hover transition-all duration-200 cursor-pointer group"
                     onClick={() => handleRecordClick(record)}
                   >
-                    <td className="px-4 py-3 text-text-primary font-medium">{record.symbol}</td>
+                    <td className="px-4 py-3 text-text-primary font-medium transition-transform duration-200 group-hover:translate-x-0.5">{record.symbol}</td>
                     <td className="px-4 py-3 text-text-secondary text-xs">{record.market}</td>
-                    <td className="px-4 py-3">{signalBadge(record.signal)}</td>
+                    <td className="px-4 py-3 transition-transform duration-200 group-hover:scale-105">{signalBadge(record.signal)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 bg-bg-secondary rounded-full overflow-hidden max-w-[80px]">
                           <div
                             className={cn(
-                              'h-full rounded-full transition-all duration-300',
+                              'h-full rounded-full transition-all duration-500 ease-out',
                               record.confidence >= 0.7 ? 'bg-success' : record.confidence >= 0.4 ? 'bg-accent' : 'bg-danger'
                             )}
                             style={{ width: `${Math.min(100, (record.confidence || 0) * 100)}%` }}
                           />
                         </div>
-                        <span className="text-xs text-text-secondary">{((record.confidence || 0) * 100).toFixed(0)}%</span>
+                        <span className="text-xs text-text-secondary tabular-nums">{((record.confidence || 0) * 100).toFixed(0)}%</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-text-secondary text-xs max-w-[300px] truncate">{record.summary}</td>
-                    <td className="px-4 py-3 text-text-tertiary text-xs whitespace-nowrap">
-                      {record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '--'}
-                    </td>
+                    <td className="px-4 py-3 text-text-tertiary text-xs whitespace-nowrap">{record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '--'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        {expandedId === record.id ? (
-                          <ChevronUp className="w-4 h-4 text-text-tertiary" />
-                        ) : (
+                        <span className={cn(
+                          'transition-transform duration-200',
+                          expandedId === record.id ? 'rotate-180' : 'rotate-0'
+                        )}>
                           <ChevronDown className="w-4 h-4 text-text-tertiary" />
-                        )}
+                        </span>
                         <button
                           onClick={() => handleDelete(record.id)}
-                          className="p-1 rounded-md hover:bg-bg-hover text-text-tertiary hover:text-danger transition-all"
+                          className="p-1 rounded-md hover:bg-bg-hover text-text-tertiary hover:text-danger transition-all duration-150 hover:scale-110 active:scale-90"
                           title="删除"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -565,7 +568,7 @@ export default function AnalysisPage() {
                     </td>
                   </tr>
                   {expandedId === record.id && (
-                    <tr key={`${record.id}-detail`}>
+                    <tr key={`${record.id}-detail`} className="animate-expand-down">
                       <td colSpan={7} className="px-4 py-4 bg-bg-secondary/50">
                         {/* 新记录有完整详情字段，复用 AnalysisDetailCard */}
                         {(record.score_breakdown || record.metrics_snapshot) ? (

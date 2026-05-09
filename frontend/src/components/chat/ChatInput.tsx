@@ -60,7 +60,8 @@ export default function ChatInput({ onSend }: ChatInputProps) {
             className={cn(
               'chat-input w-full resize-none bg-transparent text-text-primary text-[15px]',
               'placeholder:text-text-tertiary outline-none border-none',
-              'min-h-[40px] max-h-[200px] py-1'
+              'min-h-[40px] max-h-[200px] py-1',
+              'transition-all duration-200'
             )}
           />
         </div>
@@ -90,12 +91,13 @@ export default function ChatInput({ onSend }: ChatInputProps) {
             className={cn(
               'w-9 h-9 rounded-full flex items-center justify-center shrink-0',
               'transition-all duration-150',
+              'relative overflow-hidden',
               content.trim() && !isStreaming
-                ? 'bg-accent text-white hover:scale-105 hover:shadow-md active:scale-95'
+                ? 'bg-accent text-white hover:scale-110 hover:shadow-md active:scale-90'
                 : 'bg-bg-hover text-text-tertiary'
             )}
           >
-            <Send className="w-4 h-4" />
+            <Send className={cn('w-4 h-4 transition-transform duration-200', content.trim() && !isStreaming && 'group-hover:translate-x-0.5')} />
           </button>
         </div>
       </div>

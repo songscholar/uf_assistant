@@ -26,37 +26,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-bg-primary px-4">
+      <div className="w-full max-w-sm animate-fade-in-up">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-[var(--color-text)]">UF Stock Assistant</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">智能股票助手</p>
+          <h1 className="text-2xl font-bold text-text-primary">UF Stock Assistant</h1>
+          <p className="text-sm text-text-secondary mt-1">智能股票助手</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-bg-card rounded-xl border border-border p-6 space-y-4 animate-scale-in">
           {error && (
-            <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</div>
+            <div className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2 animate-shake">{error}</div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-1">用户名</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">用户名</label>
             <input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
               required
               autoFocus
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-1">密码</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">密码</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
               required
             />
           </div>
@@ -64,16 +64,16 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 font-medium
-                       hover:bg-[var(--color-accent)]/25 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] hover:-translate-y-[1px]
-                       active:scale-[0.985] active:bg-[var(--color-accent)]/35 active:translate-y-0
+            className="w-full py-2.5 rounded-lg bg-accent/15 text-accent border border-accent/30 font-medium
+                       hover:bg-accent/25 hover:shadow-[0_0_12px_rgba(200,85,61,0.15)] hover:-translate-y-[1px]
+                       active:scale-[0.985] active:bg-accent/35 active:translate-y-0
                        disabled:opacity-50 transition-all duration-200"
           >
             {loading ? '登录中...' : '登录'}
           </button>
 
           <div className="flex items-center justify-between text-sm">
-            <Link to="/register" className="text-[var(--color-accent)] hover:underline hover:opacity-80 transition-opacity">注册账号</Link>
+            <Link to="/register" className="text-accent hover:underline hover:opacity-80 transition-all duration-200">注册账号</Link>
           </div>
         </form>
       </div>

@@ -1934,6 +1934,79 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 
 ---
 
+## 2026-05-06 20:18 — 分析成功后清空顶部实时卡片 + 信号统计说明
+
+**Commit:** `a081226`
+
+### 问题1：顶部分析卡片残留
+**根因：** 分析成功后仍保留 `analysisResult` 顶部卡片，与历史列表中展开的记录重复展示。
+
+**修复：** 分析成功时不再 `setAnalysisResult(data)`，直接通过 `fetchData({ page: 1, autoExpandSymbol })` 刷新列表并展开记录。失败时仍展示错误提示。
+
+### 问题2：新增3条记录但 BUY/SELL 信号数不变
+**根因（非bug，数据特征）：** 数据库显示最近3条新增记录（600000、300000、600570）的 `decision` 均为 **HOLD**。`_score_to_decision` 阈值：`score >= 20` 才为 BUY，`score <= -20` 才为 SELL，否则为 HOLD。这三只票的 overall_score 均在 -20~+20 区间内。
+
+当前分析记录分布：BUY:1, HOLD:5, SELL:0
+
+**验证：**
+- TypeScript 编译通过 ✅
+
+---
+
+## 2026-05-06 20:15 — 分析完成后自动刷新列表+展开记录+刷新统计
+
+**Commit:** `c0bca54`
+
+### 需求
+1. 执行AI分析后自动刷新历史记录列表
+2. 自动展开本次查询证券代码的最新记录（同代码可能查多次）
+3. 统计卡片（总分析次数/平均置信度/信号分布）自动刷新
+
+### 实现
+- `fetchData` 增加可选参数 `{page?, symbol?, autoExpandSymbol?}`
+- `handleAnalyze` 分析成功后调用 `fetchData({ page: 1, autoExpandSymbol: symbol })`
+- 自动定位：items 已按 `created_at desc` 排序，取第一个匹配的 symbol 记录展开
+- stats 接口随列表一起刷新（同一批 Promise.all）
+
+**验证：**
+- TypeScript 编译通过 ✅
+
+---
+
+## 2026-05-06 20:10 — Stats 用户隔离 + 置信度显示 + 平滑算法
+
+**Commit:** `24e2bf4`
+
+### 问题1：历史记录3条但显示5条
+**根因：** `get_performance_stats()` 没有 `user_id` 过滤，统计的是**所有用户**的30天内记录，而历史记录 `get_history()` 只查当前用户。
+
+**修复：**
+- `analysis_memory.py`: `get_performance_stats` 增加 `user_id` 参数，查询时 `filter_by(user_id=user_id)`
+- `analysis.py`: `/stats` 路由通过 `Depends(get_current_user)` 获取当前用户并传入
+
+### 问题2：平均置信度显示 0.68%
+**根因：** 后端返回 `avg_confidence = 68`（0-100 整数），前端用了 `formatPercent(68/100) = formatPercent(0.68) = "0.68%"`。`formatPercent` 是给涨跌幅用的（传小数如 0.05 → "5.00%"），不适用于已格式化的百分比数值。
+
+**修复：** 前端改用 `${Math.round(stats.avg_confidence)}%`
+
+### 问题3：删除所有数据后买入信号还是1
+**根因：** 同问题1，stats 统计所有用户记录，删除只删除了当前用户的。
+
+**修复：** 同问题1，增加 user_id 过滤后解决。
+
+### 问题4：置信度只有 25%、45%、65%
+**根因：** `_calibrate_confidence` 的 `signal_conf` 是阶梯式的（70/58/45/35/25），`abs_score` 跨越阈值才变化，变化太粗。
+
+**修复：** `signal_conf` 改用线性映射：`20 + (abs_score / 100.0) * 50`，abs_score 从 0 到 100 连续映射到 20-70。
+- 之前：abs_score=14 → 25%, abs_score=15 → 45%（一跳20个百分点）
+- 之后：abs_score=14 → 27%, abs_score=15 → 28%（平滑连续）
+
+**验证：**
+- TypeScript 编译通过 ✅
+- Python 语法检查通过 ✅
+
+---
+
 ## 2026-05-06 20:05 — 手风琴展开 + AI结果持久化修复
 
 **Commit:** `a996b5e`

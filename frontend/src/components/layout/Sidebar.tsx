@@ -126,11 +126,14 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               'transition-all duration-200',
               'hover:bg-accent-light hover:-translate-y-[1px]',
               'active:translate-y-0 active:scale-[0.985]',
-              collapsed && 'px-0'
+              collapsed && 'px-0',
+              'relative overflow-hidden'
             )}
           >
-            <Plus className="w-4 h-4" />
-            {!collapsed && <span>新建对话</span>}
+            <span className="relative z-10 flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              {!collapsed && <span>新建对话</span>}
+            </span>
           </button>
         </div>
 
@@ -146,16 +149,17 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 className={cn(
                   'w-full flex items-center gap-3 px-3 h-9 rounded-lg',
                   'text-sm transition-all duration-200 mb-0.5 relative',
+                  'group/nav',
                   isActive
                     ? 'bg-accent-bg text-accent font-medium'
                     : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                 )}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-accent" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-accent animate-scale-in" />
                 )}
-                <Icon className="w-4 h-4 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                <Icon className={cn('w-4 h-4 shrink-0 transition-transform duration-200', !isActive && 'group-hover/nav:scale-110 group-hover/nav:rotate-3')} />
+                {!collapsed && <span className="transition-transform duration-200 group-hover/nav:translate-x-0.5">{item.label}</span>}
               </button>
             )
           })}

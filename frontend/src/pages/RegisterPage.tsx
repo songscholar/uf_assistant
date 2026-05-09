@@ -59,47 +59,47 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-bg-primary px-4">
+      <div className="w-full max-w-sm animate-fade-in-up">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-[var(--color-text)]">注册账号</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">UF Stock Assistant</p>
+          <h1 className="text-2xl font-bold text-text-primary">注册账号</h1>
+          <p className="text-sm text-text-secondary mt-1">UF Stock Assistant</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-bg-card rounded-xl border border-border p-6 space-y-4 animate-scale-in">
           {error && (
-            <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</div>
+            <div className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2 animate-shake">{error}</div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-1">用户名</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">用户名</label>
             <input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
               required
               minLength={3}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-1">邮箱</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">邮箱</label>
             <div className="flex gap-2">
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                className="flex-1 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
                 required
               />
               <button
                 type="button"
                 onClick={sendCode}
                 disabled={codeCooldown > 0 || codeLoading}
-                className="px-3 py-2 rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 text-sm whitespace-nowrap font-medium
-                           hover:bg-[var(--color-accent)]/25 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] hover:-translate-y-[1px]
-                           active:scale-[0.985] active:bg-[var(--color-accent)]/35 active:translate-y-0
+                className="px-3 py-2 rounded-lg bg-accent/15 text-accent border border-accent/30 text-sm whitespace-nowrap font-medium
+                           hover:bg-accent/25 hover:shadow-[0_0_12px_rgba(200,85,61,0.15)] hover:-translate-y-[1px]
+                           active:scale-[0.985] active:bg-accent/35 active:translate-y-0
                            disabled:opacity-50 transition-all duration-200"
               >
                 {codeLoading ? '发送中...' : codeCooldown > 0 ? `${codeCooldown}s` : '发送验证码'}
@@ -109,12 +109,12 @@ export default function RegisterPage() {
 
           {codeSent && (
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text)] mb-1">验证码</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">验证码</label>
               <input
                 type="text"
                 value={code}
                 onChange={e => setCode(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
                 required
                 maxLength={6}
                 placeholder="6位验证码"
@@ -123,24 +123,24 @@ export default function RegisterPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-1">密码</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">密码</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
               required
               minLength={8}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-1">确认密码</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">确认密码</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
               required
             />
           </div>
@@ -148,16 +148,16 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading || !codeSent}
-            className="w-full py-2.5 rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 font-medium
-                       hover:bg-[var(--color-accent)]/25 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] hover:-translate-y-[1px]
-                       active:scale-[0.985] active:bg-[var(--color-accent)]/35 active:translate-y-0
+            className="w-full py-2.5 rounded-lg bg-accent/15 text-accent border border-accent/30 font-medium
+                       hover:bg-accent/25 hover:shadow-[0_0_12px_rgba(200,85,61,0.15)] hover:-translate-y-[1px]
+                       active:scale-[0.985] active:bg-accent/35 active:translate-y-0
                        disabled:opacity-50 transition-all duration-200"
           >
             {loading ? '注册中...' : '注册'}
           </button>
 
           <div className="text-sm text-center">
-            <Link to="/login" className="text-[var(--color-accent)] hover:underline hover:opacity-80 transition-opacity">已有账号？登录</Link>
+            <Link to="/login" className="text-accent hover:underline hover:opacity-80 transition-all duration-200">已有账号？登录</Link>
           </div>
         </form>
       </div>

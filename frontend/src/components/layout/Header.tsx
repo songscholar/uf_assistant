@@ -76,7 +76,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu className="w-5 h-5 text-text-secondary" />
         </button>
-        <div>
+        <div className="animate-fade-in-down">
           <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
           {subtitle && (
             <p className="text-xs text-text-tertiary">{subtitle}</p>
@@ -112,7 +112,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-bg-card border border-border shadow-xl py-1 z-50">
+            <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-bg-card border border-border shadow-xl py-1 z-50 animate-scale-pop">
               {user && (
                 <>
                   <div className="px-3 py-2 border-b border-border-light">

@@ -25,8 +25,8 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
   return (
     <div
       className={cn(
-        'flex gap-3 px-4 py-4 animate-fade-in-up group',
-        isUser ? 'flex-row-reverse' : 'flex-row'
+        'flex gap-3 px-4 py-4 group',
+        isUser ? 'flex-row-reverse animate-slide-in-right' : 'flex-row animate-slide-in-left'
       )}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
@@ -35,7 +35,7 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
       <div
         className={cn(
           'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
-          'transition-transform duration-200',
+          'transition-all duration-300 hover:scale-110 hover:rotate-6',
           isUser ? 'bg-accent' : 'bg-bg-secondary border border-border'
         )}
       >
@@ -52,9 +52,9 @@ export default function MessageBubble({ message, onRetry }: MessageBubbleProps) 
         <div
           className={cn(
             'px-4 py-2.5 text-[15px] leading-relaxed',
-            'transition-shadow duration-200',
+            'transition-all duration-200',
             isUser
-              ? 'bg-accent text-white rounded-2xl rounded-tr-sm'
+              ? 'bg-accent text-white rounded-2xl rounded-tr-sm hover:shadow-md hover:shadow-accent/20'
               : 'bg-bg-card border border-border rounded-2xl rounded-tl-sm shadow-sm hover:shadow-md'
           )}
         >
