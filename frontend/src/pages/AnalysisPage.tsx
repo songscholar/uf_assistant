@@ -27,6 +27,7 @@ interface AnalysisRecord {
   summary: string
   indicators: Record<string, unknown>
   created_at: string
+  user_feedback?: string
 }
 
 interface AnalysisStats {
@@ -510,7 +511,7 @@ export default function AnalysisPage() {
                               onClick={() => handleFeedback(record.id, 'helpful')}
                               className={cn(
                                 'p-1 rounded transition-all',
-                                feedbackMap[record.id] === 'helpful'
+                                (feedbackMap[record.id] ?? record.user_feedback) === 'helpful'
                                   ? 'bg-success-bg text-success'
                                   : 'text-text-tertiary hover:bg-success-bg hover:text-success'
                               )}
@@ -522,7 +523,7 @@ export default function AnalysisPage() {
                               onClick={() => handleFeedback(record.id, 'not_helpful')}
                               className={cn(
                                 'p-1 rounded transition-all',
-                                feedbackMap[record.id] === 'not_helpful'
+                                (feedbackMap[record.id] ?? record.user_feedback) === 'not_helpful'
                                   ? 'bg-danger-bg text-danger'
                                   : 'text-text-tertiary hover:bg-danger-bg hover:text-danger'
                               )}
