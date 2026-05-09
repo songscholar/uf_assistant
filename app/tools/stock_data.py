@@ -152,7 +152,25 @@ def get_stock_history(
 ) -> str:
     """
     获取股票历史K线数据
+    优先使用 MarketDataCollector（腾讯财经 + AKShare fallback），
+    避免直接调用 AKShare 东财接口导致 RemoteDisconnected。
     """
+    # ── 第一层：MarketDataCollector（腾讯财经优先）──
+    try:
+        from app.strategies.market_data_collector import get_market_data_collector
+
+        collector = get_market_data_collector()
+        period_map = {"daily": "1D", "weekly": "1W", "monthly": "1M"}
+        timeframe = period_map.get(period, "1D")
+
+        klines = collector._get_kline(symbol, "stock", timeframe, limit)
+        if klines:
+            logger.info("history_fetched_tencent", symbol=symbol, period=period, records=len(klines))
+            return json.dumps({"symbol": symbol, "period": period, "data": klines}, ensure_ascii=False, default=str)
+    except Exception as exc:
+        logger.warning("history_tencent_failed", symbol=symbol, error=str(exc))
+
+    # ── 第二层：AKShare 东财接口 fallback ──
     try:
         ak = _get_ak()
 
@@ -165,12 +183,7 @@ def get_stock_history(
         start_fmt = start.replace("-", "")
         end_fmt = end.replace("-", "")
 
-        period_map = {
-            "daily": "daily",
-            "weekly": "weekly",
-            "monthly": "monthly",
-        }
-        ak_period = period_map.get(period, "daily")
+        ak_period = {"daily": "daily", "weekly": "weekly", "monthly": "monthly"}.get(period, "daily")
 
         if ak_period == "daily":
             df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_fmt, end_date=end_fmt, adjust="qfq")
@@ -200,7 +213,7 @@ def get_stock_history(
                 "turnover": row.get("换手率"),
             })
 
-        logger.info("history_fetched", symbol=symbol, period=period, records=len(records))
+        logger.info("history_fetched_akshare", symbol=symbol, period=period, records=len(records))
         return json.dumps({"symbol": symbol, "period": period, "data": records}, ensure_ascii=False, default=str)
 
     except Exception as exc:
