@@ -2008,3 +2008,28 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - `app/services/analysis_memory.py`：`_row_to_dict` 增加 `signal` 别名，并将 `confidence` 归一化为 0-1 小数
 
 **Commits:** (待生成)
+
+## 2026-05-09 — AnalysisPage 补充"执行 AI 分析"功能
+
+**问题：** 后端已新增 `/analysis/analyze` 接口，但 AnalysisPage 的搜索按钮仅查询历史记录，用户无法在前端触发 AI 分析。
+
+**改动：**
+- `frontend/src/lib/api.ts`：
+  - `analysisApi` 新增 `analyze(symbol, marketType)` 方法，调用 `POST /analysis/analyze`
+- `frontend/src/pages/AnalysisPage.tsx`：
+  - 新增 `analyzing` / `analysisResult` 状态
+  - 新增 `normalizeConfidence` 辅助函数（兼容后端返回的 0-100 整数和 0-1 小数）
+  - 新增 `handleAnalyze` 函数：调用 `analysisApi.analyze`，成功后展示结果并自动过滤该股票历史记录
+  - UI 调整：
+    - 搜索按钮改为"搜索历史"（secondary 样式）
+    - 新增"执行 AI 分析"主按钮（accent 样式，带 `Loader2` loading 状态）
+    - 新增分析结果展示卡片（决策标签、置信度进度条、综合评分、市场价、分析摘要）
+    - 新增错误提示展示
+
+**验证：**
+- TypeScript 编译通过 ✅
+- Vite 构建通过 ✅
+- `curl POST /api/v1/analysis/analyze` 返回正确结构 ✅
+- `analysisResult` 字段映射正确（`decision`/`confidence`/`summary`/`overall_score`）✅
+
+**Commits:** (待生成)

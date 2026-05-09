@@ -12,6 +12,8 @@ import {
   ChevronUp,
   ThumbsUp,
   ThumbsDown,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { analysisApi } from '@/lib/api'
 import { cn, formatPercent } from '@/lib/utils'
@@ -43,6 +45,8 @@ export default function AnalysisPage() {
   const [searchSymbol, setSearchSymbol] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<any>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -73,6 +77,24 @@ export default function AnalysisPage() {
     setSearchQuery(searchSymbol)
   }
 
+  const handleAnalyze = async () => {
+    if (!searchSymbol.trim()) return
+    setAnalyzing(true)
+    setAnalysisResult(null)
+    try {
+      const symbol = searchSymbol.trim().toUpperCase()
+      const res = await analysisApi.analyze(symbol)
+      setAnalysisResult(res.data?.data || res.data)
+      // 分析完成后自动搜索该股票的历史记录
+      setSearchQuery(symbol)
+      setPage(1)
+    } catch (err: any) {
+      setAnalysisResult({ error: err.response?.data?.detail || '分析失败' })
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   const handleDelete = async (id: number) => {
     try {
       await analysisApi.delete(String(id))
@@ -88,6 +110,11 @@ export default function AnalysisPage() {
         body: JSON.stringify({ memory_id: id, feedback }),
       })
     } catch { /* silent */ }
+  }
+
+  const normalizeConfidence = (confidence: number) => {
+    const c = confidence || 0
+    return c > 1 ? c / 100 : c
   }
 
   const signalBadge = (signal: string) => {
@@ -127,7 +154,7 @@ export default function AnalysisPage() {
         ))}
       </section>
 
-      {/* Search */}
+      {/* Search & Analyze */}
       <div className="flex items-center gap-2 mb-4">
         <div className="flex-1 max-w-xs relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
@@ -135,23 +162,105 @@ export default function AnalysisPage() {
             value={searchSymbol}
             onChange={(e) => setSearchSymbol(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="搜索股票代码..."
+            placeholder="输入股票代码..."
             className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
           />
         </div>
         <button
           onClick={handleSearch}
           className={cn(
-            'px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium',
-            'flex items-center gap-1.5 shadow-sm',
-            'transition-all duration-200 hover:bg-accent-light hover:-translate-y-[1px]',
+            'px-4 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-sm font-medium',
+            'flex items-center gap-1.5',
+            'transition-all duration-200 hover:bg-bg-hover hover:-translate-y-[1px]',
             'active:translate-y-0 active:scale-[0.985]'
           )}
         >
           <Search className="w-4 h-4" />
-          搜索
+          搜索历史
+        </button>
+        <button
+          onClick={handleAnalyze}
+          disabled={analyzing || !searchSymbol.trim()}
+          className={cn(
+            'px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium',
+            'flex items-center gap-1.5 shadow-sm',
+            'transition-all duration-200 hover:bg-accent-light hover:-translate-y-[1px]',
+            'active:translate-y-0 active:scale-[0.985]',
+            'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0'
+          )}
+        >
+          {analyzing ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Brain className="w-4 h-4" />
+          )}
+          {analyzing ? '分析中...' : '执行 AI 分析'}
         </button>
       </div>
+
+      {/* Analysis Result */}
+      {analysisResult && !analysisResult.error && (
+        <div className="mb-4 bg-bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+              <Brain className="w-4 h-4 text-accent" />
+              {analysisResult.symbol || searchSymbol.toUpperCase()} 分析结果
+            </h3>
+            <span className="text-xs text-text-tertiary">
+              {analysisResult.created_at ? new Date(analysisResult.created_at).toLocaleString('zh-CN') : '刚刚'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <div className="bg-bg-secondary rounded-lg p-3">
+              <div className="text-xs text-text-tertiary mb-1">决策</div>
+              {signalBadge(analysisResult.decision)}
+            </div>
+            <div className="bg-bg-secondary rounded-lg p-3">
+              <div className="text-xs text-text-tertiary mb-1">置信度</div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-bg-card rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full',
+                      normalizeConfidence(analysisResult.confidence) >= 0.7 ? 'bg-success' : normalizeConfidence(analysisResult.confidence) >= 0.4 ? 'bg-accent' : 'bg-danger'
+                    )}
+                    style={{ width: `${Math.min(100, normalizeConfidence(analysisResult.confidence) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-text-primary">{(normalizeConfidence(analysisResult.confidence) * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+            <div className="bg-bg-secondary rounded-lg p-3">
+              <div className="text-xs text-text-tertiary mb-1">综合评分</div>
+              <span className={cn(
+                'text-sm font-bold',
+                (analysisResult.overall_score ?? 0) >= 70 ? 'text-success' : (analysisResult.overall_score ?? 0) >= 40 ? 'text-accent' : 'text-danger'
+              )}>
+                {(analysisResult.overall_score ?? 0).toFixed(0)} / 100
+              </span>
+            </div>
+            <div className="bg-bg-secondary rounded-lg p-3">
+              <div className="text-xs text-text-tertiary mb-1">市场价</div>
+              <span className="text-sm font-bold text-text-primary">
+                {analysisResult.price != null ? analysisResult.price.toFixed(2) : '--'}
+              </span>
+            </div>
+          </div>
+          {analysisResult.summary && (
+            <div className="bg-bg-secondary rounded-lg p-3">
+              <div className="text-xs text-text-tertiary mb-1">分析摘要</div>
+              <p className="text-sm text-text-primary leading-relaxed">{analysisResult.summary}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {analysisResult?.error && (
+        <div className="mb-4 bg-danger-bg/30 border border-danger/20 rounded-xl p-4 flex items-center gap-2 text-sm text-danger">
+          <AlertCircle className="w-4 h-4" />
+          {analysisResult.error}
+        </div>
+      )}
 
       {/* History Table */}
       <div className="bg-bg-card border border-border rounded-xl overflow-hidden">
