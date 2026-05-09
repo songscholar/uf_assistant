@@ -1934,6 +1934,71 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 
 ---
 
+## 2026-05-06 20:25 — 全局交互动效统一优化
+
+**Commit:** `4edc392`
+
+### 背景
+前端交互动效不够流畅，多处缺少动态反馈。统一优化所有核心组件的交互体验。
+
+### CSS 新增动画类（index.css）
+| 动画 | 用途 |
+|------|------|
+| `fade-in-down` | 标题/元素从上淡入 |
+| `slide-in-right` | 用户消息从右侧滑入 |
+| `slide-in-left` | AI消息从左侧滑入 |
+| `scale-pop` | 菜单/弹窗弹性弹出 |
+| `expand-down` | 展开折叠平滑过渡 |
+| `shake` | 错误提示抖动 |
+| `heart-beat` | 点赞/点踩心跳 |
+| `count-up` | 统计数字变化动画 |
+| `glow-pulse` | focus状态呼吸光晕 |
+
+### 组件级优化
+
+**AnalysisPage.tsx**
+- 表格行：hover 时代码微右移 + 信号标签缩放
+- 展开/折叠：`animate-expand-down` 平滑过渡
+- 统计卡片：stagger `fade-in-up`（依次80ms延迟）+ `count-up` 数字变化
+- 分析按钮：loading 时 shimmer 扫光效果
+- 表格骨架屏：3行 shimmer 占位
+- 搜索框：focus 时 accent 色光晕
+- 空状态：淡入 + 引导文案
+- 错误提示：`animate-shake` 抖动
+
+**MessageBubble.tsx**
+- 用户消息：`animate-slide-in-right`
+- AI消息：`animate-slide-in-left`
+- 头像：hover 旋转6°+缩放
+- 复制成功：`animate-scale-pop` 弹跳
+- 点赞/点踩：`animate-heart-beat` 心跳
+
+**MainLayout.tsx**
+- 路由切换：`animate-fade-in-up`（key={location.pathname} 触发）
+
+**Header.tsx**
+- 页面标题切换：`animate-fade-in-down`
+- 用户菜单：`animate-scale-pop` 弹性弹出
+
+**Sidebar.tsx**
+- 导航项：hover 图标旋转3°+缩放，文字微右移
+- 活动指示器：`animate-scale-in`
+- 删除按钮：hover 缩放110%，active 90%
+
+**ChatInput.tsx**
+- 发送按钮：hover 缩放110%（原105%）
+
+**LoginPage.tsx / RegisterPage.tsx**
+- 表单整体：`animate-fade-in-up` + `animate-scale-in`
+- 错误提示：`animate-shake`
+- 输入框：focus 时 accent 光晕 + 过渡动画
+- 主题变量：统一从 `[var(--color-xxx)]` 改为 Tailwind 主题类
+
+**验证：**
+- TypeScript 编译通过 ✅
+
+---
+
 ## 2026-05-06 20:18 — 分析成功后清空顶部实时卡片 + 信号统计说明
 
 **Commit:** `a081226`

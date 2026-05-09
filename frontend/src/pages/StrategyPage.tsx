@@ -44,28 +44,66 @@ const TABS = [
 
 // ── Strategy Card ───────────────────────────────────────────────────────────
 
-function StrategyCard({ strategy, onEvaluate }: { strategy: StrategyInfo; onEvaluate: () => void }) {
+function StrategyCard({ strategy, onEvaluate, isLoading, result }: {
+  strategy: StrategyInfo
+  onEvaluate: () => void
+  isLoading: boolean
+  result: { strategy: string; signal: StrategySignal } | null
+}) {
+  const isActive = result?.strategy === strategy.key
   return (
-    <div className={cn('bg-bg-card border border-border rounded-xl p-4 card-hover cursor-pointer relative overflow-hidden')}>
+    <div className={cn('bg-bg-card border border-border rounded-xl p-4 card-hover relative overflow-hidden transition-all duration-300', isActive && 'border-accent/40 shadow-md')}>
       <div className="flex items-start justify-between mb-2">
         <div className="w-10 h-10 rounded-lg bg-accent-bg flex items-center justify-center">
           <Brain className="w-5 h-5 text-accent" />
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onEvaluate() }}
+          disabled={isLoading}
           className={cn(
             'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
             'bg-accent text-white hover:bg-accent-light',
             'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
-            'flex items-center gap-1 shadow-sm hover:shadow-md'
+            'flex items-center gap-1 shadow-sm hover:shadow-md',
+            'disabled:opacity-50'
           )}
         >
-          <Play className="w-3.5 h-3.5" />
-          运行
+          {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+          {isLoading ? '分析中...' : '运行'}
         </button>
       </div>
       <h3 className="font-semibold text-text-primary mb-1">{strategy.name}</h3>
       <p className="text-sm text-text-secondary">{strategy.description}</p>
+
+      {/* Evaluate 结果展示 */}
+      {isActive && result?.signal && (
+        <div className="mt-3 pt-3 border-t border-border space-y-2 animate-fade-in-up">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-tertiary">信号:</span>
+            <span className={cn(
+              'px-2 py-0.5 rounded-md text-xs font-medium',
+              result.signal.direction === 'buy' && 'bg-success-bg text-success',
+              result.signal.direction === 'sell' && 'bg-danger-bg text-danger',
+              result.signal.direction === 'hold' && 'bg-bg-secondary text-text-secondary'
+            )}>
+              {result.signal.direction === 'buy' ? '买入' : result.signal.direction === 'sell' ? '卖出' : '观望'}
+            </span>
+            {result.signal.confidence != null && (
+              <span className="text-xs text-text-secondary">
+                置信度 {(result.signal.confidence * 100).toFixed(1)}%
+              </span>
+            )}
+          </div>
+          {result.signal.reason && (
+            <p className="text-xs text-text-secondary leading-relaxed">{result.signal.reason}</p>
+          )}
+        </div>
+      )}
+      {isActive && result?.signal === null && (
+        <div className="mt-3 pt-3 border-t border-border text-xs text-text-tertiary animate-fade-in-up">
+          暂无信号
+        </div>
+      )}
     </div>
   )
 }
@@ -698,6 +736,8 @@ function LibraryTab() {
               key={strategy.key}
               strategy={strategy}
               onEvaluate={() => handleEvaluate(strategy.key)}
+              isLoading={loading && result?.strategy === strategy.key}
+              result={result}
             />
           ))}
         </div>

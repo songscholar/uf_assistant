@@ -88,10 +88,12 @@ def get_cache_info() -> dict[str, Any]:
 # ========================================================================
 
 def _load_spot_data() -> pd.DataFrame | None:
-    """加载全市场 A 股实时数据"""
+    """加载全市场 A 股实时数据（用 stock_zh_a_spot 替代被限的 stock_zh_a_spot_em）"""
     try:
         import akshare as ak
-        df = ak.stock_zh_a_spot_em()
+        df = ak.stock_zh_a_spot()
+        # 清理代码前缀（sh/sz/bj）
+        df["代码"] = df["代码"].astype(str).str.replace(r"^(sh|sz|bj)", "", regex=True)
         logger.info("cache_load_spot_ok", rows=len(df))
         return df
     except Exception as exc:

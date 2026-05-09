@@ -97,12 +97,17 @@ async def evaluate_strategy(strategy_key: str, request: StrategyEvaluateRequest)
         
         # 执行策略
         result = strategy.evaluate(request.symbol, history_data["data"])
-        
+
+        # 映射 direction: up→buy, down→sell, flat→hold
+        direction_map = {"up": "buy", "down": "sell", "flat": "hold"}
+        raw_direction = result.signal.direction.value if result.signal else None
+        mapped_direction = direction_map.get(raw_direction, raw_direction) if raw_direction else None
+
         return {
             "strategy": strategy.name,
             "symbol": request.symbol,
             "signal": {
-                "direction": result.signal.direction.value if result.signal else None,
+                "direction": mapped_direction,
                 "confidence": result.signal.confidence if result.signal else None,
                 "reason": result.signal.reason if result.signal else None,
             } if result.signal else None,

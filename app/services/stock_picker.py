@@ -8,8 +8,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import akshare as ak
-
+from app.core.cache import ensure_cache
 from app.core.logging import get_logger
 from app.strategies.base import BaseStrategy, StrategyResult
 from app.strategies.registry import create_strategy
@@ -34,7 +33,7 @@ class StockPicker:
         symbols: list[str],
         strategy_params: dict[str, Any] | None = None,
         min_confidence: float = 0.3,
-    ) -> str:
+    ) -> dict[str, Any]:
         """
         根据策略选股
         
@@ -49,7 +48,7 @@ class StockPicker:
         """
         strategy = create_strategy(strategy_key, **(strategy_params or {}))
         if not strategy:
-            return json.dumps({"error": f"策略 '{strategy_key}' 不存在"}, ensure_ascii=False)
+            return {"error": f"策略 '{strategy_key}' 不存在"}
         
         results = []
         up_signals = []
@@ -93,26 +92,26 @@ class StockPicker:
         up_signals.sort(key=lambda x: x["confidence"], reverse=True)
         down_signals.sort(key=lambda x: x["confidence"], reverse=True)
         
-        output = {
+        output: dict[str, Any] = {
             "strategy": strategy.name,
             "strategy_key": strategy_key,
             "total_analyzed": len(symbols),
             "signals_found": len(results),
             "buy_signals": up_signals[:20],
             "sell_signals": down_signals[:20],
-            "timestamp": json.loads(json.dumps(datetime.now().isoformat(), default=str)),
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
         logger.info("stock_picking_completed", strategy=strategy_key, signals=len(results))
-        return json.dumps(output, ensure_ascii=False, default=str)
+        return output
     
     def quick_screen(
         self,
         conditions: dict[str, Any],
-    ) -> str:
+    ) -> dict[str, Any]:
         """
         快速筛选（基于基本条件）
-        
+
         Args:
             conditions: 筛选条件
                 - min_price: 最低价格
@@ -121,13 +120,29 @@ class StockPicker:
                 - max_change_pct: 最大涨跌幅
                 - min_volume: 最小成交量
                 - limit: 返回数量
-                
+
         Returns:
-            JSON 格式的筛选结果
+            dict 格式的筛选结果
         """
+        # ── 从缓存获取（只读，不触发刷新——stock_zh_a_spot 获取全市场需 ~30s）──
         try:
-            df = ak.stock_zh_a_spot_em()
-            
+            from app.core.cache import get_cached_df
+            df = get_cached_df("market:spot")
+        except Exception as exc:
+            logger.warning("quick_screen_cache_failed", error=str(exc))
+
+        if df is None or df.empty:
+            # 缓存未就绪时触发后台刷新（不阻塞）
+            try:
+                from app.core.cache import refresh_cache
+                import threading
+                threading.Thread(target=refresh_cache, args=("market:spot",), daemon=True).start()
+                logger.info("quick_screen_trigger_background_refresh")
+            except Exception:
+                pass
+            return {"error": "全市场数据正在初始化，请 30 秒后重试"}
+
+        try:
             # 应用条件过滤
             if "min_price" in conditions:
                 df = df[df["最新价"] >= conditions["min_price"]]
@@ -139,13 +154,13 @@ class StockPicker:
                 df = df[df["涨跌幅"] <= conditions["max_change_pct"]]
             if "min_volume" in conditions:
                 df = df[df["成交量"] >= conditions["min_volume"]]
-            
+
             # 排除 ST
             df = df[~df["名称"].str.contains("ST|退", na=False)]
-            
+
             limit = conditions.get("limit", 20)
             df = df.head(limit)
-            
+
             stocks = []
             for _, row in df.iterrows():
                 stocks.append({
@@ -158,16 +173,16 @@ class StockPicker:
                     "pe": row.get("市盈率-动态"),
                     "pb": row.get("市净率"),
                 })
-            
-            return json.dumps({
+
+            return {
                 "conditions": conditions,
                 "count": len(stocks),
                 "stocks": stocks,
-            }, ensure_ascii=False, default=str)
-            
+            }
+
         except Exception as exc:
             logger.error("quick_screen_failed", error=str(exc))
-            return json.dumps({"error": f"筛选失败: {exc}"}, ensure_ascii=False)
+            return {"error": f"筛选失败: {exc}"}
 
 
 from datetime import datetime
