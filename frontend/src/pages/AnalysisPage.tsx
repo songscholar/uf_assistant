@@ -378,31 +378,12 @@ export default function AnalysisPage() {
     }
   }
 
-  // 点击历史记录行：展示详情
+  // 点击历史记录行：手风琴展开/折叠详情
   const handleRecordClick = (record: AnalysisRecord) => {
     if (expandedId === record.id) {
       setExpandedId(null)
-      return
-    }
-    setExpandedId(record.id)
-    // 如果记录包含完整详情字段（新记录），直接展示
-    if (record.score_breakdown || record.metrics_snapshot) {
-      setAnalysisResult({
-        symbol: record.symbol,
-        decision: record.decision || record.signal,
-        confidence: record.confidence != null ? record.confidence * 100 : 50,
-        overall_rating: record.overall_rating,
-        overall_score: record.overall_score,
-        summary: record.summary,
-        score_breakdown: record.score_breakdown,
-        metrics_snapshot: record.metrics_snapshot,
-        trading_levels: record.trading_levels,
-        key_reasons: record.key_reasons,
-        risks: record.risks,
-        data_meta: record.data_meta,
-        created_at: record.created_at,
-        price: record.price,
-      })
+    } else {
+      setExpandedId(record.id)
     }
   }
 
@@ -571,55 +552,74 @@ export default function AnalysisPage() {
                   {expandedId === record.id && (
                     <tr key={`${record.id}-detail`}>
                       <td colSpan={7} className="px-4 py-4 bg-bg-secondary/50">
-                        <div className="space-y-3">
-                          {/* 旧记录没有详情字段，只展示简要信息 */}
-                          {!(record.score_breakdown || record.metrics_snapshot) && (
-                            <>
+                        {/* 新记录有完整详情字段，复用 AnalysisDetailCard */}
+                        {(record.score_breakdown || record.metrics_snapshot) ? (
+                          <AnalysisDetailCard
+                            data={{
+                              symbol: record.symbol,
+                              decision: record.decision || record.signal,
+                              confidence: record.confidence != null ? record.confidence * 100 : 50,
+                              overall_rating: record.overall_rating,
+                              overall_score: record.overall_score,
+                              summary: record.summary,
+                              score_breakdown: record.score_breakdown,
+                              metrics_snapshot: record.metrics_snapshot,
+                              trading_levels: record.trading_levels,
+                              key_reasons: record.key_reasons,
+                              risks: record.risks,
+                              data_meta: record.data_meta,
+                              created_at: record.created_at,
+                              price: record.price,
+                            }}
+                          />
+                        ) : (
+                          /* 旧记录没有详情字段，只展示简要信息 */
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-xs text-text-tertiary mb-1">完整分析</div>
+                              <p className="text-sm text-text-primary">{record.summary || '无详细分析'}</p>
+                            </div>
+                            {record.indicators && Object.keys(record.indicators).length > 0 && (
                               <div>
-                                <div className="text-xs text-text-tertiary mb-1">完整分析</div>
-                                <p className="text-sm text-text-primary">{record.summary || '无详细分析'}</p>
-                              </div>
-                              {record.indicators && Object.keys(record.indicators).length > 0 && (
-                                <div>
-                                  <div className="text-xs text-text-tertiary mb-1">技术指标</div>
-                                  <div className="flex flex-wrap gap-2">
-                                    {Object.entries(record.indicators).map(([k, v]) => (
-                                      <span key={k} className="px-2 py-0.5 rounded bg-bg-card border border-border text-xs text-text-secondary">
-                                        {k}: {typeof v === 'number' ? v.toFixed(2) : String(v)}
-                                      </span>
-                                    ))}
-                                  </div>
+                                <div className="text-xs text-text-tertiary mb-1">技术指标</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(record.indicators).map(([k, v]) => (
+                                    <span key={k} className="px-2 py-0.5 rounded bg-bg-card border border-border text-xs text-text-secondary">
+                                      {k}: {typeof v === 'number' ? v.toFixed(2) : String(v)}
+                                    </span>
+                                  ))}
                                 </div>
-                              )}
-                            </>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-text-tertiary">这个分析有用吗？</span>
-                            <button
-                              onClick={() => handleFeedback(record.id, 'helpful')}
-                              className={cn(
-                                'p-1 rounded transition-all',
-                                (feedbackMap[record.id] ?? record.user_feedback) === 'helpful'
-                                  ? 'bg-success-bg text-success'
-                                  : 'text-text-tertiary hover:bg-success-bg hover:text-success'
-                              )}
-                              title="有帮助"
-                            >
-                              <ThumbsUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleFeedback(record.id, 'not_helpful')}
-                              className={cn(
-                                'p-1 rounded transition-all',
-                                (feedbackMap[record.id] ?? record.user_feedback) === 'not_helpful'
-                                  ? 'bg-danger-bg text-danger'
-                                  : 'text-text-tertiary hover:bg-danger-bg hover:text-danger'
-                              )}
-                              title="没帮助"
-                            >
-                              <ThumbsDown className="w-3.5 h-3.5" />
-                            </button>
+                              </div>
+                            )}
                           </div>
+                        )}
+                        {/* 反馈按钮 */}
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-light">
+                          <span className="text-xs text-text-tertiary">这个分析有用吗？</span>
+                          <button
+                            onClick={() => handleFeedback(record.id, 'helpful')}
+                            className={cn(
+                              'p-1 rounded transition-all',
+                              (feedbackMap[record.id] ?? record.user_feedback) === 'helpful'
+                                ? 'bg-success-bg text-success'
+                                : 'text-text-tertiary hover:bg-success-bg hover:text-success'
+                            )}
+                            title="有帮助"
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleFeedback(record.id, 'not_helpful')}
+                            className={cn(
+                              'p-1 rounded transition-all',
+                              (feedbackMap[record.id] ?? record.user_feedback) === 'not_helpful'
+                                ? 'bg-danger-bg text-danger'
+                                : 'text-text-tertiary hover:bg-danger-bg hover:text-danger'
+                            )}
+                            title="没帮助"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
