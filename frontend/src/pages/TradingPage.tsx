@@ -42,6 +42,7 @@ export default function TradingPage() {
   const [orderPrice, setOrderPrice] = useState('')
   const [orderQuantity, setOrderQuantity] = useState('')
   const [orderLoading, setOrderLoading] = useState(false)
+  const [orderMessage, setOrderMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const fetchMockData = useCallback(async () => {
     try {
@@ -101,8 +102,12 @@ export default function TradingPage() {
   }, [mode, fetchMockData, fetchLiveData])
 
   const handleSubmitOrder = async () => {
-    if (!orderSymbol || !orderQuantity) return
+    if (!orderSymbol || !orderQuantity) {
+      setOrderMessage({ type: 'error', text: '请填写股票代码和数量' })
+      return
+    }
     setOrderLoading(true)
+    setOrderMessage(null)
     try {
       if (mode === 'mock') {
         await tradingApi.submitOrder({
@@ -125,11 +130,12 @@ export default function TradingPage() {
       setOrderSymbol('')
       setOrderPrice('')
       setOrderQuantity('')
+      setOrderMessage({ type: 'success', text: '下单成功' })
       // Refresh data
       if (mode === 'mock') fetchMockData()
       else fetchLiveData()
     } catch (err) {
-      console.error(err)
+      setOrderMessage({ type: 'error', text: getErrorMessage(err, '下单失败') })
     } finally {
       setOrderLoading(false)
     }
@@ -345,25 +351,43 @@ export default function TradingPage() {
               </div>
             </div>
             <div>
-              <label className="text-xs text-text-tertiary mb-1 block">价格 (留空为市价)</label>
+              <label className="text-xs text-text-tertiary mb-1 block">价格</label>
               <input
                 type="number"
                 value={orderPrice}
                 onChange={(e) => setOrderPrice(e.target.value)}
-                placeholder="市价"
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
+                placeholder="留空为市价"
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
             <div>
               <label className="text-xs text-text-tertiary mb-1 block">数量</label>
               <input
                 type="number"
+                step="1"
+                min="1"
                 value={orderQuantity}
-                onChange={(e) => setOrderQuantity(e.target.value)}
-                placeholder={mode === 'live' && marketFilter === 'crypto' ? '0.01' : '100'}
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
+                onChange={(e) => {
+                  const v = e.target.value
+                  // 只允许整数
+                  if (v === '' || /^\d+$/.test(v)) {
+                    setOrderQuantity(v)
+                  }
+                }}
+                placeholder={mode === 'live' && marketFilter === 'crypto' ? '1' : '100'}
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
+            {orderMessage && (
+              <div className={cn(
+                'text-xs rounded-lg px-3 py-2',
+                orderMessage.type === 'success'
+                  ? 'text-[#4ade80] bg-[rgba(74,222,128,0.1)]'
+                  : 'text-[#f87171] bg-[rgba(248,113,113,0.1)]'
+              )}>
+                {orderMessage.text}
+              </div>
+            )}
             <button
               onClick={handleSubmitOrder}
               disabled={orderLoading}
