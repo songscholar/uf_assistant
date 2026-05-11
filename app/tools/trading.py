@@ -5,7 +5,6 @@ UF Stock Assistant — 模拟交易工具
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -151,7 +150,7 @@ def submit_order(
     quantity: float,
     price: float | None = None,
     order_type: str = "market",
-) -> str:
+) -> dict[str, Any]:
     """
     提交交易订单（模拟）
     
@@ -202,7 +201,7 @@ def submit_order(
             quantity=quantity,
         )
         
-        return json.dumps({
+        return {
             "success": True,
             "order": {
                 "id": result["id"],
@@ -214,7 +213,7 @@ def submit_order(
                 "status": result["status"],
                 "created_at": result["created_at"],
             }
-        }, ensure_ascii=False, default=str)
+        }
         
     except TradingError:
         raise
@@ -223,28 +222,28 @@ def submit_order(
         raise OrderError(f"提交订单失败: {exc}") from exc
 
 
-def get_positions() -> str:
+def get_positions() -> dict[str, Any]:
     """
     获取当前持仓
     
     Returns:
-        JSON 格式的持仓列表
+        持仓列表和摘要
     """
     try:
         positions = _mock_backend.get_positions()
         summary = _mock_backend.get_portfolio_summary()
         
-        return json.dumps({
+        return {
             "positions": positions,
             "summary": summary,
-        }, ensure_ascii=False, default=str)
+        }
         
     except Exception as exc:
         logger.error("get_positions_failed", error=str(exc))
         raise TradingError(f"获取持仓失败: {exc}") from exc
 
 
-def get_position(symbol: str) -> str:
+def get_position(symbol: str) -> dict[str, Any]:
     """
     获取指定股票持仓
     
@@ -252,22 +251,22 @@ def get_position(symbol: str) -> str:
         symbol: 股票代码
         
     Returns:
-        JSON 格式的持仓数据
+        持仓数据
     """
     try:
         pos = _mock_backend.get_position(symbol.upper())
         
         if not pos:
-            return json.dumps({"symbol": symbol, "has_position": False}, ensure_ascii=False)
+            return {"symbol": symbol, "has_position": False}
         
-        return json.dumps({"has_position": True, "position": pos}, ensure_ascii=False, default=str)
+        return {"has_position": True, "position": pos}
         
     except Exception as exc:
         logger.error("get_position_failed", symbol=symbol, error=str(exc))
         raise TradingError(f"获取持仓失败: {exc}") from exc
 
 
-def get_orders(status: str | None = None) -> str:
+def get_orders(status: str | None = None) -> dict[str, Any]:
     """
     获取订单列表
     
@@ -275,22 +274,22 @@ def get_orders(status: str | None = None) -> str:
         status: 订单状态过滤（pending/submitted/filled/cancelled/rejected）
         
     Returns:
-        JSON 格式的订单列表
+        订单列表
     """
     try:
         orders = _mock_backend.get_orders(status)
         
-        return json.dumps({
+        return {
             "count": len(orders),
             "orders": orders,
-        }, ensure_ascii=False, default=str)
+        }
         
     except Exception as exc:
         logger.error("get_orders_failed", error=str(exc))
         raise TradingError(f"获取订单失败: {exc}") from exc
 
 
-def cancel_order(order_id: str) -> str:
+def cancel_order(order_id: str) -> dict[str, Any]:
     """
     取消订单
     
@@ -298,37 +297,37 @@ def cancel_order(order_id: str) -> str:
         order_id: 订单 ID
         
     Returns:
-        JSON 格式的取消结果
+        取消结果
     """
     try:
         success = _mock_backend.cancel_order(order_id)
         
         if success:
             logger.info("order_cancelled", order_id=order_id)
-            return json.dumps({"success": True, "message": "订单已取消"}, ensure_ascii=False)
+            return {"success": True, "message": "订单已取消"}
         else:
-            return json.dumps({"success": False, "message": "订单无法取消（可能已成交或不存在）"}, ensure_ascii=False)
+            return {"success": False, "message": "订单无法取消（可能已成交或不存在）"}
         
     except Exception as exc:
         logger.error("cancel_order_failed", order_id=order_id, error=str(exc))
         raise TradingError(f"取消订单失败: {exc}") from exc
 
 
-def get_portfolio() -> str:
+def get_portfolio() -> dict[str, Any]:
     """
     获取投资组合摘要
     
     Returns:
-        JSON 格式的投资组合数据
+        投资组合数据
     """
     try:
         summary = _mock_backend.get_portfolio_summary()
         positions = _mock_backend.get_positions()
         
-        return json.dumps({
+        return {
             "summary": summary,
             "positions": positions,
-        }, ensure_ascii=False, default=str)
+        }
         
     except Exception as exc:
         logger.error("get_portfolio_failed", error=str(exc))

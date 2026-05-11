@@ -50,9 +50,13 @@ export default function TradingPage() {
         tradingApi.getPositions(),
         tradingApi.getOrders(),
       ])
-      setPortfolio(portfolioRes.data)
-      setPositions(positionsRes.data || [])
-      setOrders(ordersRes.data || [])
+      // 防御性解析：后端可能返回嵌套结构 { summary, positions } 或直接数据
+      const pfData = portfolioRes.data
+      setPortfolio(pfData?.summary || pfData || null)
+      const posData = positionsRes.data
+      setPositions(Array.isArray(posData) ? posData : (posData?.positions || []))
+      const ordData = ordersRes.data
+      setOrders(Array.isArray(ordData) ? ordData : (ordData?.orders || []))
     } catch {
       setPortfolio({
         total_assets: 1000000,
@@ -61,6 +65,8 @@ export default function TradingPage() {
         total_pnl: 125000,
         total_pnl_percent: 12.5,
       })
+      setPositions([])
+      setOrders([])
     }
   }, [])
 
@@ -73,13 +79,18 @@ export default function TradingPage() {
         liveTradingApi.getBalance(marketFilter).catch(() => ({ data: null })),
         liveTradingApi.getTrades({ market: marketFilter, limit: 50 }).catch(() => ({ data: null })),
       ])
-      setLiveOrders(ordersRes.data?.orders || [])
-      setLivePositions(positionsRes.data?.positions || [])
+      const ordData = ordersRes.data
+      setLiveOrders(Array.isArray(ordData) ? ordData : (ordData?.orders || []))
+      const posData = positionsRes.data
+      setLivePositions(Array.isArray(posData) ? posData : (posData?.positions || []))
       setPnl(pnlRes.data || null)
       setBalance(balanceRes.data?.balance || {})
-      setLiveTrades(tradesRes.data?.trades || [])
+      const tradeData = tradesRes.data
+      setLiveTrades(Array.isArray(tradeData) ? tradeData : (tradeData?.trades || []))
     } catch {
-      // silent
+      setLiveOrders([])
+      setLivePositions([])
+      setLiveTrades([])
     }
   }, [marketFilter])
 
