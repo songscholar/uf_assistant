@@ -57,6 +57,12 @@ export const stockApi = {
   getFinancial: (symbol: string) => api.get(`/stock/${symbol}/financial`),
 
   getCapitalFlow: (symbol: string) => api.get(`/stock/${symbol}/capital-flow`),
+
+  // Watchlist
+  getWatchlist: () => api.get('/stock/watchlist'),
+  addWatchlist: (symbol: string, name?: string) =>
+    api.post('/stock/watchlist', { symbol, name }),
+  deleteWatchlist: (symbol: string) => api.delete(`/stock/watchlist/${symbol}`),
 }
 
 // Market APIs
@@ -266,8 +272,12 @@ export const billingApi = {
   getCreditsLog: (params?: { page?: number; limit?: number }) =>
     api.get('/billing/credits/log', { params }),
   getMembership: () => api.get('/billing/membership'),
-  subscribe: (planId: string) => api.post('/billing/subscribe', { plan_id: planId }),
-  createUsdtPayment: (amount: number) => api.post('/billing/usdt/create', { amount }),
+  subscribe: (plan: string, channel: string) => api.post('/billing/subscribe', { plan, channel }),
+  createPayOrder: (data: { plan: string; channel: string; amount?: number }) =>
+    api.post('/billing/pay/create', data),
+  getPayOrder: (orderId: number) => api.get(`/billing/pay/${orderId}`),
+  mockConfirm: (orderId: number) => api.post(`/billing/pay/${orderId}/mock-confirm`),
+  createUsdtPayment: (plan: string) => api.post('/billing/usdt/create', { plan }),
   checkUsdtPayment: (paymentId: string) => api.get(`/billing/usdt/${paymentId}`),
 }
 

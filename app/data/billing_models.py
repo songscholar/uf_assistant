@@ -100,3 +100,29 @@ class UsdtOrderModel(Base):
         Index("idx_usdt_orders_address_unique", "chain", "address", unique=True),
         Index("idx_usdt_orders_status", "status"),
     )
+
+
+class CnPayOrderModel(Base):
+    """人民币支付订单表（支付宝 / 微信 / 模拟支付）"""
+    __tablename__ = "cn_pay_orders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    plan = Column(String(20), nullable=False)  # monthly/yearly/lifetime
+    channel = Column(String(20), nullable=False)  # alipay / wechat / mock
+    amount_cny = Column(Numeric(10, 2), nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="pending")  # pending/paid/failed/closed
+    out_trade_no = Column(String(64), nullable=False, unique=True, index=True)
+    # 第三方支付单号
+    trade_no = Column(String(128), nullable=True)
+    # 支付凭证（二维码链接 / 表单 HTML / 预支付 ID）
+    pay_credential = Column(Text, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_cn_pay_orders_user_id", "user_id"),
+        Index("idx_cn_pay_orders_status", "status"),
+    )

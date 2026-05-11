@@ -109,6 +109,31 @@ class UsdtPaymentSettings(BaseSettings):
     debug_reconcile_log: str = Field(default="info", description="USDT 对账日志级别: none/error/warn/info/debug")
 
 
+class CnPaymentSettings(BaseSettings):
+    """人民币支付配置（支付宝 / 微信 / 模拟支付）"""
+    model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_CN_PAY_", extra="ignore")
+
+    mock_enabled: bool = Field(default=False, description="是否启用模拟支付（开发测试用）")
+    order_expire_minutes: int = Field(default=30, description="订单过期时间(分钟)")
+    # 支付宝
+    alipay_enabled: bool = Field(default=False, description="是否启用支付宝")
+    alipay_app_id: str = Field(default="", description="支付宝 App ID")
+    alipay_app_private_key: str = Field(default="", description="支付宝应用私钥")
+    alipay_public_key: str = Field(default="", description="支付宝公钥")
+    alipay_sign_type: str = Field(default="RSA2", description="签名类型: RSA2")
+    alipay_gateway: str = Field(default="https://openapi.alipay.com/gateway.do", description="支付宝网关")
+    alipay_sandbox: bool = Field(default=True, description="是否使用支付宝沙箱环境")
+    # 微信支付
+    wechat_enabled: bool = Field(default=False, description="是否启用微信支付")
+    wechat_mch_id: str = Field(default="", description="微信支付商户号")
+    wechat_app_id: str = Field(default="", description="微信支付 App ID")
+    wechat_api_key: str = Field(default="", description="微信支付 API v3 密钥")
+    wechat_api_key_serial: str = Field(default="", description="微信支付 API 证书序列号")
+    wechat_api_cert_path: str = Field(default="", description="微信支付 API 证书路径")
+    wechat_api_key_path: str = Field(default="", description="微信支付 API 私钥路径")
+    wechat_notify_url: str = Field(default="", description="微信支付回调地址")
+
+
 class LocalBrokerSettings(BaseSettings):
     """本地桌面券商配置（IBKR / MT5）"""
     model_config = SettingsConfigDict(env_prefix="STOCK_ASSISTANT_LOCAL_BROKER_", extra="ignore")
@@ -186,6 +211,7 @@ class AppSettings(BaseSettings):
     reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    cn_pay: CnPaymentSettings = Field(default_factory=CnPaymentSettings)
     local_broker: LocalBrokerSettings = Field(default_factory=LocalBrokerSettings)
     
     @property

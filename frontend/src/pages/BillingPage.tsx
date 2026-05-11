@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Crown,
   Check,
@@ -10,9 +10,13 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  X,
+  QrCode,
+  Smartphone,
+  Zap,
 } from 'lucide-react'
 import { billingApi } from '@/lib/api'
-import type { BillingPlan, CreditBalance, CreditLog, MembershipInfo } from '@/types'
+import type { BillingPlan, CreditBalance, CreditLog, MembershipInfo, CnPayOrder } from '@/types'
 import { cn, formatNumber } from '@/lib/utils'
 
 type BillingTab = 'plans' | 'credits' | 'recharge'
@@ -23,13 +27,266 @@ const TABS = [
   { key: 'recharge' as const, label: '充值', icon: CreditCard },
 ]
 
+// ── Payment Channel Selector Modal ───────────────────────────────────────────
+
+interface PaymentModalProps {
+  plan: BillingPlan
+  onClose: () => void
+  onSuccess: () => void
+}
+
+function PaymentModal({ plan, onClose, onSuccess }: PaymentModalProps) {
+  const [channel, setChannel] = useState<'mock' | 'alipay' | 'wechat'>('mock')
+  const [order, setOrder] = useState<CnPayOrder | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState('')
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const planMap: Record<string, string> = {
+    free: 'free',
+    pro: 'monthly',
+    enterprise: 'yearly',
+  }
+
+  const createOrder = async (selectedChannel: 'mock' | 'alipay' | 'wechat') => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await billingApi.subscribe(planMap[plan.id] || plan.id, selectedChannel)
+      const data = res.data?.data || res.data
+      if (data) {
+        setOrder(data)
+        // 如果是模拟支付，不需要轮询；真实支付轮询状态
+        if (selectedChannel !== 'mock' && data.order_id) {
+          startPolling(data.order_id)
+        }
+      } else {
+        setError('创建订单失败')
+      }
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string; detail?: string } } }
+      setError(e.response?.data?.message || e.response?.data?.detail || '创建订单失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const startPolling = (orderId: number) => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await billingApi.getPayOrder(orderId)
+        const data = res.data?.data || res.data
+        if (data?.status === 'paid') {
+          if (pollRef.current) clearInterval(pollRef.current)
+          setOrder((prev) => (prev ? { ...prev, status: 'paid' } : prev))
+          onSuccess()
+        }
+      } catch { /* silent */ }
+    }, 3000)
+  }
+
+  const handleMockConfirm = async () => {
+    if (!order) return
+    setConfirming(true)
+    try {
+      await billingApi.mockConfirm(order.order_id)
+      setOrder((prev) => (prev ? { ...prev, status: 'paid' } : prev))
+      onSuccess()
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string; detail?: string } } }
+      setError(e.response?.data?.message || e.response?.data?.detail || '支付确认失败')
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden animate-fade-in-up shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 className="text-base font-semibold text-text-primary">支付订阅</h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Plan Summary */}
+          <div className="bg-accent-bg/50 rounded-xl p-4">
+            <div className="text-sm text-text-secondary mb-1">{plan.name}</div>
+            <div className="text-2xl font-bold text-text-primary">
+              {plan.price === 0 ? '免费' : `¥${plan.price}`}
+            </div>
+            <div className="text-xs text-text-tertiary mt-1">赠送 {plan.credits} 积分</div>
+          </div>
+
+          {/* Channel Selection */}
+          {!order && (
+            <div className="space-y-3">
+              <div className="text-xs text-text-tertiary font-medium">选择支付方式</div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => setChannel('mock')}
+                  className={cn(
+                    'flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all',
+                    channel === 'mock'
+                      ? 'border-accent bg-accent-bg text-accent'
+                      : 'border-border bg-bg-secondary text-text-secondary hover:border-border-focus'
+                  )}
+                >
+                  <Zap className="w-5 h-5" />
+                  <span className="text-xs font-medium">模拟支付</span>
+                </button>
+                <button
+                  onClick={() => setChannel('alipay')}
+                  className={cn(
+                    'flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all',
+                    channel === 'alipay'
+                      ? 'border-accent bg-accent-bg text-accent'
+                      : 'border-border bg-bg-secondary text-text-secondary hover:border-border-focus'
+                  )}
+                >
+                  <QrCode className="w-5 h-5" />
+                  <span className="text-xs font-medium">支付宝</span>
+                </button>
+                <button
+                  onClick={() => setChannel('wechat')}
+                  className={cn(
+                    'flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all',
+                    channel === 'wechat'
+                      ? 'border-accent bg-accent-bg text-accent'
+                      : 'border-border bg-bg-secondary text-text-secondary hover:border-border-focus'
+                  )}
+                >
+                  <Smartphone className="w-5 h-5" />
+                  <span className="text-xs font-medium">微信支付</span>
+                </button>
+              </div>
+
+              <button
+                onClick={() => createOrder(channel)}
+                disabled={loading}
+                className={cn(
+                  'w-full py-2.5 rounded-lg text-sm font-medium transition-all',
+                  'bg-accent text-white hover:bg-accent-light',
+                  'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
+                  'disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm'
+                )}
+              >
+                {loading ? <Clock className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                {loading ? '创建订单中...' : '确认支付'}
+              </button>
+            </div>
+          )}
+
+          {/* Order Created */}
+          {order && (
+            <div className="space-y-4 animate-fade-in">
+              {order.status === 'paid' ? (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <div className="w-14 h-14 rounded-full bg-success-bg flex items-center justify-center">
+                    <CheckCircle className="w-7 h-7 text-success" />
+                  </div>
+                  <div className="text-base font-semibold text-text-primary">支付成功</div>
+                  <div className="text-xs text-text-tertiary">会员已开通，积分已到账</div>
+                  <button
+                    onClick={onClose}
+                    className="mt-2 px-6 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-light transition-all"
+                  >
+                    完成
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between text-xs text-text-secondary">
+                    <span>订单号: {order.out_trade_no}</span>
+                    <span className={cn(
+                      'px-2 py-0.5 rounded-full text-xs font-medium',
+                      order.channel === 'mock' ? 'bg-accent-bg text-accent' :
+                      order.channel === 'alipay' ? 'bg-blue-500/10 text-blue-500' :
+                      'bg-green-500/10 text-green-500'
+                    )}>
+                      {order.channel === 'mock' ? '模拟支付' : order.channel === 'alipay' ? '支付宝' : '微信支付'}
+                    </span>
+                  </div>
+
+                  {/* Mock Payment Confirm */}
+                  {order.channel === 'mock' && (
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-xl bg-bg-secondary border border-border text-center">
+                        <div className="text-xs text-text-tertiary mb-1">模拟支付金额</div>
+                        <div className="text-2xl font-bold text-accent">¥{order.amount}</div>
+                      </div>
+                      <button
+                        onClick={handleMockConfirm}
+                        disabled={confirming}
+                        className={cn(
+                          'w-full py-2.5 rounded-lg text-sm font-medium transition-all',
+                          'bg-accent text-white hover:bg-accent-light',
+                          'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
+                          'disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm'
+                        )}
+                      >
+                        {confirming ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                        {confirming ? '确认中...' : '模拟支付成功'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Alipay / WeChat QR Code */}
+                  {(order.channel === 'alipay' || order.channel === 'wechat') && order.qr_code && (
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-xl bg-bg-secondary border border-border flex flex-col items-center">
+                        <div className="text-xs text-text-tertiary mb-2">请使用{order.channel === 'alipay' ? '支付宝' : '微信'}扫码支付</div>
+                        {/* 这里可以集成 qrcode.react 生成二维码 */}
+                        <div className="w-40 h-40 bg-white rounded-lg flex items-center justify-center">
+                          <QrCode className="w-16 h-16 text-text-tertiary" />
+                        </div>
+                        <div className="text-xs text-text-tertiary mt-2 break-all text-center max-w-[200px]">
+                          {order.qr_code}
+                        </div>
+                      </div>
+                      <div className="text-xs text-text-tertiary text-center">
+                        支付完成后将自动刷新状态，请勿关闭页面
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-danger-bg border border-danger/20 text-danger text-sm">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Plans Tab ───────────────────────────────────────────────────────────────
 
 function PlansTab() {
   const [plans, setPlans] = useState<BillingPlan[]>([])
   const [membership, setMembership] = useState<MembershipInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [subscribing, setSubscribing] = useState<string | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState<BillingPlan | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -42,15 +299,11 @@ function PlansTab() {
     }).finally(() => setLoading(false))
   }, [])
 
-  const handleSubscribe = async (planId: string) => {
-    setSubscribing(planId)
+  const refreshMembership = async () => {
     try {
-      await billingApi.subscribe(planId)
-      // Refresh membership
       const res = await billingApi.getMembership()
       setMembership(res.data?.data || res.data || null)
     } catch { /* silent */ }
-    finally { setSubscribing(null) }
   }
 
   if (loading) {
@@ -74,7 +327,7 @@ function PlansTab() {
               <Crown className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <div className="text-sm font-semibold text-text-primary">当前会员: {membership.level}</div>
+              <div className="text-sm font-semibold text-text-primary">当前会员: {membership.level || '免费版'}</div>
               <div className="text-xs text-text-tertiary">
                 到期时间: {membership.expires_at ? new Date(membership.expires_at).toLocaleDateString('zh-CN') : '永久'}
               </div>
@@ -113,8 +366,8 @@ function PlansTab() {
               ))}
             </ul>
             <button
-              onClick={() => handleSubscribe(plan.id)}
-              disabled={subscribing === plan.id || plan.price === 0}
+              onClick={() => plan.price > 0 && setSelectedPlan(plan)}
+              disabled={plan.price === 0}
               className={cn(
                 'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
@@ -124,11 +377,22 @@ function PlansTab() {
                   : 'bg-bg-secondary text-text-primary hover:bg-bg-hover'
               )}
             >
-              {subscribing === plan.id ? '处理中...' : plan.price === 0 ? '当前方案' : '订阅'}
+              {plan.price === 0 ? '当前方案' : '订阅'}
             </button>
           </div>
         ))}
       </div>
+
+      {selectedPlan && (
+        <PaymentModal
+          plan={selectedPlan}
+          onClose={() => setSelectedPlan(null)}
+          onSuccess={() => {
+            setSelectedPlan(null)
+            refreshMembership()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -258,7 +522,7 @@ function RechargeTab() {
     setCreating(true)
     setError('')
     try {
-      const res = await billingApi.createUsdtPayment(parseFloat(amount))
+      const res = await billingApi.createUsdtPayment(parseFloat(amount).toString())
       setPayment(res.data?.data || res.data || null)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '创建支付失败')

@@ -69,6 +69,10 @@ async def lifespan(app: FastAPI):
     worker.start()
     logger.info("usdt_order_worker_started")
 
+    # 初始化策略引擎数据库表
+    from app.strategies.trading_executor import init_strategy_tables
+    init_strategy_tables()
+
     # 初始化交易模块数据库表
     from app.trading.models import init_trading_tables
     init_trading_tables()

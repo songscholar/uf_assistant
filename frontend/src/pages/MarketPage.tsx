@@ -10,8 +10,11 @@ import {
   Clock,
   BarChart3,
   Swords,
+  Star,
+  Trash2,
+  Plus,
 } from 'lucide-react'
-import { marketApi } from '@/lib/api'
+import { marketApi, stockApi } from '@/lib/api'
 import type { MarketIndex, SectorData } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
 
@@ -110,12 +113,48 @@ export default function MarketPage() {
   const [northbound, setNorthbound] = useState<any>(null)
   const [overview, setOverview] = useState<any>(null)
   const [longhu, setLonghu] = useState<any>(null)
+  const [watchlist, setWatchlist] = useState<any[]>([])
+  const [watchlistInput, setWatchlistInput] = useState('')
+  const [watchlistLoading, setWatchlistLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [dataSource, setDataSource] = useState<'live' | 'demo' | 'unknown'>('unknown')
   const [lastUpdated, setLastUpdated] = useState('')
   const [error, setError] = useState('')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const fetchWatchlist = useCallback(async () => {
+    try {
+      const res = await stockApi.getWatchlist()
+      setWatchlist(res.data?.items || [])
+    } catch {
+      setWatchlist([])
+    }
+  }, [])
+
+  const handleAddWatchlist = async () => {
+    const symbol = watchlistInput.trim()
+    if (!symbol) return
+    setWatchlistLoading(true)
+    try {
+      await stockApi.addWatchlist(symbol)
+      setWatchlistInput('')
+      await fetchWatchlist()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || '添加失败')
+    } finally {
+      setWatchlistLoading(false)
+    }
+  }
+
+  const handleDeleteWatchlist = async (symbol: string) => {
+    try {
+      await stockApi.deleteWatchlist(symbol)
+      await fetchWatchlist()
+    } catch {
+      /* silent */
+    }
+  }
 
   const fetchData = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
@@ -157,15 +196,17 @@ export default function MarketPage() {
 
   useEffect(() => {
     fetchData()
+    fetchWatchlist()
 
     intervalRef.current = setInterval(() => {
       fetchData(true)
+      fetchWatchlist()
     }, REFRESH_INTERVAL)
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [fetchData])
+  }, [fetchData, fetchWatchlist])
 
   if (loading && !refreshing) {
     return (
@@ -299,6 +340,108 @@ export default function MarketPage() {
           )}
         </section>
       </div>
+
+      {/* 自选股票 */}
+      <section className="mt-6 bg-bg-card border border-border rounded-xl p-4 card-hover">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+            <Star className="w-5 h-5 text-accent" />
+            自选股票
+          </h2>
+          <div className="flex items-center gap-2">
+            <input
+              value={watchlistInput}
+              onChange={(e) => setWatchlistInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddWatchlist()}
+              placeholder="输入代码如 600519"
+              className="w-32 px-2.5 py-1.5 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent focus:outline-none"
+            />
+            <button
+              onClick={handleAddWatchlist}
+              disabled={watchlistLoading || !watchlistInput.trim()}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium',
+                'bg-bg-secondary text-text-secondary hover:text-accent hover:bg-accent-bg border border-border',
+                'flex items-center gap-1 transition-all duration-200',
+                'disabled:opacity-50'
+              )}
+            >
+              {watchlistLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+              添加
+            </button>
+          </div>
+        </div>
+        {watchlist.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border-light text-text-tertiary">
+                  <th className="text-left py-2 px-3 font-medium">代码</th>
+                  <th className="text-left py-2 px-3 font-medium">名称</th>
+                  <th className="text-right py-2 px-3 font-medium">最新价</th>
+                  <th className="text-right py-2 px-3 font-medium">涨跌额</th>
+                  <th className="text-right py-2 px-3 font-medium">涨跌幅</th>
+                  <th className="text-right py-2 px-3 font-medium">添加价格</th>
+                  <th className="text-right py-2 px-3 font-medium">自添加涨跌幅</th>
+                  <th className="text-left py-2 px-3 font-medium">添加日期</th>
+                  <th className="text-right py-2 px-3 font-medium">成交量</th>
+                  <th className="text-center py-2 px-3 font-medium w-16">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-light">
+                {watchlist.map((item: any, i: number) => {
+                  const isUp = (item.change_pct ?? 0) >= 0
+                  const isSinceUp = (item.since_added_pct ?? 0) >= 0
+                  return (
+                    <tr key={i} className="hover:bg-bg-hover transition-all duration-200">
+                      <td className="py-2.5 px-3 text-text-primary font-mono">{item.symbol}</td>
+                      <td className="py-2.5 px-3 text-text-primary">{item.name || '-'}</td>
+                      <td className="py-2.5 px-3 text-right text-text-primary">
+                        {item.price != null ? Number(item.price).toFixed(2) : '-'}
+                      </td>
+                      <td className={cn('py-2.5 px-3 text-right font-medium', isUp ? 'text-rise' : 'text-fall')}>
+                        {isUp ? '+' : ''}{item.change != null ? Number(item.change).toFixed(2) : '-'}
+                      </td>
+                      <td className={cn('py-2.5 px-3 text-right font-medium', isUp ? 'text-rise' : 'text-fall')}>
+                        {isUp ? '+' : ''}{item.change_pct != null ? Number(item.change_pct).toFixed(2) : '-'}%
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-text-secondary">
+                        {item.added_price != null ? Number(item.added_price).toFixed(2) : '-'}
+                      </td>
+                      <td className={cn('py-2.5 px-3 text-right font-medium', isSinceUp ? 'text-rise' : 'text-fall')}>
+                        {item.since_added_pct != null ? (
+                          <>
+                            {isSinceUp ? '+' : ''}{Number(item.since_added_pct).toFixed(2)}%
+                          </>
+                        ) : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-text-tertiary text-xs">
+                        {item.added_at ? new Date(item.added_at).toLocaleDateString('zh-CN') : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-text-secondary">
+                        {item.volume != null ? Number(item.volume).toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          onClick={() => handleDeleteWatchlist(item.symbol)}
+                          className="text-text-tertiary hover:text-danger transition-colors"
+                          title="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-text-tertiary text-sm">
+            暂无自选股票，输入代码添加
+          </div>
+        )}
+      </section>
 
       {/* 龙虎榜 */}
       <section className="mt-6 bg-bg-card border border-border rounded-xl p-4 card-hover">

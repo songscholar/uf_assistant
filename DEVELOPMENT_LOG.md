@@ -2840,3 +2840,38 @@ added_at: 2026-05-11
 
 ### 测试验证
 - `frontend npx tsc --noEmit`：**0 errors**
+
+
+---
+
+## 2026-05-11 — 修复：持仓/订单页面白屏（字段映射 + 防御性处理）
+
+### 改动目标
+修复策略页面「持仓/交易」子标签白屏问题。根因是后端 API 返回字段名（`amount`）与前端组件使用的字段名（`size`/`quantity`）不一致，加上数据加载时缺乏防御性处理。
+
+### 涉及文件
+- **修改** `frontend/src/pages/StrategyPage.tsx` — `PositionsTradesTab` 组件
+- **修改** `frontend/src/pages/__tests__/StrategyPage.test.tsx` — 同步更新测试断言
+
+### 改动方案
+1. **数据加载字段映射**：
+   - positions：`p.size ?? p.amount ?? 0`
+   - trades：`t.quantity ?? t.amount ?? 0`
+2. **防御性数据解析**：
+   - `Array.isArray` 校验防止非数组数据传入 `.map()`
+   - `.catch(() => ({ data: [] }))` 兜底网络错误
+3. **数值渲染保护**：
+   - `unrealized_pnl.toFixed(2)` → `formatNumber(pos.unrealized_pnl)`（内置 null 保护）
+   - `pos.unrealized_pnl >= 0` → `(pos.unrealized_pnl ?? 0) >= 0`
+4. ** trades 方向判断**：使用正则 `/buy|open_long|add_long/i.test(t.side || '')` 兼容多种交易类型
+5. **测试同步更新**：
+   - 「运行」按钮 → 「策略详情」+「调整配置」按钮
+   - `getByText` → `getAllByText` 适配重复描述文本
+
+### 验证结果
+- `frontend npx tsc --noEmit`：**0 errors**
+- `npm run test -- --run StrategyPage.test.tsx`：**5 passed**
+- 后端 `app/api/routers/strategy.py` 编译：**OK**
+
+### 备注
+后端已返回正确字段（`size`、`amount`、`timestamp`、`pnl`、`side` 等），问题 purely 在前端字段名不匹配和数据解析脆弱性。

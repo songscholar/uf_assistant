@@ -71,6 +71,10 @@ dev = [
   "mypy>=1.13.0",
   "pre-commit>=4.0.0",
 ]
+pay = [
+  "cryptography>=42.0.0",
+  "wechatpayv3>=1.0.0",
+]
 
 [project.scripts]
 uf-assistant = "app.cli:main"

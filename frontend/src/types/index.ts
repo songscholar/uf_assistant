@@ -65,10 +65,21 @@ export interface SectorData {
   change_percent: number;
 }
 
+export interface StrategyParameter {
+  name: string;
+  type: string;
+  default: number | string;
+  min?: number;
+  max?: number;
+  description: string;
+}
+
 export interface StrategyInfo {
   key: string;
   name: string;
   description: string;
+  parameters?: StrategyParameter[];
+  current_params?: Record<string, number | string>;
 }
 
 export interface StrategySignal {
@@ -311,6 +322,25 @@ export interface UsdtPayment {
   amount: number;
   qr_code: string;
   status: string;
+}
+
+export interface CnPayOrder {
+  order_id: number;
+  out_trade_no: string;
+  channel: 'alipay' | 'wechat' | 'mock';
+  amount: number;
+  status: 'pending' | 'paid' | 'failed' | 'closed';
+  qr_code?: string;
+  pay_url?: string;
+  expires_at: string;
+  created_at?: string;
+  paid_at?: string;
+}
+
+export interface PaymentConfig {
+  mock_enabled: boolean;
+  alipay_enabled: boolean;
+  wechat_enabled: boolean;
 }
 
 // ── 个人中心类型 ──────────────────────────────────────────────────────────

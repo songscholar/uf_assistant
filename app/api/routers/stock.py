@@ -119,3 +119,137 @@ async def capital_flow(symbol: str):
     except Exception as exc:
         logger.error("capital_flow_error", symbol=symbol, error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── 自选股票 ────────────────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+from app.data.watchlist_models import add_watchlist_item, get_watchlist, remove_watchlist_item
+
+
+class WatchlistAddRequest(BaseModel):
+    symbol: str
+    name: str | None = None
+
+
+@router.get("/stock/watchlist")
+async def watchlist_list(current_user: dict = Depends(get_current_user)):
+    """获取用户自选股票列表（含实时行情、添加价格、自添加涨跌幅）"""
+    try:
+        user_id = current_user["user_id"]
+        items = get_watchlist(user_id)
+        if not items:
+            return {"items": []}
+
+        # 批量获取实时行情
+        results = []
+        for item in items:
+            try:
+                rt = get_stock_realtime(item["symbol"])
+                if isinstance(rt, dict):
+                    price = rt.get("price")
+                    prev_close = rt.get("prev_close")
+                    # 计算涨跌额
+                    change = rt.get("change")
+                    if change is None and price is not None and prev_close is not None:
+                        change = round(price - prev_close, 2)
+                    # 计算自添加以来涨跌幅
+                    added_price = item.get("added_price")
+                    since_added_pct = None
+                    if added_price and price is not None and added_price > 0:
+                        since_added_pct = round((price - added_price) / added_price * 100, 2)
+                    results.append({
+                        "symbol": item["symbol"],
+                        "name": rt.get("name") or item["name"] or item["symbol"],
+                        "price": price,
+                        "change": change,
+                        "change_pct": rt.get("change_pct"),
+                        "volume": rt.get("volume"),
+                        "amount": rt.get("amount"),
+                        "high": rt.get("high"),
+                        "low": rt.get("low"),
+                        "open": rt.get("open"),
+                        "prev_close": prev_close,
+                        "added_at": item.get("created_at"),
+                        "added_price": added_price,
+                        "since_added_pct": since_added_pct,
+                    })
+                else:
+                    results.append({
+                        "symbol": item["symbol"],
+                        "name": item["name"],
+                        "error": "数据获取失败",
+                        "added_at": item.get("created_at"),
+                        "added_price": item.get("added_price"),
+                    })
+            except Exception as exc:
+                logger.warning("watchlist_realtime_failed", symbol=item["symbol"], error=str(exc))
+                results.append({
+                    "symbol": item["symbol"],
+                    "name": item["name"],
+                    "error": "数据获取失败",
+                    "added_at": item.get("created_at"),
+                    "added_price": item.get("added_price"),
+                })
+
+        return {"items": results}
+    except Exception as exc:
+        logger.error("watchlist_list_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/stock/watchlist")
+async def watchlist_add(
+    request: WatchlistAddRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """添加自选股票"""
+    try:
+        user_id = current_user["user_id"]
+        # 如果 name 为空，尝试从缓存查找
+        name = request.name
+        if not name:
+            try:
+                from app.core.cache import get_cached_df
+                df = get_cached_df("market:spot")
+                if df is not None and not df.empty:
+                    row = df[df["代码"] == request.symbol]
+                    if not row.empty:
+                        name = row.iloc[0]["名称"]
+            except Exception:
+                pass
+        # 获取添加时的实时价格快照
+        added_price = None
+        try:
+            rt = get_stock_realtime(request.symbol)
+            if isinstance(rt, dict):
+                added_price = rt.get("price")
+        except Exception as exc:
+            logger.warning("watchlist_add_price_failed", symbol=request.symbol, error=str(exc))
+
+        result = add_watchlist_item(user_id, request.symbol, name, added_price)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("watchlist_add_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/stock/watchlist/{symbol}")
+async def watchlist_delete(symbol: str, current_user: dict = Depends(get_current_user)):
+    """删除自选股票"""
+    try:
+        user_id = current_user["user_id"]
+        success = remove_watchlist_item(user_id, symbol)
+        if not success:
+            raise HTTPException(status_code=404, detail="该股票不在自选列表中")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("watchlist_delete_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))

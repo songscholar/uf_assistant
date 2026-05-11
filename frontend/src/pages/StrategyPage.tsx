@@ -17,11 +17,14 @@ import {
   Sparkles,
   Filter,
   Wand2,
+  X,
+  BookOpen,
+  SlidersHorizontal,
+  Lightbulb,
 } from 'lucide-react'
 import { strategyApi, strategyEngineApi } from '@/lib/api'
 import type {
   StrategyInfo,
-  StrategySignal,
   StrategyListItem,
   BacktestResult,
   Indicator,
@@ -30,7 +33,7 @@ import type {
   RuntimeMetrics,
   EquityPoint,
 } from '@/types'
-import { cn, formatNumber, formatPercent } from '@/lib/utils'
+import { cn, formatNumber, formatPercent, formatVolume } from '@/lib/utils'
 
 type StrategyTab = 'library' | 'backtest' | 'indicators' | 'running' | 'positions'
 
@@ -42,68 +45,403 @@ const TABS = [
   { key: 'positions' as const, label: '持仓/交易', icon: Package },
 ]
 
+// ── 策略详情数据 ────────────────────────────────────────────────────────────
+
+const STRATEGY_DETAILS: Record<string, {
+  overview: string
+  algorithm: string
+  params: { name: string; default: string; desc: string }[]
+  signals: { condition: string; action: string }[]
+}> = {
+  ma_crossover: {
+    overview: '均线交叉策略通过比较短期和长期移动平均线的位置关系，判断股价趋势的转折。当短期均线从下方穿越长期均线时，意味着短期趋势转强，形成「金叉」买入信号；反之则形成「死叉」卖出信号。',
+    algorithm: '1. 计算 short_window 日简单移动平均（SMA）\n2. 计算 long_window 日简单移动平均（SMA）\n3. 比较当前和前一天的均线位置：\n   · 前一天 short < long 且 当天 short ≥ long → 金叉\n   · 前一天 short > long 且 当天 short ≤ long → 死叉',
+    params: [
+      { name: 'short_window', default: '5', desc: '短期均线周期，常用 5 日或 10 日' },
+      { name: 'long_window', default: '20', desc: '长期均线周期，常用 20 日或 60 日' },
+    ],
+    signals: [
+      { condition: '短期均线上穿长期均线（金叉）', action: '买入' },
+      { condition: '短期均线下穿长期均线（死叉）', action: '卖出' },
+      { condition: '均线未交叉', action: '观望' },
+    ],
+  },
+  macd: {
+    overview: 'MACD（指数平滑异同移动平均线）通过快慢两条指数移动平均线的差值（DIF）及其平滑线（DEA）的交叉关系，判断股价的趋势动量和转向时机。柱状图（Histogram）可辅助判断动能强弱。',
+    algorithm: '1. 计算 fast 日 EMA 和 slow 日 EMA\n2. DIF = 快速 EMA − 慢速 EMA\n3. DEA（信号线）= DIF 的 signal 日 EMA\n4. Histogram（柱状图）= DIF − DEA\n5. 判断 DIF 与 DEA 的交叉情况',
+    params: [
+      { name: 'fast', default: '12', desc: '快速 EMA 周期' },
+      { name: 'slow', default: '26', desc: '慢速 EMA 周期' },
+      { name: 'signal', default: '9', desc: 'DEA（信号线）平滑周期' },
+    ],
+    signals: [
+      { condition: 'DIF 上穿 DEA（金叉），柱状图红柱放大', action: '买入' },
+      { condition: 'DIF 下穿 DEA（死叉），柱状图绿柱放大', action: '卖出' },
+      { condition: 'DIF 与 DEA 未交叉', action: '观望' },
+    ],
+  },
+  rsi: {
+    overview: 'RSI（相对强弱指标）通过衡量一段时间内价格上涨与下跌的力度，判断股票是否处于超买或超卖状态。RSI 取值范围 0~100，常用于捕捉极端行情后的反转机会。',
+    algorithm: '1. 计算周期内每日涨跌幅度\n2. 平均涨幅 = 上涨日涨幅均值（平滑处理）\n3. 平均跌幅 = 下跌日跌幅均值（平滑处理）\n4. RS = 平均涨幅 / 平均跌幅\n5. RSI = 100 − 100 / (1 + RS)\n6. 结合超卖/超买阈值和 RSI 趋势变化判断信号',
+    params: [
+      { name: 'period', default: '14', desc: 'RSI 计算周期，经典值为 14 日' },
+      { name: 'oversold', default: '30', desc: '超卖阈值，低于此值视为超卖' },
+      { name: 'overbought', default: '70', desc: '超买阈值，高于此值视为超买' },
+    ],
+    signals: [
+      { condition: 'RSI 从超卖区（<30）回升', action: '买入' },
+      { condition: 'RSI 从超买区（>70）回落', action: '卖出' },
+      { condition: 'RSI 处于 30~70 之间', action: '观望' },
+    ],
+  },
+  bollinger: {
+    overview: '布林带策略通过股价与三条轨道线（上轨、中轨、下轨）的相对位置，判断价格的波动范围和突破/回归机会。价格触及轨道极值时往往预示着短期反转或趋势延续。',
+    algorithm: '1. 中轨 = N 日简单移动平均线（SMA）\n2. 标准差 = N 日收盘价标准差\n3. 上轨 = 中轨 + K × 标准差\n4. 下轨 = 中轨 − K × 标准差\n5. 判断价格与上下轨的穿越/回归情况',
+    params: [
+      { name: 'period', default: '20', desc: '布林带计算周期，常用 20 日' },
+      { name: 'std_dev', default: '2.0', desc: '标准差倍数，常用 2.0 倍' },
+    ],
+    signals: [
+      { condition: '价格从下轨外反弹回轨道内', action: '买入' },
+      { condition: '价格从上轨外回落回轨道内', action: '卖出' },
+      { condition: '价格在轨道内运行', action: '观望' },
+    ],
+  },
+}
+
+// ── Strategy Detail Modal ───────────────────────────────────────────────────
+
+function StrategyDetailModal({ strategy, currentParams, onClose }: {
+  strategy: StrategyInfo | null
+  currentParams: Record<string, number | string>
+  onClose: () => void
+}) {
+  if (!strategy) return null
+  const detail = STRATEGY_DETAILS[strategy.key]
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      {/* 半透明遮罩 */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      {/* 弹窗内容 */}
+      <div
+        className="relative w-full max-w-lg bg-bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-accent-bg flex items-center justify-center">
+              <Brain className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="font-semibold text-text-primary">{strategy.name}</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-secondary transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 内容 */}
+        <div className="px-5 py-4 space-y-5 max-h-[70vh] overflow-y-auto">
+          {/* 简介 */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Lightbulb className="w-3.5 h-3.5 text-accent" />
+              <span className="text-xs font-medium text-text-primary">策略简介</span>
+            </div>
+            <p className="text-sm text-text-secondary leading-relaxed">
+              {detail?.overview || strategy.description}
+            </p>
+          </div>
+
+          {/* 算法原理 */}
+          {detail?.algorithm && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <BookOpen className="w-3.5 h-3.5 text-accent" />
+                <span className="text-xs font-medium text-text-primary">算法原理</span>
+              </div>
+              <div className="bg-bg-secondary rounded-lg p-3 text-xs text-text-secondary leading-relaxed font-mono whitespace-pre-wrap">
+                {detail.algorithm}
+              </div>
+            </div>
+          )}
+
+          {/* 参数说明 */}
+          {detail?.params && detail.params.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-accent" />
+                <span className="text-xs font-medium text-text-primary">可调参数</span>
+              </div>
+              <div className="space-y-2">
+                {detail.params.map((p) => (
+                  <div key={p.name} className="flex items-start gap-3 bg-bg-secondary rounded-lg p-2.5">
+                    <code className="text-xs font-mono text-accent bg-accent-bg px-1.5 py-0.5 rounded shrink-0">{p.name}</code>
+                    <div className="min-w-0">
+                      <div className="text-xs text-text-secondary">{p.desc}</div>
+                      <div className="text-[11px] text-text-tertiary mt-0.5">默认值: {p.default}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 当前配置 */}
+          {strategy.parameters && strategy.parameters.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-accent" />
+                <span className="text-xs font-medium text-text-primary">当前配置</span>
+              </div>
+              <div className="space-y-2">
+                {strategy.parameters.map((p) => (
+                  <div key={p.name} className="flex items-start gap-3 bg-bg-secondary rounded-lg p-2.5">
+                    <code className="text-xs font-mono text-accent bg-accent-bg px-1.5 py-0.5 rounded shrink-0">{p.name}</code>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-text-secondary">{p.description}</div>
+                      <div className="text-[11px] text-text-tertiary mt-0.5">
+                        当前值: <span className="font-mono text-text-primary">{currentParams[p.name] ?? p.default}</span>
+                        {p.min != null && p.max != null && `（范围 ${p.min}~${p.max}）`}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 信号规则 */}
+          {detail?.signals && detail.signals.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Activity className="w-3.5 h-3.5 text-accent" />
+                <span className="text-xs font-medium text-text-primary">信号规则</span>
+              </div>
+              <div className="space-y-1.5">
+                {detail.signals.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={cn(
+                      'px-1.5 py-0.5 rounded font-medium shrink-0',
+                      s.action === '买入' && 'bg-success-bg text-success',
+                      s.action === '卖出' && 'bg-danger-bg text-danger',
+                      s.action === '观望' && 'bg-bg-secondary text-text-secondary'
+                    )}>
+                      {s.action}
+                    </span>
+                    <span className="text-text-secondary">{s.condition}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Strategy Config Modal ───────────────────────────────────────────────────
+
+function StrategyConfigModal({ strategy, currentValues, onSave, onClose }: {
+  strategy: StrategyInfo | null
+  currentValues: Record<string, number | string>
+  onSave: (values: Record<string, number | string>) => void
+  onClose: () => void
+}) {
+  const [values, setValues] = useState<Record<string, number | string>>({})
+
+  useEffect(() => {
+    if (strategy) {
+      const defaults: Record<string, number | string> = {}
+      strategy.parameters?.forEach((p) => {
+        defaults[p.name] = currentValues[p.name] ?? p.default
+      })
+      setValues(defaults)
+    }
+  }, [strategy, currentValues])
+
+  if (!strategy) return null
+
+  const handleChange = (name: string, val: string) => {
+    const param = strategy.parameters?.find((p) => p.name === name)
+    if (!param) return
+    if (param.type === 'int') {
+      // 只保留数字，去掉前导0
+      const clean = val.replace(/\D/g, '').replace(/^0+/, '') || '0'
+      setValues((prev) => ({ ...prev, [name]: parseInt(clean) }))
+    } else if (param.type === 'float') {
+      const clean = val.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
+      setValues((prev) => ({ ...prev, [name]: parseFloat(clean) || 0 }))
+    } else {
+      setValues((prev) => ({ ...prev, [name]: val }))
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-md bg-bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-accent-bg flex items-center justify-center">
+              <SlidersHorizontal className="w-4 h-4 text-accent" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-text-primary text-sm">{strategy.name}</h3>
+              <p className="text-[11px] text-text-tertiary">调整参数配置</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-secondary transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 参数列表 */}
+        <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          {strategy.parameters && strategy.parameters.length > 0 ? (
+            strategy.parameters.map((param) => (
+              <div key={param.name}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-text-primary">
+                    {param.name}
+                  </label>
+                  <span className="text-[10px] text-text-tertiary">
+                    默认: {param.default}
+                    {param.min != null && param.max != null && `（${param.min}~${param.max}）`}
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  inputMode={param.type === 'int' || param.type === 'float' ? 'numeric' : 'text'}
+                  value={values[param.name] ?? ''}
+                  onChange={(e) => handleChange(param.name, e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent focus:outline-none [appearance:textfield]"
+                />
+                <p className="text-[11px] text-text-tertiary mt-1">{param.description}</p>
+              </div>
+            ))
+          ) : (
+            <div className="text-center text-sm text-text-tertiary py-4">该策略暂无可调参数</div>
+          )}
+        </div>
+
+        {/* 底部按钮 */}
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => { onSave(values); onClose() }}
+            className={cn(
+              'px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-light',
+              'transition-all duration-200 hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]'
+            )}
+          >
+            保存配置
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Strategy Card ───────────────────────────────────────────────────────────
 
-function StrategyCard({ strategy, onEvaluate, isLoading, result }: {
+function StrategyCard({ strategy, onShowDetail, onShowConfig }: {
   strategy: StrategyInfo
-  onEvaluate: () => void
-  isLoading: boolean
-  result: { strategy: string; signal: StrategySignal } | null
+  onShowDetail: () => void
+  onShowConfig: () => void
 }) {
-  const isActive = result?.strategy === strategy.key
   return (
-    <div className={cn('bg-bg-card border border-border rounded-xl p-4 card-hover relative overflow-hidden transition-all duration-300', isActive && 'border-accent/40 shadow-md')}>
+    <div className="bg-bg-card border border-border rounded-xl p-4 card-hover relative overflow-hidden transition-all duration-300">
       <div className="flex items-start justify-between mb-2">
         <div className="w-10 h-10 rounded-lg bg-accent-bg flex items-center justify-center">
           <Brain className="w-5 h-5 text-accent" />
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onEvaluate() }}
-          disabled={isLoading}
-          className={cn(
-            'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
-            'bg-accent text-white hover:bg-accent-light',
-            'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
-            'flex items-center gap-1 shadow-sm hover:shadow-md',
-            'disabled:opacity-50'
-          )}
-        >
-          {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-          {isLoading ? '分析中...' : '运行'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={(e) => { e.stopPropagation(); onShowConfig() }}
+            className={cn(
+              'px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
+              'bg-bg-secondary text-text-tertiary hover:text-accent hover:bg-accent-bg border border-border',
+              'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
+              'flex items-center gap-1'
+            )}
+            title="调整参数配置"
+          >
+            <SlidersHorizontal className="w-3 h-3" />
+            调整配置
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onShowDetail() }}
+            className={cn(
+              'px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
+              'bg-accent/10 text-accent hover:bg-accent hover:text-white border border-accent/20',
+              'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
+              'flex items-center gap-1'
+            )}
+          >
+            <BookOpen className="w-3 h-3" />
+            策略详情
+          </button>
+        </div>
       </div>
       <h3 className="font-semibold text-text-primary mb-1">{strategy.name}</h3>
       <p className="text-sm text-text-secondary">{strategy.description}</p>
+    </div>
+  )
+}
 
-      {/* Evaluate 结果展示 */}
-      {isActive && result?.signal && (
-        <div className="mt-3 pt-3 border-t border-border space-y-2 animate-fade-in-up">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-tertiary">信号:</span>
-            <span className={cn(
-              'px-2 py-0.5 rounded-md text-xs font-medium',
-              result.signal.direction === 'buy' && 'bg-success-bg text-success',
-              result.signal.direction === 'sell' && 'bg-danger-bg text-danger',
-              result.signal.direction === 'hold' && 'bg-bg-secondary text-text-secondary'
-            )}>
-              {result.signal.direction === 'buy' ? '买入' : result.signal.direction === 'sell' ? '卖出' : '观望'}
-            </span>
-            {result.signal.confidence != null && (
-              <span className="text-xs text-text-secondary">
-                置信度 {(result.signal.confidence * 100).toFixed(1)}%
-              </span>
-            )}
-          </div>
-          {result.signal.reason && (
-            <p className="text-xs text-text-secondary leading-relaxed">{result.signal.reason}</p>
-          )}
-        </div>
-      )}
-      {isActive && result?.signal === null && (
-        <div className="mt-3 pt-3 border-t border-border text-xs text-text-tertiary animate-fade-in-up">
-          暂无信号
-        </div>
-      )}
+// ── Signal Table (公共组件) ───────────────────────────────────────────────
+
+function SignalTable({ items, color }: { items: any[]; color: 'success' | 'danger' | 'neutral' }) {
+  const colorMap = {
+    success: { text: 'text-success', bg: 'bg-success', label: '买入' },
+    danger: { text: 'text-danger', bg: 'bg-danger', label: '卖出' },
+    neutral: { text: 'text-text-secondary', bg: 'bg-text-tertiary', label: '观望' },
+  }
+  const c = colorMap[color]
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border-light text-text-tertiary">
+            <th className="text-left py-1.5 px-2 font-medium w-[90px]">代码</th>
+            <th className="text-left py-1.5 px-2 font-medium w-[100px]">名称</th>
+            <th className="text-right py-1.5 px-2 font-medium w-[80px]">置信度</th>
+            <th className="text-left py-1.5 px-2 font-medium">结论</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border-light">
+          {items.map((item: any, i: number) => (
+            <tr key={i} className="hover:bg-bg-hover">
+              <td className="py-1.5 px-2 text-text-primary font-mono">{item.symbol}</td>
+              <td className="py-1.5 px-2 text-text-primary">{item.name || '-'}</td>
+              <td className={cn('py-1.5 px-2 text-right font-medium', c.text)}>
+                {(item.confidence * 100).toFixed(1)}%
+              </td>
+              <td className="py-1.5 px-2 text-text-secondary text-xs max-w-[280px] truncate">{item.reason}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -305,7 +643,12 @@ function IndicatorsTab() {
 
   useEffect(() => {
     strategyEngineApi.getIndicators()
-      .then((res) => setIndicators(res.data?.indicators || res.data || []))
+      .then((res) => {
+        const data = res.data || {}
+        const builtin = (data.builtin || []).map((ind: any) => ({ ...ind, category: ind.category || '内置' }))
+        const custom = (data.custom || []).map((ind: any) => ({ ...ind, category: ind.category || '自定义' }))
+        setIndicators([...builtin, ...custom])
+      })
       .catch(() => setIndicators([]))
       .finally(() => setLoading(false))
   }, [])
@@ -507,8 +850,15 @@ function PositionsTradesTab() {
       strategyEngineApi.getPositions().catch(() => ({ data: [] })),
       strategyEngineApi.getTrades().catch(() => ({ data: [] })),
     ]).then(([posRes, tradeRes]) => {
-      setPositions(posRes.data?.positions || posRes.data || [])
-      setTrades(tradeRes.data?.trades || tradeRes.data || [])
+      let posData = posRes.data?.positions ?? posRes.data ?? []
+      let tradeData = tradeRes.data?.trades ?? tradeRes.data ?? []
+      posData = Array.isArray(posData) ? posData : []
+      tradeData = Array.isArray(tradeData) ? tradeData : []
+      // 字段映射：后端 amount → 前端 size/quantity
+      posData = posData.map((p: any) => ({ ...p, size: p.size ?? p.amount ?? 0 }))
+      tradeData = tradeData.map((t: any) => ({ ...t, quantity: t.quantity ?? t.amount ?? 0 }))
+      setPositions(posData)
+      setTrades(tradeData)
     }).finally(() => setLoading(false))
   }, [])
 
@@ -568,8 +918,8 @@ function PositionsTradesTab() {
                   <td className="px-4 py-3 text-right text-text-secondary">{pos.entry_price?.toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-text-secondary">{pos.highest_price?.toFixed(2) ?? '--'}</td>
                   <td className="px-4 py-3 text-right text-text-secondary">{pos.lowest_price?.toFixed(2) ?? '--'}</td>
-                  <td className={cn('px-4 py-3 text-right font-medium', pos.unrealized_pnl >= 0 ? 'text-rise' : 'text-fall')}>
-                    {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)}
+                  <td className={cn('px-4 py-3 text-right font-medium', (pos.unrealized_pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
+                    {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}{formatNumber(pos.unrealized_pnl)}
                   </td>
                   <td className="px-4 py-3 text-right text-text-tertiary text-xs">
                     {pos.updated_at ? new Date(pos.updated_at).toLocaleString('zh-CN') : '--'}
@@ -598,20 +948,22 @@ function PositionsTradesTab() {
             <tbody className="divide-y divide-border-light">
               {trades.map((t) => (
                 <tr key={t.id} className="hover:bg-bg-hover transition-colors duration-150">
-                  <td className="px-4 py-3 text-text-secondary text-xs">{new Date(t.timestamp).toLocaleString('zh-CN')}</td>
+                  <td className="px-4 py-3 text-text-secondary text-xs">
+                    {t.timestamp ? new Date(t.timestamp).toLocaleString('zh-CN') : '--'}
+                  </td>
                   <td className="px-4 py-3 text-text-primary font-medium">{t.symbol}</td>
                   <td className="px-4 py-3">
                     <span className={cn(
                       'px-2 py-0.5 rounded text-xs font-medium',
-                      t.side === 'buy' || t.side === 'open_long' ? 'bg-success-bg text-success' : 'bg-danger-bg text-danger'
+                      /buy|open_long|add_long/i.test(t.side || '') ? 'bg-success-bg text-success' : 'bg-danger-bg text-danger'
                     )}>
-                      {t.side === 'buy' || t.side === 'open_long' ? '买入' : '卖出'}
+                      {/buy|open_long|add_long/i.test(t.side || '') ? '买入' : '卖出'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-text-primary">{t.price.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-right text-text-primary">{t.quantity}</td>
-                  <td className={cn('px-4 py-3 text-right font-medium', t.pnl >= 0 ? 'text-rise' : 'text-fall')}>
-                    {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}
+                  <td className="px-4 py-3 text-right text-text-primary">{formatNumber(t.price)}</td>
+                  <td className="px-4 py-3 text-right text-text-primary">{t.quantity ?? '--'}</td>
+                  <td className={cn('px-4 py-3 text-right font-medium', (t.pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
+                    {(t.pnl ?? 0) >= 0 ? '+' : ''}{formatNumber(t.pnl)}
                   </td>
                 </tr>
               ))}
@@ -630,9 +982,11 @@ function PositionsTradesTab() {
 
 function LibraryTab() {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([])
-  const [symbol, setSymbol] = useState('600519')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ strategy: string; signal: StrategySignal } | null>(null)
+  // ── 策略详情弹窗 ──
+  const [detailStrategy, setDetailStrategy] = useState<StrategyInfo | null>(null)
+  // ── 策略配置弹窗 ──
+  const [configStrategy, setConfigStrategy] = useState<StrategyInfo | null>(null)
+  const [strategyConfigs, setStrategyConfigs] = useState<Record<string, Record<string, number | string>>>({})
 
   // ── 选股 / 筛选 ──
   const [toolMode, setToolMode] = useState<'pick' | 'screen'>('pick')
@@ -655,28 +1009,33 @@ function LibraryTab() {
 
   useEffect(() => {
     strategyApi.list().then((res) => {
-      const list = res.data?.strategies || [
-        { key: 'ma_crossover', name: '均线交叉', description: '基于短期与长期移动平均线的交叉信号' },
-        { key: 'macd', name: 'MACD', description: '基于MACD指标的金叉死叉信号' },
-        { key: 'rsi', name: 'RSI', description: '基于相对强弱指标的超买超卖信号' },
-        { key: 'bollinger', name: '布林带', description: '基于布林带上下轨的突破信号' },
-      ]
+      // 后端直接返回数组，兼容两种格式
+      const list: StrategyInfo[] = Array.isArray(res.data)
+        ? res.data
+        : res.data?.strategies || [
+            { key: 'ma_crossover', name: '均线交叉', description: '基于短期与长期移动平均线的交叉信号', parameters: [
+              { name: 'short_window', type: 'int', default: 5, min: 2, max: 60, description: '短期均线周期' },
+              { name: 'long_window', type: 'int', default: 20, min: 5, max: 250, description: '长期均线周期' },
+            ]},
+            { key: 'macd', name: 'MACD', description: '基于MACD指标的金叉死叉信号', parameters: [
+              { name: 'fast', type: 'int', default: 12, min: 5, max: 60, description: '快速 EMA 周期' },
+              { name: 'slow', type: 'int', default: 26, min: 10, max: 120, description: '慢速 EMA 周期' },
+              { name: 'signal', type: 'int', default: 9, min: 5, max: 60, description: '信号线(DEA)周期' },
+            ]},
+            { key: 'rsi', name: 'RSI', description: '基于相对强弱指标的超买超卖信号', parameters: [
+              { name: 'period', type: 'int', default: 14, min: 5, max: 60, description: 'RSI 计算周期' },
+              { name: 'oversold', type: 'int', default: 30, min: 10, max: 40, description: '超卖阈值' },
+              { name: 'overbought', type: 'int', default: 70, min: 60, max: 90, description: '超买阈值' },
+            ]},
+            { key: 'bollinger', name: '布林带', description: '基于布林带上下轨的突破信号', parameters: [
+              { name: 'period', type: 'int', default: 20, min: 5, max: 60, description: '布林带计算周期' },
+              { name: 'std_dev', type: 'float', default: 2.0, min: 1.0, max: 4.0, description: '标准差倍数' },
+            ]},
+          ]
       setStrategies(list)
       if (list.length > 0) setSelectedStrategy(list[0].key)
     })
   }, [])
-
-  const handleEvaluate = async (key: string) => {
-    setLoading(true)
-    try {
-      const res = await strategyApi.evaluate(key, symbol)
-      setResult({ strategy: key, signal: res.data?.signal || null })
-    } catch {
-      /* silent */
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handlePick = async () => {
     setPickLoading(true)
@@ -684,7 +1043,8 @@ function LibraryTab() {
     setScreenResult(null)
     try {
       const symbols = pickSymbols.split(',').map((s) => s.trim()).filter(Boolean)
-      const res = await strategyApi.pick(selectedStrategy, symbols, { min_confidence: minConfidence })
+      const params = strategyConfigs[selectedStrategy]
+      const res = await strategyApi.pick(selectedStrategy, symbols, { min_confidence: minConfidence, params })
       setPickResult(res.data)
     } catch (err: any) {
       setPickResult({ error: err.message || '选股失败' })
@@ -735,9 +1095,8 @@ function LibraryTab() {
             <StrategyCard
               key={strategy.key}
               strategy={strategy}
-              onEvaluate={() => handleEvaluate(strategy.key)}
-              isLoading={loading && result?.strategy === strategy.key}
-              result={result}
+              onShowDetail={() => setDetailStrategy(strategy)}
+              onShowConfig={() => setConfigStrategy(strategy)}
             />
           ))}
         </div>
@@ -786,6 +1145,12 @@ function LibraryTab() {
                     <option key={s.key} value={s.key}>{s.name}</option>
                   ))}
                 </select>
+                {/* 策略说明 */}
+                {strategies.length > 0 && (
+                  <p className="text-[11px] text-text-tertiary mt-1.5 leading-relaxed">
+                    {strategies.find((s) => s.key === selectedStrategy)?.description || ''}
+                  </p>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs text-text-tertiary mb-1 block">股票列表（逗号分隔）</label>
@@ -813,9 +1178,10 @@ function LibraryTab() {
               onClick={handlePick}
               disabled={pickLoading}
               className={cn(
-                'px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium',
+                'px-4 py-2 rounded-lg text-sm font-medium',
+                'bg-bg-secondary text-text-secondary hover:text-accent hover:bg-accent-bg border border-border',
                 'flex items-center gap-2 shadow-sm',
-                'transition-all duration-200 hover:bg-accent-light hover:-translate-y-[1px] hover:shadow-md',
+                'transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md',
                 'active:translate-y-0 active:scale-[0.985] disabled:opacity-50'
               )}
             >
@@ -867,6 +1233,7 @@ function LibraryTab() {
                   placeholder="10"
                   className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
                 />
+                <p className="text-[10px] text-text-tertiary mt-1">数值即百分比，如 5 表示涨跌幅 ≥5%</p>
               </div>
               <div>
                 <label className="text-xs text-text-tertiary mb-1 block">返回数量</label>
@@ -883,9 +1250,10 @@ function LibraryTab() {
               onClick={handleScreen}
               disabled={pickLoading}
               className={cn(
-                'px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium',
+                'px-4 py-2 rounded-lg text-sm font-medium',
+                'bg-bg-secondary text-text-secondary hover:text-accent hover:bg-accent-bg border border-border',
                 'flex items-center gap-2 shadow-sm',
-                'transition-all duration-200 hover:bg-accent-light hover:-translate-y-[1px] hover:shadow-md',
+                'transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md',
                 'active:translate-y-0 active:scale-[0.985] disabled:opacity-50'
               )}
             >
@@ -897,62 +1265,73 @@ function LibraryTab() {
 
         {/* 结果展示 */}
         {pickResult && !pickResult.error && (
-          <div className="mt-4 space-y-3">
-            <div className="text-xs text-text-tertiary">
-              策略: {pickResult.strategy || selectedStrategy} &middot; 分析 {pickResult.total_analyzed} 只 &middot; 信号 {pickResult.signals_found} 个
+          <div className="mt-4 space-y-3 animate-fade-in-up">
+            {/* 顶部统计摘要 */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-text-tertiary">
+                策略 <span className="text-text-secondary font-medium">{pickResult.strategy || selectedStrategy}</span> 分析了 {pickResult.total_analyzed} 只股票
+              </span>
+              {(pickResult.buy_count > 0 || pickResult.sell_count > 0) && (
+                <span className="text-text-tertiary">·</span>
+              )}
+              {pickResult.buy_count > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-success-bg text-success font-medium">买入 {pickResult.buy_count}</span>
+              )}
+              {pickResult.sell_count > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-danger-bg text-danger font-medium">卖出 {pickResult.sell_count}</span>
+              )}
+              {pickResult.hold_count > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-bg-secondary text-text-secondary font-medium">观望 {pickResult.hold_count}</span>
+              )}
+              {pickResult.failed_count > 0 && (
+                <span className="text-text-tertiary" title={pickResult.failed_symbols?.join(', ')}>
+                  （{pickResult.failed_count} 只数据获取失败）
+                </span>
+              )}
             </div>
+
+            {/* 买入信号 */}
             {pickResult.buy_signals?.length > 0 && (
               <div>
-                <div className="text-xs font-medium text-success mb-1">买入信号</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border-light text-text-tertiary">
-                        <th className="text-left py-1.5 px-2 font-medium">代码</th>
-                        <th className="text-left py-1.5 px-2 font-medium">名称</th>
-                        <th className="text-right py-1.5 px-2 font-medium">置信度</th>
-                        <th className="text-left py-1.5 px-2 font-medium">理由</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border-light">
-                      {pickResult.buy_signals.map((item: any, i: number) => (
-                        <tr key={i} className="hover:bg-bg-hover">
-                          <td className="py-1.5 px-2 text-text-primary font-mono">{item.symbol}</td>
-                          <td className="py-1.5 px-2 text-text-primary">{item.name}</td>
-                          <td className="py-1.5 px-2 text-right text-success font-medium">{(item.confidence * 100).toFixed(1)}%</td>
-                          <td className="py-1.5 px-2 text-text-secondary text-xs max-w-xs truncate">{item.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="text-xs font-medium text-success mb-1.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
+                  买入信号 ({pickResult.buy_signals.length})
                 </div>
+                <SignalTable items={pickResult.buy_signals} color="success" />
               </div>
             )}
+
+            {/* 卖出信号 */}
             {pickResult.sell_signals?.length > 0 && (
               <div>
-                <div className="text-xs font-medium text-danger mb-1">卖出信号</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border-light text-text-tertiary">
-                        <th className="text-left py-1.5 px-2 font-medium">代码</th>
-                        <th className="text-left py-1.5 px-2 font-medium">名称</th>
-                        <th className="text-right py-1.5 px-2 font-medium">置信度</th>
-                        <th className="text-left py-1.5 px-2 font-medium">理由</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border-light">
-                      {pickResult.sell_signals.map((item: any, i: number) => (
-                        <tr key={i} className="hover:bg-bg-hover">
-                          <td className="py-1.5 px-2 text-text-primary font-mono">{item.symbol}</td>
-                          <td className="py-1.5 px-2 text-text-primary">{item.name}</td>
-                          <td className="py-1.5 px-2 text-right text-danger font-medium">{(item.confidence * 100).toFixed(1)}%</td>
-                          <td className="py-1.5 px-2 text-text-secondary text-xs max-w-xs truncate">{item.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="text-xs font-medium text-danger mb-1.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" />
+                  卖出信号 ({pickResult.sell_signals.length})
                 </div>
+                <SignalTable items={pickResult.sell_signals} color="danger" />
+              </div>
+            )}
+
+            {/* 观望 / 无信号 */}
+            {pickResult.hold_signals?.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-text-secondary mb-1.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-text-tertiary inline-block" />
+                  观望 / 无信号 ({pickResult.hold_signals.length})
+                </div>
+                <SignalTable items={pickResult.hold_signals} color="neutral" />
+              </div>
+            )}
+
+            {/* 全部无信号的空状态 */}
+            {pickResult.buy_count === 0 && pickResult.sell_count === 0 && pickResult.hold_count > 0 && (
+              <div className="p-4 rounded-xl bg-bg-secondary border border-border text-sm text-text-secondary animate-fade-in">
+                <p className="mb-1">
+                  <span className="font-medium text-text-primary">{pickResult.total_analyzed}</span> 只股票均未触发买入或卖出信号
+                </p>
+                <p className="text-xs text-text-tertiary">
+                  {pickResult.hold_count} 只处于观望状态（如均线未交叉、无明显趋势）。你可以尝试换一组股票代码，或切换到其他策略。
+                </p>
               </div>
             )}
           </div>
@@ -966,37 +1345,59 @@ function LibraryTab() {
         )}
 
         {screenResult && !screenResult.error && (
-          <div className="mt-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border-light text-text-tertiary">
-                    <th className="text-left py-1.5 px-2 font-medium">代码</th>
-                    <th className="text-left py-1.5 px-2 font-medium">名称</th>
-                    <th className="text-right py-1.5 px-2 font-medium">最新价</th>
-                    <th className="text-right py-1.5 px-2 font-medium">涨跌幅</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-light">
-                  {Array.isArray(screenResult) ? screenResult.map((item: any, i: number) => (
-                    <tr key={i} className="hover:bg-bg-hover">
-                      <td className="py-1.5 px-2 text-text-primary font-mono">{item.symbol || item.代码}</td>
-                      <td className="py-1.5 px-2 text-text-primary">{item.name || item.名称}</td>
-                      <td className="py-1.5 px-2 text-right text-text-primary">{item.price || item.最新价}</td>
-                      <td className={cn('py-1.5 px-2 text-right font-medium', (item.change_pct || item.涨跌幅) >= 0 ? 'text-rise' : 'text-fall')}>
-                        {(item.change_pct || item.涨跌幅) >= 0 ? '+' : ''}{item.change_pct || item.涨跌幅}%
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={4} className="py-4 px-2 text-text-tertiary text-sm">
-                        <pre className="text-xs overflow-x-auto">{JSON.stringify(screenResult, null, 2)}</pre>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <div className="mt-4 space-y-3 animate-fade-in-up">
+            {/* 筛选说明 */}
+            <div className="text-xs text-text-tertiary">
+              在全市场 <span className="text-text-secondary font-medium">{screenResult.total_all?.toLocaleString() || '-'} 只</span> 股票中
+              {screenResult.total_matched > 0 ? (
+                <span>，按条件「<span className="text-text-secondary font-medium">{screenResult.conditions_text}</span>」找到 <span className="text-text-secondary font-medium">{screenResult.total_matched} 只</span></span>
+              ) : (
+                <span>，按条件「<span className="text-text-secondary font-medium">{screenResult.conditions_text}</span>」未找到符合条件的股票</span>
+              )}
             </div>
+
+            {/* 筛选结果表格 */}
+            {screenResult.count > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border-light text-text-tertiary">
+                      <th className="text-left py-1.5 px-2 font-medium">代码</th>
+                      <th className="text-left py-1.5 px-2 font-medium">名称</th>
+                      <th className="text-right py-1.5 px-2 font-medium">最新价</th>
+                      <th className="text-right py-1.5 px-2 font-medium">涨跌幅</th>
+                      <th className="text-right py-1.5 px-2 font-medium">成交量</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-light">
+                    {screenResult.stocks?.map((item: any, i: number) => (
+                      <tr key={i} className="hover:bg-bg-hover">
+                        <td className="py-1.5 px-2 text-text-primary font-mono">{item.symbol}</td>
+                        <td className="py-1.5 px-2 text-text-primary">{item.name}</td>
+                        <td className="py-1.5 px-2 text-right text-text-primary">{item.price != null ? `¥${Number(item.price).toFixed(2)}` : '-'}</td>
+                        <td className={cn('py-1.5 px-2 text-right font-medium', (item.change_pct || 0) >= 0 ? 'text-rise' : 'text-fall')}>
+                          {(item.change_pct || 0) >= 0 ? '+' : ''}{Number(item.change_pct).toFixed(2)}%
+                        </td>
+                        <td className="py-1.5 px-2 text-right text-text-secondary">{formatVolume(item.volume)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 空结果友好提示 */}
+            {screenResult.count === 0 && (
+              <div className="p-4 rounded-xl bg-bg-secondary border border-border text-sm text-text-secondary animate-fade-in">
+                <p className="mb-1 font-medium text-text-primary">未找到符合条件的股票</p>
+                <p className="text-xs text-text-tertiary mb-2">
+                  当前条件：{screenResult.conditions_text}
+                </p>
+                <p className="text-xs text-text-tertiary">
+                  建议尝试放宽条件，如降低价格门槛、扩大涨跌幅范围，或减少筛选项。
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1029,9 +1430,10 @@ function LibraryTab() {
             onClick={handleCreateCustom}
             disabled={customLoading || !customDesc.trim()}
             className={cn(
-              'px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium',
+              'px-4 py-2 rounded-lg text-sm font-medium',
+              'bg-bg-secondary text-text-secondary hover:text-accent hover:bg-accent-bg border border-border',
               'flex items-center gap-2 shadow-sm',
-              'transition-all duration-200 hover:bg-accent-light hover:-translate-y-[1px] hover:shadow-md',
+              'transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md',
               'active:translate-y-0 active:scale-[0.985] disabled:opacity-50'
             )}
           >
@@ -1069,31 +1471,23 @@ function LibraryTab() {
         )}
       </section>
 
-      {result && (
-        <section className="bg-bg-card border border-border rounded-xl p-4 card-hover animate-fade-in-up">
-          <h3 className="font-semibold text-text-primary mb-2">策略分析结果</h3>
-          <div className="flex items-center gap-4">
-            <div className={cn(
-              'px-3 py-1.5 rounded-lg text-sm font-medium',
-              result.signal?.direction === 'buy' && 'bg-success-bg text-success',
-              result.signal?.direction === 'sell' && 'bg-danger-bg text-danger',
-              result.signal?.direction === 'hold' && 'bg-bg-secondary text-text-secondary'
-            )}>
-              {result.signal?.direction === 'buy' && '买入信号'}
-              {result.signal?.direction === 'sell' && '卖出信号'}
-              {result.signal?.direction === 'hold' && '观望'}
-              {!result.signal?.direction && '无信号'}
-            </div>
-            {result.signal?.confidence != null && (
-              <div className="text-sm text-text-secondary">
-                置信度: {(result.signal.confidence * 100).toFixed(1)}%
-              </div>
-            )}
-          </div>
-          {result.signal?.reason && (
-            <p className="text-sm text-text-secondary mt-2">{result.signal.reason}</p>
-          )}
-        </section>
+      {/* 策略详情弹窗 */}
+      {detailStrategy && (
+        <StrategyDetailModal
+          strategy={detailStrategy}
+          currentParams={strategyConfigs[detailStrategy.key] || {}}
+          onClose={() => setDetailStrategy(null)}
+        />
+      )}
+
+      {/* 策略配置弹窗 */}
+      {configStrategy && (
+        <StrategyConfigModal
+          strategy={configStrategy}
+          currentValues={strategyConfigs[configStrategy.key] || {}}
+          onSave={(values) => setStrategyConfigs((prev) => ({ ...prev, [configStrategy.key]: values }))}
+          onClose={() => setConfigStrategy(null)}
+        />
       )}
     </>
   )

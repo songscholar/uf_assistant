@@ -57,7 +57,7 @@ describe('StrategyPage', () => {
   it('displays strategy descriptions', async () => {
     renderWithRouter(<StrategyPage />)
     await waitFor(() => {
-      expect(screen.getByText('基于短期与长期移动平均线的交叉信号')).toBeInTheDocument()
+      expect(screen.getAllByText('基于短期与长期移动平均线的交叉信号').length).toBeGreaterThan(0)
     })
   })
 
@@ -68,11 +68,13 @@ describe('StrategyPage', () => {
     })
   })
 
-  it('renders run buttons on strategy cards', async () => {
+  it('renders strategy detail and config buttons on cards', async () => {
     renderWithRouter(<StrategyPage />)
     await waitFor(() => {
-      const runButtons = screen.getAllByText('运行')
-      expect(runButtons.length).toBeGreaterThan(0)
+      const detailButtons = screen.getAllByText('策略详情')
+      expect(detailButtons.length).toBeGreaterThan(0)
+      const configButtons = screen.getAllByText('调整配置')
+      expect(configButtons.length).toBeGreaterThan(0)
     })
   })
 })

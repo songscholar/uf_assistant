@@ -509,7 +509,7 @@ async def stop_strategy(request: StrategyStopRequest):
 
 
 @router.get("/strategies/positions")
-async def get_strategy_positions(strategy_id: int | None = None):
+async def get_strategy_positions(strategy_id: str | None = None):
     """获取策略持仓"""
     try:
         from app.strategies.models import StrategyPosition
@@ -527,12 +527,13 @@ async def get_strategy_positions(strategy_id: int | None = None):
                     "strategy_id": p.strategy_id,
                     "symbol": p.symbol,
                     "side": p.side,
+                    "size": p.size,
                     "entry_price": p.entry_price,
                     "amount": p.amount,
                     "unrealized_pnl": p.unrealized_pnl,
                     "highest_price": p.highest_price,
                     "lowest_price": p.lowest_price,
-                    "opened_at": p.opened_at.isoformat() if p.opened_at else None,
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
                 }
                 for p in positions
             ]
@@ -544,7 +545,7 @@ async def get_strategy_positions(strategy_id: int | None = None):
 
 
 @router.get("/strategies/trades")
-async def get_strategy_trades(strategy_id: int | None = None, limit: int = 50):
+async def get_strategy_trades(strategy_id: str | None = None, limit: int = 50):
     """获取策略交易记录"""
     try:
         from app.strategies.models import StrategyTrade
@@ -555,19 +556,18 @@ async def get_strategy_trades(strategy_id: int | None = None, limit: int = 50):
             query = session.query(StrategyTrade)
             if strategy_id is not None:
                 query = query.filter(StrategyTrade.strategy_id == strategy_id)
-            trades = query.order_by(StrategyTrade.executed_at.desc()).limit(limit).all()
+            trades = query.order_by(StrategyTrade.created_at.desc()).limit(limit).all()
             return [
                 {
                     "id": t.id,
                     "strategy_id": t.strategy_id,
                     "symbol": t.symbol,
-                    "side": t.side,
+                    "side": t.trade_type,
                     "price": t.price,
                     "amount": t.amount,
-                    "cost": t.cost,
                     "commission": t.commission,
-                    "pnl": t.pnl,
-                    "executed_at": t.executed_at.isoformat() if t.executed_at else None,
+                    "pnl": t.profit,
+                    "timestamp": t.created_at.isoformat() if t.created_at else None,
                 }
                 for t in trades
             ]

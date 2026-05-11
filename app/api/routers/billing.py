@@ -10,7 +10,9 @@ from typing import Any
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -19,6 +21,13 @@ from app.core.config import get_settings
 from app.core.exceptions import BillingError
 from app.core.logging import get_logger
 from app.services.billing import get_billing_service
+from app.services.cn_payment import (
+    AlipayService,
+    CnPaymentService,
+    MockPaymentService,
+    WechatPayService,
+    get_cn_payment_service,
+)
 from app.services.usdt_payment import get_usdt_payment_service
 
 logger = get_logger("app.api.routers.billing")
@@ -63,6 +72,191 @@ class VipSetRequest(BaseModel):
     user_id: str = Field(..., description="用户 ID")
     expires_at: str | None = Field(default=None, description="VIP 过期时间 ISO 格式，null 表示取消")
     remark: str = Field(default="", description="备注")
+
+
+class SubscribeRequest(BaseModel):
+    plan: str = Field(..., description="套餐类型: monthly/yearly/lifetime")
+    channel: str = Field(default="mock", description="支付渠道: alipay/wechat/mock")
+
+
+class PayCreateRequest(BaseModel):
+    plan: str = Field(..., description="套餐类型: monthly/yearly/lifetime")
+    channel: str = Field(..., description="支付渠道: alipay/wechat/mock")
+    amount: float | None = Field(default=None, description="金额（CNY），留空使用套餐默认价")
+
+
+# ------------------------------------------------------------------
+# 会员订阅 & 人民币支付
+# ------------------------------------------------------------------
+
+
+@router.post("/subscribe")
+async def subscribe(
+    payload: SubscribeRequest,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """会员订阅：根据 plan 和 channel 创建支付订单
+
+    channel 优先级：
+      - mock: 模拟支付（需 CN_PAY_MOCK_ENABLED=true）
+      - alipay: 支付宝二维码
+      - wechat: 微信支付二维码
+    """
+    plan = (payload.plan or "").strip().lower()
+    channel = (payload.channel or "").strip().lower()
+    if not plan:
+        raise BillingError("missing_plan")
+
+    # 获取套餐价格
+    svc = get_billing_service()
+    plans = svc.get_membership_plans()
+    if plan not in plans:
+        raise BillingError(f"invalid_plan: {plan}")
+
+    plan_info = plans[plan]
+    amount_cny = Decimal(str(plan_info.get("price_usd") or 0))
+    # 简单汇率换算：USD -> CNY（实际应接入汇率接口或配置固定汇率）
+    # 这里使用 7.2 作为近似汇率，并向上取整到整数
+    amount_cny = Decimal(str(int((float(amount_cny) * 7.2) + 0.99)))
+    if amount_cny <= 0:
+        amount_cny = Decimal("1")
+
+    subject = f"UF Stock Assistant {plan} 会员"
+
+    if channel == "mock":
+        if not get_settings().cn_pay.mock_enabled:
+            raise BillingError("mock_payment_disabled", details={"hint": "请在 .env 中设置 CN_PAY_MOCK_ENABLED=true"})
+        ok, msg, out = MockPaymentService.create_order(
+            str(user["user_id"]), plan, amount_cny
+        )
+    elif channel == "alipay":
+        if not get_settings().cn_pay.alipay_enabled:
+            raise BillingError("alipay_disabled")
+        ok, msg, out = AlipayService().create_order(
+            str(user["user_id"]), plan, amount_cny, subject
+        )
+    elif channel == "wechat":
+        if not get_settings().cn_pay.wechat_enabled:
+            raise BillingError("wechat_disabled")
+        ok, msg, out = WechatPayService().create_order(
+            str(user["user_id"]), plan, amount_cny, subject
+        )
+    else:
+        raise BillingError(f"unsupported_channel: {channel}")
+
+    if ok:
+        return {"code": "success", "data": out}
+    raise BillingError(msg, details=out)
+
+
+@router.post("/pay/create")
+async def pay_create(
+    payload: PayCreateRequest,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """创建人民币支付订单（通用接口）"""
+    plan = (payload.plan or "").strip().lower()
+    channel = (payload.channel or "").strip().lower()
+    if not plan:
+        raise BillingError("missing_plan")
+
+    amount_cny = Decimal(str(payload.amount)) if payload.amount else Decimal("0")
+    if amount_cny <= 0:
+        svc = get_billing_service()
+        plans = svc.get_membership_plans()
+        plan_info = plans.get(plan, {})
+        amount_cny = Decimal(str(plan_info.get("price_usd") or 0))
+        amount_cny = Decimal(str(int((float(amount_cny) * 7.2) + 0.99)))
+        if amount_cny <= 0:
+            amount_cny = Decimal("1")
+
+    subject = f"UF Stock Assistant {plan} 会员"
+
+    if channel == "mock":
+        if not get_settings().cn_pay.mock_enabled:
+            raise BillingError("mock_payment_disabled")
+        ok, msg, out = MockPaymentService.create_order(
+            str(user["user_id"]), plan, amount_cny
+        )
+    elif channel == "alipay":
+        if not get_settings().cn_pay.alipay_enabled:
+            raise BillingError("alipay_disabled")
+        ok, msg, out = AlipayService().create_order(
+            str(user["user_id"]), plan, amount_cny, subject
+        )
+    elif channel == "wechat":
+        if not get_settings().cn_pay.wechat_enabled:
+            raise BillingError("wechat_disabled")
+        ok, msg, out = WechatPayService().create_order(
+            str(user["user_id"]), plan, amount_cny, subject
+        )
+    else:
+        raise BillingError(f"unsupported_channel: {channel}")
+
+    if ok:
+        return {"code": "success", "data": out}
+    raise BillingError(msg, details=out)
+
+
+@router.get("/pay/{order_id}")
+async def pay_get_order(
+    order_id: int,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """查询人民币支付订单详情"""
+    ok, msg, out = get_cn_payment_service().get_order(str(user["user_id"]), order_id)
+    if ok:
+        return {"code": "success", "data": out}
+    raise BillingError(msg)
+
+
+@router.post("/pay/{order_id}/mock-confirm")
+async def pay_mock_confirm(
+    order_id: int,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """模拟支付确认（仅用于开发测试）"""
+    if not get_settings().cn_pay.mock_enabled:
+        raise BillingError("mock_payment_disabled")
+
+    ok, msg, out = get_cn_payment_service().get_order(str(user["user_id"]), order_id)
+    if not ok or not out:
+        raise BillingError(msg or "order_not_found")
+
+    out_trade_no = out.get("out_trade_no", "")
+    if not out_trade_no:
+        raise BillingError("missing_out_trade_no")
+
+    ok, msg, result = MockPaymentService.confirm_payment(out_trade_no)
+    if ok:
+        return {"code": "success", "data": result}
+    raise BillingError(msg)
+
+
+@router.post("/pay/callback/alipay")
+async def pay_callback_alipay(request: Request) -> str:
+    """支付宝异步通知回调"""
+    try:
+        data = dict(await request.form())
+    except Exception:
+        data = {}
+    ok, msg = AlipayService().handle_notify(data)
+    if ok:
+        return "success"
+    logger.error("alipay_callback_failed", msg=msg, data=data)
+    return "fail"
+
+
+@router.post("/pay/callback/wechat")
+async def pay_callback_wechat(request: Request) -> str:
+    """微信支付异步通知回调"""
+    headers = dict(request.headers)
+    body = await request.body()
+    ok, msg = WechatPayService().handle_notify(headers, body)
+    if ok:
+        return json.dumps({"code": "SUCCESS", "message": "OK"})
+    logger.error("wechat_callback_failed", msg=msg)
+    return json.dumps({"code": "FAIL", "message": msg})
 
 
 # ------------------------------------------------------------------

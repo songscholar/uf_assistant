@@ -43,3 +43,21 @@ export function formatTime(dateStr: string): string {
   if (days < 7) return `${days}天前`
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
+
+/**
+ * 格式化成交量/成交额
+ * 新浪接口成交量单位是"手"（1手=100股），成交额单位是"元"
+ */
+export function formatVolume(value: number | null | undefined, type: 'volume' | 'amount' = 'volume'): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--'
+  const num = Number(value)
+  if (type === 'amount') {
+    if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿`
+    if (num >= 1e4) return `${(num / 1e4).toFixed(2)}万`
+    return num.toLocaleString('zh-CN')
+  }
+  // volume (手)
+  if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿手`
+  if (num >= 1e4) return `${(num / 1e4).toFixed(2)}万手`
+  return `${num.toLocaleString('zh-CN')}手`
+}
