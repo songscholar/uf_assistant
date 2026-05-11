@@ -2940,3 +2940,44 @@ const data = res.data?.user || res.data?.data || res.data || {}
 
 ### 测试验证
 - `frontend npx tsc --noEmit`：**0 ProfilePage errors**（预存 2 个 api.test.ts 错误无关）
+
+
+---
+
+## 2026-05-11 — 修复：TradingPage 持仓白屏（后端返回 JSON 字符串导致前端 .map() 崩溃）
+
+### 问题现象
+点击「持仓」标签后白屏，控制台报错：
+```
+positions.map is not a function
+api/v1/trading/live/...nce?market=crypto:1 Failed to load resource: 500
+```
+
+### 根因分析
+1. `app/tools/trading.py` 中的 `get_positions()` / `get_orders()` / `get_portfolio()` 等函数返回 JSON 字符串（`json.dumps()`）
+2. FastAPI 端点直接返回该字符串，axios 收到的 `data` 是字符串而非数组/对象
+3. 前端 `positionsRes.data || []` 对字符串无效（字符串不是 falsy），导致 `positions` 被设为字符串
+4. 后续 `positions.map(...)` 崩溃
+
+### 涉及文件
+- **修改** `app/tools/trading.py` — 6 个函数返回类型从 `str` 改为 `dict[str, Any]`
+- **修改** `frontend/src/pages/TradingPage.tsx` — 防御性数据解析
+
+### 改动方案
+**后端**：
+- `get_positions()` / `get_position()` / `get_orders()` / `cancel_order()` / `get_portfolio()` / `submit_order()`
+- 全部改为直接返回 dict，移除 `json.dumps()` 和 `import json`
+
+**前端**：
+- `fetchMockData` / `fetchLiveData` 中所有 state setter 加防御性处理：
+  ```ts
+  const posData = positionsRes.data
+  setPositions(Array.isArray(posData) ? posData : (posData?.positions || []))
+  ```
+- portfolio 同样处理嵌套结构：`pfData?.summary || pfData || null`
+- catch 块中重置所有 state 为默认值，避免旧数据残留
+
+### 验证结果
+- `frontend npx tsc --noEmit`：**0 errors**（仅剩 pre-existing 的 api.test.ts 错误）
+- 后端 `python3 -m py_compile app/tools/trading.py`：**OK**
+- 本地 commit：`2a918cd`

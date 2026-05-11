@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
 from app.core.constants import MarketType, TradingMode
+from app.core.exceptions import CredentialError
 from app.core.logging import get_logger
 from app.tools.trading import (
     cancel_order,
@@ -157,6 +158,9 @@ async def live_order(request: LiveOrderRequest):
             }
         finally:
             db.close()
+    except CredentialError as exc:
+        logger.warning("live_order_no_credential", error=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         logger.error("live_order_error", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
@@ -226,6 +230,9 @@ async def live_cancel(order_id: str, market: str = Query(...)):
             return {"order_id": order.id, "status": order.status}
         finally:
             db.close()
+    except CredentialError as exc:
+        logger.warning("live_cancel_no_credential", order_id=order_id, error=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         logger.error("live_cancel_error", order_id=order_id, error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
@@ -292,6 +299,9 @@ async def live_sync(market: str = Query(...)):
             }
         finally:
             db.close()
+    except CredentialError as exc:
+        logger.warning("live_sync_no_credential", error=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         logger.error("live_sync_error", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
@@ -328,6 +338,9 @@ async def live_balance(market: str = Query(...)):
             return {"market": market, "balance": balance}
         finally:
             db.close()
+    except CredentialError as exc:
+        logger.warning("live_balance_no_credential", error=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         logger.error("live_balance_error", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
