@@ -93,13 +93,26 @@ export default function RegisterPage() {
 
           <div>
             <label className="block text-sm font-medium text-text-primary mb-1">邮箱</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-1">验证码</label>
             <div className="flex gap-2">
               <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                type="text"
+                value={code}
+                onChange={e => setCode(e.target.value)}
                 className="flex-1 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
                 required
+                maxLength={6}
+                placeholder="点击右侧按钮获取验证码"
               />
               <button
                 type="button"
@@ -110,7 +123,7 @@ export default function RegisterPage() {
                            active:scale-[0.985] active:bg-accent/35 active:translate-y-0
                            disabled:opacity-50 transition-all duration-200"
               >
-                {codeLoading ? '发送中...' : codeCooldown > 0 ? `${codeCooldown}s` : '发送验证码'}
+                {codeLoading ? '发送中...' : codeCooldown > 0 ? `${codeCooldown}s` : '获取验证码'}
               </button>
             </div>
           </div>
@@ -118,20 +131,6 @@ export default function RegisterPage() {
           {devCode && (
             <div className="text-xs text-text-secondary bg-bg-secondary rounded-lg px-3 py-2">
               {devCode}
-            </div>
-          )}
-          {codeSent && (
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">验证码</label>
-              <input
-                type="text"
-                value={code}
-                onChange={e => setCode(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all duration-200"
-                required
-                maxLength={6}
-                placeholder="6位验证码"
-              />
             </div>
           )}
 
