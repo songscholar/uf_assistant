@@ -34,8 +34,9 @@ export default function LoginPage() {
       const resp = await api.post('/auth/send-code', { email, code_type: 'login' })
       setCodeSent(true)
       setCodeCooldown(60)
-      if (resp.data?.dev_mode) {
-        setDevCode('开发模式：验证码已发送至服务器日志，请在终端查看')
+      if (resp.data?.dev_mode && resp.data?.code) {
+        setDevCode(`开发模式验证码：${resp.data.code}（已自动填充）`)
+        setCode(resp.data.code)
       }
       const timer = setInterval(() => {
         setCodeCooldown(prev => {

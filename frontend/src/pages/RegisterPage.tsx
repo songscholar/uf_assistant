@@ -27,9 +27,10 @@ export default function RegisterPage() {
       const resp = await api.post('/auth/send-code', { email, code_type: 'register' })
       setCodeSent(true)
       setCodeCooldown(60)
-      // dev_mode 下后端将验证码写入日志，同时返回中也可提示
-      if (resp.data?.dev_mode) {
-        setDevCode('开发模式：验证码已发送至服务器日志，请在终端查看')
+      // dev_mode 下后端直接返回验证码（仅开发环境）
+      if (resp.data?.dev_mode && resp.data?.code) {
+        setDevCode(`开发模式验证码：${resp.data.code}（已自动填充）`)
+        setCode(resp.data.code)
       }
       const timer = setInterval(() => {
         setCodeCooldown(prev => {
