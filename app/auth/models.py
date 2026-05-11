@@ -54,6 +54,9 @@ class User(Base):
     timezone = Column(String(64), default="")
     token_version = Column(Integer, default=1)
     last_login_at = Column(DateTime)
+    # 模拟交易资产字段
+    mock_initial_capital = Column(Numeric(20, 2), default=Decimal("5000000"))
+    mock_available_cash = Column(Numeric(20, 2), default=Decimal("5000000"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

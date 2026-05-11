@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
 from app.core.constants import MarketType, TradingMode
-from app.core.exceptions import CredentialError
+from app.core.exceptions import CredentialError, TradingError
 from app.core.logging import get_logger
 from app.tools.trading import (
     cancel_order,
@@ -37,68 +37,72 @@ class OrderRequest(BaseModel):
 
 
 @router.post("/trading/order")
-async def place_order(request: OrderRequest):
+async def place_order(request: OrderRequest, current_user: dict = Depends(get_current_user)):
     """提交模拟订单"""
     try:
         return submit_order(
+            user_id=current_user["user_id"],
             symbol=request.symbol,
             side=request.side,
             quantity=request.quantity,
             price=request.price,
             order_type=request.order_type,
         )
+    except TradingError as exc:
+        logger.warning("place_order_business_error", user_id=current_user["user_id"], error=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        logger.error("place_order_error", error=str(exc))
+        logger.error("place_order_error", user_id=current_user["user_id"], error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/trading/positions")
-async def positions():
+async def positions(current_user: dict = Depends(get_current_user)):
     """获取模拟持仓"""
     try:
-        return get_positions()
+        return get_positions(user_id=current_user["user_id"])
     except Exception as exc:
-        logger.error("positions_error", error=str(exc))
+        logger.error("positions_error", user_id=current_user["user_id"], error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/trading/position/{symbol}")
-async def position(symbol: str):
+async def position(symbol: str, current_user: dict = Depends(get_current_user)):
     """获取指定股票模拟持仓"""
     try:
-        return get_position(symbol)
+        return get_position(user_id=current_user["user_id"], symbol=symbol)
     except Exception as exc:
-        logger.error("position_error", symbol=symbol, error=str(exc))
+        logger.error("position_error", user_id=current_user["user_id"], symbol=symbol, error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/trading/orders")
-async def orders(status: str | None = None):
+async def orders(status: str | None = None, current_user: dict = Depends(get_current_user)):
     """获取模拟订单列表"""
     try:
-        return get_orders(status)
+        return get_orders(user_id=current_user["user_id"], status=status)
     except Exception as exc:
-        logger.error("orders_error", error=str(exc))
+        logger.error("orders_error", user_id=current_user["user_id"], error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.delete("/trading/orders/{order_id}")
-async def cancel(order_id: str):
+async def cancel(order_id: str, current_user: dict = Depends(get_current_user)):
     """取消模拟订单"""
     try:
-        return cancel_order(order_id)
+        return cancel_order(user_id=current_user["user_id"], order_id=order_id)
     except Exception as exc:
-        logger.error("cancel_error", order_id=order_id, error=str(exc))
+        logger.error("cancel_error", user_id=current_user["user_id"], order_id=order_id, error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/trading/portfolio")
-async def portfolio():
+async def portfolio(current_user: dict = Depends(get_current_user)):
     """获取模拟投资组合"""
     try:
-        return get_portfolio()
+        return get_portfolio(user_id=current_user["user_id"])
     except Exception as exc:
-        logger.error("portfolio_error", error=str(exc))
+        logger.error("portfolio_error", user_id=current_user["user_id"], error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 

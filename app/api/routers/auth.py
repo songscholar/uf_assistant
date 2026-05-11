@@ -130,13 +130,13 @@ def _fu(where: str, p: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _ensure() -> None:
-    _e("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(50) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE, password_hash TEXT NOT NULL, role VARCHAR(20) DEFAULT 'user', nickname VARCHAR(100) DEFAULT '', avatar TEXT DEFAULT '', timezone VARCHAR(50) DEFAULT 'Asia/Shanghai', is_active BOOLEAN DEFAULT 1, token_version INTEGER DEFAULT 1, created_at DATETIME, updated_at DATETIME, metadata TEXT)", {})
+    _e("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(50) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE, password_hash TEXT NOT NULL, role VARCHAR(20) DEFAULT 'user', nickname VARCHAR(100) DEFAULT '', avatar TEXT DEFAULT '', timezone VARCHAR(50) DEFAULT 'Asia/Shanghai', is_active BOOLEAN DEFAULT 1, token_version INTEGER DEFAULT 1, mock_initial_capital REAL DEFAULT 5000000, mock_available_cash REAL DEFAULT 5000000, created_at DATETIME, updated_at DATETIME, metadata TEXT)", {})
 
 
 def _cu(username: str, email: str | None, ph: str, role: str = "user", nn: str = "") -> dict[str, Any] | None:
     now = datetime.now(timezone.utc)
-    uid = _e("INSERT INTO users (username,email,password_hash,role,nickname,token_version,created_at,updated_at) VALUES (:u,:e,:p,:r,:n,0,:t,:t)", {"u": username, "e": email, "p": ph, "r": role, "n": nn or username, "t": now})
-    return {"id": uid, "username": username, "email": email, "role": role, "nickname": nn or username, "token_version": 0} if uid else None
+    uid = _e("INSERT INTO users (username,email,password_hash,role,nickname,token_version,mock_initial_capital,mock_available_cash,created_at,updated_at) VALUES (:u,:e,:p,:r,:n,0,5000000,5000000,:t,:t)", {"u": username, "e": email, "p": ph, "r": role, "n": nn or username, "t": now})
+    return {"id": uid, "username": username, "email": email, "role": role, "nickname": nn or username, "token_version": 0, "mock_initial_capital": 5000000, "mock_available_cash": 5000000} if uid else None
 
 
 async def _mail(to: str, subj: str, body: str) -> bool:

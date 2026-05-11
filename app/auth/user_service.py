@@ -54,15 +54,17 @@ class UserService:
 
             settings = get_settings()
             now = datetime.now(timezone.utc)
+            from decimal import Decimal
             user = User(
                 username=username,
                 password_hash=hash_password(password),
                 email=email,
                 nickname=nickname or username,
                 role=role,
-                is_active=True,
-                token_version=0,
+                status="active",
                 credits=settings.auth.credits_register_bonus,
+                mock_initial_capital=Decimal("5000000"),
+                mock_available_cash=Decimal("5000000"),
                 referred_by=referred_by,
                 created_at=now,
                 updated_at=now,

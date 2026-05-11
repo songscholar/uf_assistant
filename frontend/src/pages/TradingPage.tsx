@@ -58,12 +58,13 @@ export default function TradingPage() {
       const ordData = ordersRes.data
       setOrders(Array.isArray(ordData) ? ordData : (ordData?.orders || []))
     } catch {
+      // 首次访问或网络异常时显示默认资产
       setPortfolio({
-        total_assets: 1000000,
-        available_cash: 653000,
-        position_value: 347000,
-        total_pnl: 125000,
-        total_pnl_percent: 12.5,
+        total_assets: 5000000,
+        available_cash: 5000000,
+        position_value: 0,
+        total_pnl: 0,
+        total_pnl_percent: 0,
       })
       setPositions([])
       setOrders([])
