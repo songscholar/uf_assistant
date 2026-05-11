@@ -89,7 +89,9 @@ export interface StrategySignal {
 }
 
 export interface Order {
+  id: string;
   order_id: string;
+  market: string;
   symbol: string;
   side: 'buy' | 'sell';
   quantity: number;
@@ -100,14 +102,21 @@ export interface Order {
 }
 
 export interface Position {
+  id: string;
   symbol: string;
   name: string;
+  market: string;
   quantity: number;
+  available_quantity: number;
+  frozen_quantity: number;
   avg_cost: number;
   current_price: number;
   market_value: number;
   pnl: number;
   pnl_percent: number;
+  unrealized_pnl: number;
+  realized_pnl: number;
+  trade_type: string;
 }
 
 export interface Portfolio {

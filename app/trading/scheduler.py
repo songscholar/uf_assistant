@@ -12,6 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.logging import get_logger
+from app.services.market_sync import sync_all_securities
 from app.trading.settlement_engine import run_daily_settlement
 
 logger = get_logger("app.trading.scheduler")
@@ -46,6 +47,16 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=2, minute=0),
         id="daily_cleanup",
         name="日终数据清理",
+        replace_existing=True,
+    )
+
+    # 证券信息同步：每 30 分钟执行一次
+    scheduler.add_job(
+        _securities_sync_job,
+        trigger="interval",
+        minutes=30,
+        id="securities_sync",
+        name="证券信息全量同步",
         replace_existing=True,
     )
 
@@ -85,6 +96,20 @@ def _cleanup_job() -> None:
         logger.info("cleanup_job_completed")
     except Exception as exc:
         logger.error("cleanup_job_failed", error=str(exc))
+
+
+def _securities_sync_job() -> None:
+    """证券信息同步定时任务"""
+    try:
+        logger.info("securities_sync_job_started")
+        result = sync_all_securities()
+        logger.info(
+            "securities_sync_job_completed",
+            a_share=result.get("a_share", {}),
+            crypto=result.get("crypto", {}),
+        )
+    except Exception as exc:
+        logger.error("securities_sync_job_failed", error=str(exc))
 
 
 def trigger_settlement_now() -> dict[str, Any]:

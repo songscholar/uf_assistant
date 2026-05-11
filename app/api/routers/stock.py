@@ -20,10 +20,37 @@ from app.tools.stock_data import (
     get_stock_realtime,
     search_stocks,
 )
+from app.trading.models import Security, get_db_session
 
 logger = get_logger("app.api.stock")
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+def _security_to_dict(s: Security) -> dict:
+    """将 Security ORM 对象转为字典（兼容前端行情组件）"""
+    return {
+        "symbol": s.symbol,
+        "name": s.name,
+        "price": s.price,
+        "open": s.open,
+        "high": s.high,
+        "low": s.low,
+        "prev_close": s.prev_close,
+        "change_pct": s.change_pct,
+        "volume": s.volume,
+        "amount": s.amount,
+        "limit_up": s.limit_up,
+        "limit_down": s.limit_down,
+        "pe_ttm": s.pe_ttm,
+        "pb": s.pb,
+        "market_cap": s.market_cap,
+        "float_cap": s.float_cap,
+        "turnover": s.turnover,
+        "lot_size": s.lot_size,
+        "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+        "source": s.source,
+    }
 
 # AKShare 请求超时（秒）— 全量数据拉取较慢，设为 20 秒
 AKSHARE_TIMEOUT = 20.0
@@ -55,7 +82,16 @@ async def search(keyword: str = Query(..., description="搜索关键词"), limit
 
 @router.get("/stock/{symbol}/info")
 async def info(symbol: str):
-    """获取股票基本信息"""
+    """获取股票基本信息（优先本地表，fallback 远程）"""
+    try:
+        with get_db_session() as db:
+            sec = db.query(Security).filter(Security.symbol == symbol).first()
+            if sec:
+                return _security_to_dict(sec)
+    except Exception as exc:
+        logger.warning("local_security_read_failed", symbol=symbol, error=str(exc))
+
+    # fallback 到远程接口
     try:
         return await _call_with_timeout(get_stock_info, symbol)
     except HTTPException:
@@ -67,7 +103,17 @@ async def info(symbol: str):
 
 @router.get("/stock/{symbol}/realtime")
 async def realtime(symbol: str):
-    """获取股票实时行情"""
+    """获取股票实时行情（优先本地表，fallback 远程）"""
+    try:
+        with get_db_session() as db:
+            sec = db.query(Security).filter(Security.symbol == symbol).first()
+            if sec and sec.price is not None:
+                logger.info("realtime_from_local", symbol=symbol, source=sec.source)
+                return _security_to_dict(sec)
+    except Exception as exc:
+        logger.warning("local_security_read_failed", symbol=symbol, error=str(exc))
+
+    # fallback 到远程接口
     try:
         return await _call_with_timeout(get_stock_realtime, symbol)
     except HTTPException:

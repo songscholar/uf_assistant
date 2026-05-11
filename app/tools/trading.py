@@ -25,10 +25,12 @@ from app.trading.models import (
     MockPortfolio,
     Order,
     Position,
+    Security,
     SettlementTask,
     get_db_session,
 )
 from app.trading.settlement_engine import settlement_engine
+from app.tools.stock_data import get_stock_realtime
 
 logger = get_logger("app.tools.trading")
 
@@ -94,6 +96,15 @@ class MockTradingBackend:
             db.add(pos)
             db.commit()
             db.refresh(pos)
+        # 补充名称（优先本地 securities 表）
+        if not pos.name:
+            try:
+                sec = db.query(Security).filter(Security.symbol == symbol).first()
+                if sec and sec.name:
+                    pos.name = sec.name
+                    db.commit()
+            except Exception:
+                pass
         return pos
 
     # ── 订单提交 ──────────────────────────────────────────────────────────────
@@ -131,6 +142,20 @@ class MockTradingBackend:
             ok, msg = check_block_trade_limits(trade_type, symbol, quantity, filled_price, exchange_code)
             if not ok:
                 raise TradingError(msg)
+
+        # 限价单涨跌停校验（从本地 securities 表获取）
+        if price is not None and price > 0:
+            try:
+                sec = db.query(Security).filter(Security.symbol == symbol).first()
+                if sec:
+                    if sec.limit_up is not None and price > sec.limit_up:
+                        raise TradingError(f"委托价 {price:.2f} 超过涨停价 {sec.limit_up:.2f}")
+                    if sec.limit_down is not None and price < sec.limit_down:
+                        raise TradingError(f"委托价 {price:.2f} 低于跌停价 {sec.limit_down:.2f}")
+            except TradingError:
+                raise
+            except Exception:
+                pass
 
         # 资金/持仓校验
         if side == OrderSide.BUY.value:
@@ -259,31 +284,52 @@ class MockTradingBackend:
     # ── 查询 ────────────────────────────────────────────────────────────────────
 
     def get_positions(self, db, trade_type: TradeType | None = None) -> list[dict[str, Any]]:
-        """获取持仓列表"""
+        """获取持仓列表（字段对齐前端）"""
         query = db.query(Position).filter(Position.user_id == self.user_id)
         if trade_type:
             query = query.filter(Position.trade_type == trade_type)
         positions = query.all()
-        return [
-            {
+        result = []
+        for p in positions:
+            if p.total_quantity <= 0:
+                continue
+            # 补充名称（优先本地 securities 表）
+            name = p.name
+            if not name:
+                try:
+                    sec = db.query(Security).filter(Security.symbol == p.symbol).first()
+                    if sec and sec.name:
+                        name = sec.name
+                        p.name = name
+                        db.commit()
+                except Exception:
+                    pass
+            price = p.current_price or p.avg_cost or 0
+            market_value = round(price * p.total_quantity, 2)
+            cost_basis = p.avg_cost * p.total_quantity
+            pnl = round(market_value - cost_basis, 2) if p.avg_cost else 0
+            pnl_percent = round(pnl / cost_basis * 100, 2) if cost_basis else 0
+            result.append({
                 "id": p.id,
                 "symbol": p.symbol,
+                "name": name or p.symbol,
                 "market": p.market,
-                "total_quantity": p.total_quantity,
+                "quantity": p.total_quantity,
                 "available_quantity": p.available_quantity,
                 "frozen_quantity": p.frozen_quantity,
-                "avg_cost": p.avg_cost,
-                "current_price": p.current_price,
-                "unrealized_pnl": p.unrealized_pnl,
-                "realized_pnl": p.realized_pnl,
+                "avg_cost": round(p.avg_cost, 4) if p.avg_cost else 0,
+                "current_price": round(price, 4) if price else 0,
+                "market_value": market_value,
+                "pnl": pnl,
+                "pnl_percent": pnl_percent,
+                "unrealized_pnl": round(p.unrealized_pnl, 2) if p.unrealized_pnl else 0,
+                "realized_pnl": round(p.realized_pnl, 2) if p.realized_pnl else 0,
                 "trade_type": p.trade_type,
-            }
-            for p in positions
-            if p.total_quantity > 0
-        ]
+            })
+        return result
 
     def get_orders(self, db, trade_type: TradeType | None = None, status: str | None = None) -> list[dict[str, Any]]:
-        """获取订单列表"""
+        """获取订单列表（字段对齐前端）"""
         query = db.query(Order).filter(Order.user_id == self.user_id)
         if trade_type:
             query = query.filter(Order.trade_type == trade_type)
@@ -293,8 +339,11 @@ class MockTradingBackend:
         return [
             {
                 "id": o.id,
+                "order_id": o.id,
+                "market": o.market,
                 "symbol": o.symbol,
                 "side": o.side,
+                "order_type": o.order_type,
                 "quantity": o.quantity,
                 "price": o.price,
                 "filled_price": o.filled_price,
@@ -302,7 +351,7 @@ class MockTradingBackend:
                 "trade_type": o.trade_type,
                 "settlement_mode": o.settlement_mode,
                 "settlement_status": o.settlement_status,
-                "total_fee": o.total_fee,
+                "total_fee": round(o.total_fee, 2) if o.total_fee else 0,
                 "created_at": o.created_at.isoformat() if o.created_at else None,
             }
             for o in orders

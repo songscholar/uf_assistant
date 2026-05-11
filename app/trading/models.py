@@ -108,6 +108,7 @@ class Position(Base):
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     market: Mapped[str] = mapped_column(String(20), nullable=False)
     symbol: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # 持仓数量分离
     total_quantity: Mapped[float] = mapped_column(Float, nullable=False, default=0)
@@ -170,6 +171,49 @@ class SettlementTask(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class Security(Base):
+    """证券信息表（A股/币圈/美股等全市场代码信息）
+    定时任务同步，前端/后端优先从本地表读取
+    """
+    __tablename__ = "securities"
+
+    symbol: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    market_type: Mapped[str] = mapped_column(String(20), nullable=False, default="a_share")
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    exchange: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # 价格
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    prev_close: Mapped[float | None] = mapped_column(Float, nullable=True)
+    open: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    limit_up: Mapped[float | None] = mapped_column(Float, nullable=True)
+    limit_down: Mapped[float | None] = mapped_column(Float, nullable=True)
+    change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # 成交量/额
+    volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lot_size: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+
+    # 估值指标
+    pe_ttm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_cap: Mapped[float | None] = mapped_column(Float, nullable=True)
+    float_cap: Mapped[float | None] = mapped_column(Float, nullable=True)
+    turnover: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # 币圈特有
+    quote_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bid_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ask_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    source: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class MockPortfolio(Base):

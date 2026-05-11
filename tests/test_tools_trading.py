@@ -69,7 +69,7 @@ class TestMockTradingBackend:
         )
         result = get_positions(user_id=999002)
         assert len(result["positions"]) == 1
-        assert result["positions"][0]["total_quantity"] == 100
+        assert result["positions"][0]["quantity"] == 100
         assert result["positions"][0]["available_quantity"] == 100
         assert result["positions"][0]["avg_cost"] == 10.0
 
@@ -93,7 +93,7 @@ class TestMockTradingBackend:
         )
         result = get_positions(user_id=999003)
         assert result["positions"][0]["avg_cost"] == 15.0
-        assert result["positions"][0]["total_quantity"] == 200
+        assert result["positions"][0]["quantity"] == 200
         db.close()
 
     def test_position_after_sell(self):
@@ -111,7 +111,7 @@ class TestMockTradingBackend:
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         result = get_positions(user_id=999004)
-        assert result["positions"][0]["total_quantity"] == 50
+        assert result["positions"][0]["quantity"] == 50
         assert result["positions"][0]["available_quantity"] == 50
         assert result["positions"][0]["realized_pnl"] > 0
 

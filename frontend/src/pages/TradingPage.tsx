@@ -630,9 +630,11 @@ export default function TradingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-bg-secondary text-text-secondary text-xs">
-                {['时间', '市场', '代码', '方向', '类型', '价格', '数量', '状态', '操作'].map((h) => (
-                  <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
-                ))}
+                {['时间', mode === 'live' ? '市场' : null, '代码', '方向', '类型', '价格', '数量', '状态', '操作']
+                  .filter(Boolean)
+                  .map((h) => (
+                    <th key={h as string} className="text-left px-4 py-2 font-medium">{h}</th>
+                  ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border-light">
@@ -655,7 +657,13 @@ export default function TradingPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-text-secondary">{o.order_type}</td>
-                    <td className="px-4 py-3 text-right text-text-primary">{o.price ? formatNumber(o.price) : '市价'}</td>
+                    <td className="px-4 py-3 text-right text-text-primary">
+                      {(o as any).filled_price != null
+                        ? formatNumber((o as any).filled_price)
+                        : o.price != null
+                          ? formatNumber(o.price)
+                          : '市价'}
+                    </td>
                     <td className="px-4 py-3 text-right text-text-primary">{o.quantity}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={o.status} />
@@ -675,7 +683,7 @@ export default function TradingPage() {
               })}
               {(mode === 'live' ? liveOrders : orders).length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无订单</td>
+                  <td colSpan={mode === 'live' ? 9 : 8} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无订单</td>
                 </tr>
               )}
             </tbody>

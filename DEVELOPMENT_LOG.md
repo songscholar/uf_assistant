@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-05-12 — 证券信息表 + 持仓订单展示修复 + 本地行情接口
+
+### 变更摘要
+
+1. **新建 `securities` 证券信息表**：统一存储 A 股/币圈代码信息，定时同步，前后端优先本地读取
+2. **修复持仓/订单列表展示**：前后端字段对齐，mock 持仓展示名称/数量/成本/市值/盈亏，订单列表修复列错位
+3. **后端涨跌停校验**：`submit_order` 从本地表读取 limit_up/limit_down 做校验
+4. **行情接口改造**：`/stock/{symbol}/realtime` 和 `/stock/{symbol}/info` 优先查本地表，fallback 远程
+
+### 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/services/market_sync.py` | ~260 | 行情同步服务：A 股（AKShare `stock_zh_a_spot_em`）+ 币圈（CCXT `fetch_tickers`），SQLite upsert |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/trading/models.py` | 新增 `Security` ORM 模型（30+ 字段：symbol/name/price/prev_close/limit_up/limit_down/change_pct/volume/amount/lot_size/pe_ttm/market_cap 等） |
+| `app/trading/scheduler.py` | 新增 30 分钟定时任务 `_securities_sync_job`（`interval` 触发器） |
+| `app/api/routers/stock.py` | `realtime`/`info` 接口优先从 `securities` 表读取，无数据则 fallback 远程接口 |
+| `app/tools/trading.py` | `get_positions` 字段对齐前端（`quantity`/`name`/`market_value`/`pnl`/`pnl_percent`）；`get_orders` 补充 `market`/`order_type`；`submit_order` 后端涨跌停校验；name 获取改为本地表 |
+| `frontend/src/types/index.ts` | `Position`/`Order` 类型字段对齐 |
+| `frontend/src/pages/TradingPage.tsx` | 订单列表修复 mock 模式列错位；市价委托优先展示 `filled_price`；持仓展示字段对齐 |
+| `tests/test_tools_trading.py` | `total_quantity` → `quantity` |
+
+### 验证结果
+
+- **pytest 交易测试**：15/15 通过 ✅
+- **全量 pytest**：568 通过，4 个 pre-existing 失败（与本次无关）✅
+- **前端构建**：通过 ✅
+
+---
+
 ## 2026-05-12 — 交易页面增强：实时行情 + 价格校验 + 智能数量
 
 ### 变更摘要
