@@ -45,12 +45,12 @@ def require_admin(x_admin_key: str = Header(default="")) -> None:
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="admin_api_key_not_configured",
+            detail="管理接口未配置",
         )
     if x_admin_key.strip() != expected:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid_admin_key",
+            detail="管理密钥无效",
         )
 
 

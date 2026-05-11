@@ -203,7 +203,7 @@ async def agent_get_job(
     _inject_rate_limit(request, record)
     job = AgentAuthManager.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="任务不存在")
     return job
 
 

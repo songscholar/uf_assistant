@@ -3127,3 +3127,36 @@ api/v1/trading/live/...nce?market=crypto:1 Failed to load resource: 500
 ### 验证结果
 - `npm run build`：**通过**（0 TypeScript errors）
 - 前端构建产物正常生成
+
+
+---
+
+## 2025-05-07 — 全量报错信息中文化映射（彻底修复）
+
+### 问题
+用户反馈登录页面仍展示英文错误 `invalid_credentials`。根因：
+1. **没有注册 `HTTPException` 全局处理器**，导致所有 `raise HTTPException(detail="...")` 直接透传英文给前端
+2. 之前批量替换遗漏了大量文件（auth.py、billing.py、agent 模块等）
+
+### 修复内容
+
+**1. 添加 `HTTPException` 全局异常处理器（最关键兜底）**
+- `app/api/main.py` — 注册 `http_exception_handler`：
+  - 已含中文的 detail → 直接透传
+  - 已知英文错误码（`invalid_credentials`、`account_locked` 等）→ 精确映射中文
+  - 任何不含中文的 detail（包括 `str(exc)` 产生的英文句子）→ 兜底为 `"系统繁忙，请稍后重试"`
+- 已有 `AssistantException` / `Exception` 处理器保持不变
+
+**2. 修复硬编码英文 detail**
+- `app/api/routers/auth.py` — `invalid_credentials` / `account_creation_failed` / `account_disabled` / `invalid_code_type` / `code_expired_or_invalid` / `email_already_registered` / `user_not_found`
+- `app/api/routers/billing.py` — `admin_api_key_not_configured` / `invalid_admin_key`
+- `app/api/agent/__init__.py` — `Job not found`
+
+**3. 测试同步更新**
+- `tests/test_auth_api.py` — 更新 logout / change_password 中文断言
+- `tests/test_billing.py` — 更新 admin_key 中文断言
+- `tests/test_indicator_caller.py` — 更新 depth / not_found 中文断言
+
+### 验证结果
+- pytest：**567 passed, 4 failed（pre-existing，与本次修改无关）**
+- Python 编译：全部通过

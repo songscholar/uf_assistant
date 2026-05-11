@@ -239,7 +239,7 @@ class TestAdminAuth:
             "amount": 100,
         })
         assert response.status_code == 503
-        assert "admin_api_key_not_configured" in response.json()["detail"]
+        assert "管理接口未配置" in response.json()["detail"]
 
         if old_key:
             os.environ["STOCK_ASSISTANT_BILLING_ADMIN_API_KEY"] = old_key
@@ -254,7 +254,7 @@ class TestAdminAuth:
             "amount": 100,
         }, headers={"X-Admin-Key": "wrong-key"})
         assert response.status_code == 401
-        assert "invalid_admin_key" in response.json()["detail"]
+        assert "管理密钥无效" in response.json()["detail"]
 
     def test_add_credits_with_correct_key(self, billing_svc: BillingService) -> None:
         """正确的 X-Admin-Key 应正常执行"""

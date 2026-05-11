@@ -78,7 +78,7 @@ class TestLogout:
     def test_logout_returns_message(self, client):
         resp = client.post("/api/v1/auth/logout")
         assert resp.status_code == 200
-        assert resp.json()["message"] == "logged_out"
+        assert resp.json()["message"] == "已退出登录"
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +282,7 @@ class TestChangePassword:
         finally:
             client.app.dependency_overrides.clear()
         assert resp.status_code == 200
-        assert resp.json()["message"] == "password_changed"
+        assert resp.json()["message"] == "密码修改成功"
 
     def test_change_password_wrong_old(self, client):
         from app.auth.dependencies import get_current_user

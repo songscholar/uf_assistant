@@ -267,7 +267,7 @@ async def login(request: LoginRequest, req: Request) -> dict[str, Any]:
     _rip(ip); _rac(request.username); _ensure()
     user = _fu("username = :u", {"u": request.username})
     if not user or not _cpw(request.password, user["password_hash"]):
-        _wip(ip); _wac(request.username); raise HTTPException(401, detail="invalid_credentials")
+        _wip(ip); _wac(request.username); raise HTTPException(401, detail="用户名或密码错误")
     if not user.get("is_active", True):
         raise HTTPException(403, detail="账户已被禁用")
     logger.info("login_ok", uid=user["id"])
@@ -289,9 +289,9 @@ async def login_with_code(request: LoginCodeRequest, req: Request) -> dict[str, 
             uname = f"{uname}_{secrets.token_hex(3)}"
         user = _cu(uname, email, _hpw(secrets.token_urlsafe(16)))
         if not user:
-            raise HTTPException(500, detail="account_creation_failed")
+            raise HTTPException(500, detail="账户创建失败，请稍后重试")
     if not user.get("is_active", True):
-        raise HTTPException(403, detail="account_disabled")
+        raise HTTPException(403, detail="账户已被禁用")
     return {"token": _jwt(str(user["id"]), user["username"], user.get("role", "user"), user.get("token_version", 0)), "user": {k: user[k] for k in ("id", "username", "email", "role")}}
 
 
@@ -299,7 +299,7 @@ async def login_with_code(request: LoginCodeRequest, req: Request) -> dict[str, 
 async def send_code(request: SendCodeRequest, req: Request) -> dict[str, Any]:
     email = request.email.lower(); ct = request.code_type
     if ct not in {"register", "login", "reset_password", "change_password"}:
-        raise HTTPException(400, detail="invalid_code_type")
+        raise HTTPException(400, detail="验证码类型无效")
     with _lock:
         if (email, ct) in _codes and time.time() < _codes[(email, ct)]["expires"] - 540:
             raise HTTPException(429, detail="验证码发送过于频繁，请稍后再试")
@@ -327,12 +327,12 @@ async def register(request: RegisterRequest, req: Request) -> dict[str, Any]:
     with _lock:
         entry = _codes.pop((email, "register"), None)
     if not entry or time.time() > entry["expires"] or entry["code"] != request.code:
-        raise HTTPException(400, detail="code_expired_or_invalid")
+        raise HTTPException(400, detail="验证码已过期或无效")
     _ensure()
     if _fu("username = :u", {"u": request.username}):
         raise HTTPException(409, detail="该用户名已被占用")
     if _fu("email = :e", {"e": email}):
-        raise HTTPException(409, detail="email_already_registered")
+        raise HTTPException(409, detail="该邮箱已注册")
     user = _cu(request.username, email, _hpw(request.password))
     if not user:
         raise HTTPException(500, detail="注册失败，请稍后重试")
@@ -347,7 +347,7 @@ async def reset_password(request: ResetPasswordRequest) -> dict[str, Any]:
     with _lock:
         entry = _codes.pop((email, "reset_password"), None)
     if not entry or time.time() > entry["expires"] or entry["code"] != request.code:
-        raise HTTPException(400, detail="code_expired_or_invalid")
+        raise HTTPException(400, detail="验证码已过期或无效")
     _ensure()
     user = _fu("email = :e", {"e": email})
     if not user:
@@ -421,5 +421,5 @@ async def logout() -> dict[str, str]:
 async def get_user_info(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     _ensure(); u = _fu("id = :i", {"i": user["user_id"]})
     if not u:
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     return {k: u.get(k) for k in ("id", "username", "email", "role", "nickname", "avatar")}

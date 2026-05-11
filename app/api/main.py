@@ -8,7 +8,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -168,6 +168,38 @@ async def inject_agent_headers(request: Request, call_next):
     return response
 
 
+# 英文错误码 → 中文映射（兜底）
+_ERROR_MAP: dict[str, str] = {
+    "invalid_credentials": "用户名或密码错误",
+    "account_creation_failed": "账户创建失败，请稍后重试",
+    "account_disabled": "账户已被禁用",
+    "invalid_code_type": "验证码类型无效",
+    "code_expired_or_invalid": "验证码已过期或无效",
+    "email_already_registered": "该邮箱已注册",
+    "user_not_found": "用户不存在",
+    "admin_api_key_not_configured": "管理接口未配置",
+    "invalid_admin_key": "管理密钥无效",
+    "Job not found": "任务不存在",
+    "ip_rate_limited": "访问过于频繁，请稍后重试",
+    "account_locked": "账户已被锁定，请稍后重试",
+}
+
+
+def _cn_detail(detail: Any) -> str:
+    """将英文错误 detail 映射为中文；已含中文则透传。"""
+    if not detail:
+        return "系统繁忙，请稍后重试"
+    text = str(detail)
+    # 已含中文直接透传
+    if any("\u4e00" <= c <= "\u9fff" for c in text):
+        return text
+    # 精确映射
+    if text in _ERROR_MAP:
+        return _ERROR_MAP[text]
+    # 兜底：任何不含中文的 detail（包括带数字/标点的英文句子）统一中文
+    return "系统繁忙，请稍后重试"
+
+
 # Agent Gateway 错误码 → HTTP 状态码映射
 _AGENT_ERROR_STATUS = {
     "INVALID_TOKEN": 401,
@@ -183,6 +215,18 @@ _AGENT_ERROR_STATUS = {
 
 
 # 全局异常处理
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """拦截所有 HTTPException，将英文 detail 映射为中文。"""
+    mapped = _cn_detail(exc.detail)
+    headers = dict(exc.headers) if exc.headers else {}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": mapped},
+        headers=headers,
+    )
+
+
 @app.exception_handler(AssistantException)
 async def assistant_exception_handler(request: Request, exc: AssistantException):
     logger.error(

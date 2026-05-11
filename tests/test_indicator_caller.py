@@ -42,7 +42,7 @@ class TestIndicatorCallerDepthLimit:
         # 手动设置深度为 5，第 6 层调用应被截断
         result = caller.call_indicator("nonexistent", sample_df, _depth=5)
         assert "error" in result
-        assert "depth exceeded" in result["error"]
+        assert "深度超过" in result["error"]
 
     def test_depth_increments_on_nested_call(self, db_session, sample_df):
         """嵌套调用时深度应递增，第6层被截断返回 error dict"""
@@ -143,7 +143,7 @@ df['sell'] = [False, True, False, True, False]
         caller = IndicatorCaller(user_id="u1", session=None)
         result = caller.call_indicator("NonExistent", sample_df)
         assert "error" in result
-        assert "not found" in result["error"]
+        assert "不存在" in result["error"]
 
 
 class TestIndicatorCallerParams:
@@ -185,7 +185,7 @@ df['sell'] = df['close'] <= threshold
         caller_u2 = IndicatorCaller(user_id="u2", session=db_session)
         result = caller_u2.call_indicator("Private", sample_df)
         assert "error" in result
-        assert "not found" in result["error"]
+        assert "不存在" in result["error"]
 
         # u1 可以访问自己的 Private 指标
         caller_u1 = IndicatorCaller(user_id="u1", session=db_session)
