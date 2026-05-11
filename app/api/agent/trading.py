@@ -23,7 +23,6 @@ from app.tools.trading import (
     cancel_order,
     get_orders,
     get_portfolio,
-    get_position,
     get_positions,
     submit_order,
 )
@@ -59,13 +58,9 @@ async def agent_get_position(
     symbol: str,
     record: AgentTokenRecord = Depends(require_scope(AgentScope.READ)),
 ):
-    """获取指定持仓"""
+    """获取指定持仓（暂不支持，请使用 /positions 端点）"""
     _inject_rate_limit(request, record)
-    try:
-        return get_position(symbol)
-    except Exception as exc:
-        logger.error("agent_position_error", symbol=symbol, error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+    raise HTTPException(status_code=501, detail="单持仓查询暂不支持，请使用 /positions 端点")
 
 
 # =============================================================================

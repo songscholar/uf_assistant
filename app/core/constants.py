@@ -69,6 +69,48 @@ class TradingMode(StrEnum):
     LIVE = "live"
 
 
+class TradeType(StrEnum):
+    """业务类型（支持多品种交易）"""
+    NORMAL = "normal"               # 普通委托（A股）
+    BLOCK_TRADE = "block"           # 大宗交易
+    STOCK_CONNECT_SH = "hk_sh"      # 沪港通
+    STOCK_CONNECT_SZ = "hk_sz"      # 深港通
+    ETF_CREATION = "etf_create"     # ETF认购
+    ETF_REDEMPTION = "etf_redeem"   # ETF申赎
+
+
+class SettlementMode(StrEnum):
+    """交收模式"""
+    T0 = "T+0"      # 实时交收
+    T1 = "T+1"      # 次日交收
+    T2 = "T+2"      # 第3日交收
+
+
+class SettlementStatus(StrEnum):
+    """交收状态"""
+    PENDING = "pending"       # 待交收
+    SETTLED = "settled"       # 已交收
+    FAILED = "failed"         # 交收失败
+    CANCELLED = "cancelled"   # 已取消
+
+
+class BlockTradeSubtype(StrEnum):
+    """大宗交易子类型"""
+    INTENTION = "intention"     # 意向委托
+    PRICING = "pricing"         # 定价委托（深圳）
+    CLICK = "click"             # 点击成交（深圳）
+    DEAL = "deal"               # 成交申报
+    AFTER_CLOSE = "after_close" # 盘后定价大宗
+
+
+class ExchangeCode(StrEnum):
+    """交易所代码"""
+    SH = "SH"       # 上海证券交易所
+    SZ = "SZ"       # 深圳证券交易所
+    HKEX = "HK"     # 香港交易所
+    BSE = "BJ"      # 北京证券交易所
+
+
 class StrategyType(StrEnum):
     """内置策略类型"""
     MA_CROSSOVER = "ma_crossover"           # 均线交叉

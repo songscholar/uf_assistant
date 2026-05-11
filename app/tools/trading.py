@@ -1,23 +1,36 @@
 """
-UF Stock Assistant — 模拟交易工具
-支持模拟下单、持仓管理、订单查询、资金校验
+UF Stock Assistant — 模拟交易工具（多业务类型支持）
+支持普通委托、大宗交易、港股通、ETF 等业务的模拟下单、持仓管理、订单查询
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
-from app.core.constants import OrderSide, OrderStatus, OrderType
+from app.core.constants import (
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    SettlementMode,
+    SettlementStatus,
+    TradeType,
+)
 from app.core.exceptions import OrderError, TradingError
 from app.core.logging import get_logger
+from app.trading.fees import calculate_fees, check_block_trade_limits, get_settlement_mode
+from app.trading.models import (
+    MockPortfolio,
+    Order,
+    Position,
+    SettlementTask,
+    get_db_session,
+)
+from app.trading.settlement_engine import settlement_engine
 
 logger = get_logger("app.tools.trading")
-
-# 默认手续费率
-COMMISSION_RATE = 0.0003  # 佣金 0.03%
-STAMP_TAX_RATE = 0.001    # 印花税 0.1%（卖出时收取）
 
 
 # =============================================================================
@@ -25,224 +38,355 @@ STAMP_TAX_RATE = 0.001    # 印花税 0.1%（卖出时收取）
 # =============================================================================
 
 class MockTradingBackend:
-    """模拟交易后端（按用户隔离，内存存储）"""
+    """模拟交易后端（按用户隔离，支持多业务类型）"""
 
     def __init__(self, user_id: int, initial_capital: float = 5_000_000.0) -> None:
         self.user_id = user_id
         self.initial_capital = initial_capital
-        self.available_cash = initial_capital
-        self._positions: dict[str, dict[str, Any]] = {}  # symbol -> position
-        self._orders: dict[str, dict[str, Any]] = {}  # order_id -> order
-        self._order_history: list[dict[str, Any]] = []
 
-    # ── 订单 ──────────────────────────────────────────────────────────────────
+    # ── 资产账户 ──────────────────────────────────────────────────────────────
 
-    def submit_order(self, order: dict[str, Any]) -> dict[str, Any]:
-        """提交订单（含资金/持仓校验）"""
-        order_id = str(uuid.uuid4())
-        order["id"] = order_id
-        side = order["side"]
-        qty = order["quantity"]
-        price = order.get("price") or order.get("market_price", 0)
+    def _get_or_create_portfolio(self, db) -> MockPortfolio:
+        """获取或创建用户的资产账户"""
+        portfolio = db.query(MockPortfolio).filter(MockPortfolio.user_id == self.user_id).first()
+        if not portfolio:
+            portfolio = MockPortfolio(
+                user_id=self.user_id,
+                initial_capital=self.initial_capital,
+                total_assets=self.initial_capital,
+                available_cash=self.initial_capital,
+                frozen_cash=0,
+                position_value=0,
+                total_pnl=0,
+            )
+            db.add(portfolio)
+            db.commit()
+            db.refresh(portfolio)
+            logger.info("portfolio_created", user_id=self.user_id, initial_capital=self.initial_capital)
+        return portfolio
+
+    def _get_position(self, db, symbol: str, trade_type: TradeType) -> Position | None:
+        """获取指定证券的持仓"""
+        return (
+            db.query(Position)
+            .filter(
+                Position.user_id == self.user_id,
+                Position.symbol == symbol,
+                Position.trade_type == trade_type,
+            )
+            .first()
+        )
+
+    def _get_or_create_position(self, db, symbol: str, trade_type: TradeType) -> Position:
+        """获取或创建持仓"""
+        pos = self._get_position(db, symbol, trade_type)
+        if not pos:
+            pos = Position(
+                user_id=self.user_id,
+                market="A" if trade_type in (TradeType.NORMAL, TradeType.BLOCK_TRADE) else "HK",
+                symbol=symbol,
+                total_quantity=0,
+                available_quantity=0,
+                frozen_quantity=0,
+                avg_cost=0,
+                trade_type=trade_type,
+            )
+            db.add(pos)
+            db.commit()
+            db.refresh(pos)
+        return pos
+
+    # ── 订单提交 ──────────────────────────────────────────────────────────────
+
+    def submit_order(
+        self,
+        db,
+        symbol: str,
+        side: str,
+        quantity: float,
+        price: float | None,
+        order_type: str,
+        trade_type: TradeType,
+        exchange_code: str = "SH",
+    ) -> dict[str, Any]:
+        """提交订单（含资金/持仓校验、费用计算、交收任务创建）"""
+        portfolio = self._get_or_create_portfolio(db)
+
+        # 参数校验
+        if side not in (OrderSide.BUY.value, OrderSide.SELL.value):
+            raise TradingError(f"无效的订单方向: {side}")
+
+        if quantity <= 0:
+            raise TradingError("数量必须大于 0")
+
+        # 确定成交价
+        filled_price = price or 0
+
+        # 计算费用
+        fee_result = calculate_fees(trade_type, side, quantity, filled_price, exchange_code=exchange_code)
+        total_cost = quantity * filled_price + float(fee_result.total)
+
+        # 大宗交易限额检查
+        if trade_type == TradeType.BLOCK_TRADE:
+            ok, msg = check_block_trade_limits(trade_type, symbol, quantity, filled_price, exchange_code)
+            if not ok:
+                raise TradingError(msg)
 
         # 资金/持仓校验
         if side == OrderSide.BUY.value:
-            cost = qty * price * (1 + COMMISSION_RATE)
-            if cost > self.available_cash:
+            if total_cost > portfolio.available_cash:
                 raise TradingError(
-                    f"可用资金不足：需要 ¥{cost:,.2f}，当前可用 ¥{self.available_cash:,.2f}"
+                    f"可用资金不足：需要 ¥{total_cost:,.2f}（含费用），"
+                    f"当前可用 ¥{portfolio.available_cash:,.2f}"
                 )
         else:
-            pos = self._positions.get(order["symbol"])
-            if not pos or pos["quantity"] < qty:
-                hold_qty = pos["quantity"] if pos else 0
+            pos = self._get_position(db, symbol, trade_type)
+            if not pos or pos.available_quantity < quantity:
+                available = pos.available_quantity if pos else 0
                 raise TradingError(
-                    f"持仓不足：尝试卖出 {qty}，当前持仓 {hold_qty}"
+                    f"持仓不足：尝试卖出 {quantity}，当前可用 {available}"
                 )
 
-        # 模拟立即成交
-        order["status"] = OrderStatus.FILLED.value
-        order["filled_quantity"] = qty
-        order["filled_price"] = price
-        order["created_at"] = datetime.now(timezone.utc).isoformat()
-        order["updated_at"] = order["created_at"]
+        # 确定交收模式
+        settlement_mode = get_settlement_mode(trade_type, exchange_code)
 
-        # 扣费/加钱
-        if side == OrderSide.BUY.value:
-            commission = qty * price * COMMISSION_RATE
-            self.available_cash -= (qty * price + commission)
-        else:
-            commission = qty * price * COMMISSION_RATE
-            stamp_tax = qty * price * STAMP_TAX_RATE
-            self.available_cash += (qty * price - commission - stamp_tax)
+        # 创建订单记录
+        order = Order(
+            user_id=self.user_id,
+            market=exchange_code,
+            symbol=symbol.upper(),
+            side=side,
+            order_type=order_type,
+            quantity=quantity,
+            price=price,
+            status=OrderStatus.FILLED,
+            filled_quantity=quantity,
+            filled_price=filled_price,
+            trade_type=trade_type,
+            settlement_mode=settlement_mode,
+            settlement_status=SettlementStatus.PENDING,
+            commission=float(fee_result.commission),
+            stamp_tax=float(fee_result.stamp_tax),
+            exchange_fee=float(fee_result.exchange_fee),
+            transfer_fee=float(fee_result.transfer_fee),
+            system_fee=float(fee_result.system_fee),
+            portfolio_fee=float(fee_result.portfolio_fee),
+            other_fees=float(fee_result.other_fees),
+            total_fee=float(fee_result.total),
+        )
+        db.add(order)
+        db.commit()
+        db.refresh(order)
 
-        self._orders[order_id] = order
-        self._order_history.append(order)
+        # 更新资金和持仓（按交收模式处理）
+        self._update_assets_on_fill(db, portfolio, order, trade_type, side, symbol, quantity, filled_price, float(fee_result.total))
 
-        # 更新持仓
-        self._update_position(order)
+        # 创建交收任务
+        if settlement_mode in (SettlementMode.T1, SettlementMode.T2):
+            settlement_engine.create_settlement_tasks(
+                user_id=self.user_id,
+                order_id=order.id,
+                trade_type=trade_type,
+                settlement_mode=settlement_mode,
+                side=side,
+                symbol=symbol,
+                quantity=quantity,
+                price=filled_price,
+                total_fee=float(fee_result.total),
+            )
 
         logger.info(
-            "mock_order_filled",
+            "order_submitted",
             user_id=self.user_id,
-            order_id=order_id,
-            symbol=order["symbol"],
+            order_id=order.id,
+            symbol=symbol,
             side=side,
-            quantity=qty,
-            price=price,
-            available_cash=self.available_cash,
+            trade_type=trade_type,
+            quantity=quantity,
+            price=filled_price,
+            settlement_mode=settlement_mode,
+            fees=fee_result.to_dict(),
         )
-        return order
 
-    def _update_position(self, order: dict[str, Any]) -> None:
-        """更新持仓"""
-        symbol = order["symbol"]
-        side = order["side"]
-        qty = order["quantity"]
-        price = order.get("filled_price", 0)
+        return {
+            "order_id": order.id,
+            "symbol": order.symbol,
+            "side": order.side,
+            "quantity": order.quantity,
+            "price": order.price,
+            "filled_price": order.filled_price,
+            "status": order.status,
+            "trade_type": order.trade_type,
+            "settlement_mode": order.settlement_mode,
+            "fees": fee_result.to_dict(),
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+        }
 
-        if symbol not in self._positions:
-            self._positions[symbol] = {
-                "symbol": symbol,
-                "quantity": 0,
-                "avg_cost": 0,
-                "total_cost": 0,
-                "market_value": 0,
-                "unrealized_pnl": 0,
-                "realized_pnl": 0,
-            }
-
-        pos = self._positions[symbol]
+    def _update_assets_on_fill(
+        self,
+        db,
+        portfolio: MockPortfolio,
+        order: Order,
+        trade_type: TradeType,
+        side: str,
+        symbol: str,
+        quantity: float,
+        price: float,
+        total_fee: float,
+    ) -> None:
+        """成交时更新资产（区分实时交收和延迟交收）"""
+        settlement_mode = get_settlement_mode(trade_type)
 
         if side == OrderSide.BUY.value:
-            total_cost = pos["total_cost"] + qty * price
-            total_qty = pos["quantity"] + qty
-            pos["quantity"] = total_qty
-            pos["avg_cost"] = total_cost / total_qty if total_qty > 0 else 0
-            pos["total_cost"] = total_cost
+            total_cost = quantity * price + total_fee
+            if settlement_mode == SettlementMode.T0:
+                # T+0：立即扣减资金，立即增加持仓
+                portfolio.available_cash -= total_cost
+                self._add_position_immediately(db, symbol, trade_type, quantity, price)
+            else:
+                # T+1/T+2：冻结资金，持仓不变
+                portfolio.available_cash -= total_cost
+                portfolio.frozen_cash += total_cost
+                order.frozen_cash = total_cost
         else:
-            if pos["quantity"] >= qty:
-                realized = (price - pos["avg_cost"]) * qty
-                pos["realized_pnl"] += realized
-                pos["quantity"] -= qty
-                pos["total_cost"] = pos["quantity"] * pos["avg_cost"]
-                if pos["quantity"] == 0:
-                    pos["avg_cost"] = 0
-                    pos["total_cost"] = 0
+            total_income = quantity * price - total_fee
+            if settlement_mode == SettlementMode.T0:
+                # T+0：立即扣减持仓，立即增加资金
+                self._deduct_position_immediately(db, symbol, trade_type, quantity)
+                portfolio.available_cash += total_income
+            else:
+                # T+1/T+2：冻结持仓，资金不变
+                self._freeze_position(db, symbol, trade_type, quantity)
+                order.frozen_position = quantity
 
-        pos["market_value"] = pos["quantity"] * price
-        pos["unrealized_pnl"] = (price - pos["avg_cost"]) * pos["quantity"] if pos["quantity"] > 0 else 0
+        # 更新总资产
+        portfolio.total_assets = portfolio.available_cash + portfolio.frozen_cash + portfolio.position_value
+        db.commit()
 
-    def get_orders(self, status: str | None = None) -> list[dict[str, Any]]:
+    def _add_position_immediately(self, db, symbol: str, trade_type: TradeType, quantity: float, price: float) -> None:
+        """T+0：立即增加持仓"""
+        pos = self._get_or_create_position(db, symbol, trade_type)
+        total_cost = pos.avg_cost * pos.total_quantity + price * quantity
+        pos.total_quantity += quantity
+        pos.available_quantity += quantity
+        pos.avg_cost = total_cost / pos.total_quantity if pos.total_quantity > 0 else 0
+        db.commit()
+
+    def _deduct_position_immediately(self, db, symbol: str, trade_type: TradeType, quantity: float) -> None:
+        """T+0：立即扣减持仓"""
+        pos = self._get_position(db, symbol, trade_type)
+        if pos:
+            realized = (pos.current_price or pos.avg_cost - pos.avg_cost) * quantity if pos.current_price else 0
+            pos.total_quantity = max(0, pos.total_quantity - quantity)
+            pos.available_quantity = max(0, pos.available_quantity - quantity)
+            pos.realized_pnl += realized
+            if pos.total_quantity == 0:
+                pos.avg_cost = 0
+            db.commit()
+
+    def _freeze_position(self, db, symbol: str, trade_type: TradeType, quantity: float) -> None:
+        """冻结持仓（T+1/T+2卖出）"""
+        pos = self._get_position(db, symbol, trade_type)
+        if pos:
+            pos.available_quantity = max(0, pos.available_quantity - quantity)
+            pos.frozen_quantity += quantity
+            db.commit()
+
+    # ── 查询 ────────────────────────────────────────────────────────────────────
+
+    def get_positions(self, db, trade_type: TradeType | None = None) -> list[dict[str, Any]]:
+        """获取持仓列表"""
+        query = db.query(Position).filter(Position.user_id == self.user_id)
+        if trade_type:
+            query = query.filter(Position.trade_type == trade_type)
+        positions = query.all()
+        return [
+            {
+                "id": p.id,
+                "symbol": p.symbol,
+                "market": p.market,
+                "total_quantity": p.total_quantity,
+                "available_quantity": p.available_quantity,
+                "frozen_quantity": p.frozen_quantity,
+                "avg_cost": p.avg_cost,
+                "current_price": p.current_price,
+                "unrealized_pnl": p.unrealized_pnl,
+                "realized_pnl": p.realized_pnl,
+                "trade_type": p.trade_type,
+            }
+            for p in positions
+            if p.total_quantity > 0
+        ]
+
+    def get_orders(self, db, trade_type: TradeType | None = None, status: str | None = None) -> list[dict[str, Any]]:
         """获取订单列表"""
-        orders = list(self._orders.values())
+        query = db.query(Order).filter(Order.user_id == self.user_id)
+        if trade_type:
+            query = query.filter(Order.trade_type == trade_type)
         if status:
-            orders = [o for o in orders if o["status"] == status]
-        return sorted(orders, key=lambda x: x["created_at"], reverse=True)
+            query = query.filter(Order.status == status)
+        orders = query.order_by(Order.created_at.desc()).all()
+        return [
+            {
+                "id": o.id,
+                "symbol": o.symbol,
+                "side": o.side,
+                "quantity": o.quantity,
+                "price": o.price,
+                "filled_price": o.filled_price,
+                "status": o.status,
+                "trade_type": o.trade_type,
+                "settlement_mode": o.settlement_mode,
+                "settlement_status": o.settlement_status,
+                "total_fee": o.total_fee,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in orders
+        ]
 
-    def cancel_order(self, order_id: str) -> bool:
-        """取消订单"""
-        order = self._orders.get(order_id)
-        if not order:
-            return False
-        if order["status"] in (OrderStatus.FILLED.value, OrderStatus.CANCELLED.value, OrderStatus.REJECTED.value):
-            return False
+    def get_portfolio_summary(self, db) -> dict[str, Any]:
+        """获取投资组合摘要"""
+        portfolio = self._get_or_create_portfolio(db)
 
-        order["status"] = OrderStatus.CANCELLED.value
-        order["updated_at"] = datetime.now(timezone.utc).isoformat()
-        return True
+        # 计算持仓市值
+        positions = db.query(Position).filter(Position.user_id == self.user_id).all()
+        position_value = sum(
+            (p.current_price or p.avg_cost) * p.total_quantity for p in positions
+        )
+        portfolio.position_value = position_value
 
-    # ── 持仓 ──────────────────────────────────────────────────────────────────
+        total_assets = portfolio.available_cash + portfolio.frozen_cash + position_value
+        total_pnl = sum(p.realized_pnl + (p.unrealized_pnl or 0) for p in positions)
+        total_pnl_percent = round((total_pnl / portfolio.initial_capital * 100), 2) if portfolio.initial_capital > 0 else 0
 
-    def get_positions(self) -> list[dict[str, Any]]:
-        """获取持仓"""
-        return [pos for pos in self._positions.values() if pos["quantity"] > 0]
-
-    def get_position(self, symbol: str) -> dict[str, Any] | None:
-        """获取单个持仓"""
-        pos = self._positions.get(symbol)
-        if pos and pos["quantity"] > 0:
-            return pos
-        return None
-
-    # ── 资产 ──────────────────────────────────────────────────────────────────
-
-    def get_portfolio_summary(self) -> dict[str, Any]:
-        """获取投资组合摘要（返回前端需要的字段格式）"""
-        positions = self.get_positions()
-        position_value = sum(p["market_value"] for p in positions)
-        total_cost = sum(p["total_cost"] for p in positions)
-        total_unrealized = sum(p["unrealized_pnl"] for p in positions)
-        total_realized = sum(p["realized_pnl"] for p in positions)
-        total_assets = self.available_cash + position_value
-        total_pnl = total_unrealized + total_realized
-        total_pnl_percent = round((total_pnl / total_cost * 100), 2) if total_cost > 0 else 0
+        portfolio.total_assets = total_assets
+        portfolio.total_pnl = total_pnl
+        db.commit()
 
         return {
             "total_assets": round(total_assets, 2),
-            "available_cash": round(self.available_cash, 2),
+            "available_cash": round(portfolio.available_cash, 2),
+            "frozen_cash": round(portfolio.frozen_cash, 2),
             "position_value": round(position_value, 2),
             "total_pnl": round(total_pnl, 2),
             "total_pnl_percent": total_pnl_percent,
+            "initial_capital": round(portfolio.initial_capital, 2),
             "total_positions": len(positions),
-            "total_market_value": round(position_value, 2),
-            "total_cost": round(total_cost, 2),
-            "total_unrealized_pnl": round(total_unrealized, 2),
-            "total_realized_pnl": round(total_realized, 2),
-            "return_pct": total_pnl_percent,
         }
 
 
 # 全局模拟交易后端实例池（按 user_id 隔离）
-_mock_backends: dict[int, MockTradingBackend] = {}
+_backends: dict[int, MockTradingBackend] = {}
 
 
-def _get_or_create_backend(user_id: int) -> MockTradingBackend:
+def _get_or_create_backend(user_id: int, initial_capital: float = 5_000_000.0) -> MockTradingBackend:
     """获取或创建用户的模拟交易后端"""
-    if user_id in _mock_backends:
-        return _mock_backends[user_id]
-
-    # 从 users 表加载初始资金
-    initial = 5_000_000.0
-    available = 5_000_000.0
-    try:
-        from sqlalchemy import text
-        from app.core.config import get_settings
-        from sqlalchemy import create_engine
-        engine = create_engine(get_settings().database.url, echo=False)
-        with engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT mock_initial_capital, mock_available_cash FROM users WHERE id = :uid"),
-                {"uid": user_id},
-            ).fetchone()
-            if row:
-                initial = float(row[0]) if row[0] is not None else 5_000_000.0
-                available = float(row[1]) if row[1] is not None else initial
-    except Exception:
-        pass
-
-    backend = MockTradingBackend(user_id=user_id, initial_capital=initial)
-    backend.available_cash = available
-    _mock_backends[user_id] = backend
-    logger.info("mock_backend_created", user_id=user_id, initial_capital=initial, available_cash=available)
+    if user_id in _backends:
+        return _backends[user_id]
+    backend = MockTradingBackend(user_id=user_id, initial_capital=initial_capital)
+    _backends[user_id] = backend
+    logger.info("mock_backend_created", user_id=user_id, initial_capital=initial_capital)
     return backend
-
-
-def _persist_cash(user_id: int, backend: MockTradingBackend) -> None:
-    """将可用资金持久化到 users 表"""
-    try:
-        from sqlalchemy import text
-        from app.core.config import get_settings
-        from sqlalchemy import create_engine
-        engine = create_engine(get_settings().database.url, echo=False)
-        with engine.connect() as conn:
-            conn.execute(
-                text("UPDATE users SET mock_available_cash = :cash WHERE id = :uid"),
-                {"cash": round(backend.available_cash, 2), "uid": user_id},
-            )
-            conn.commit()
-    except Exception as exc:
-        logger.warning("persist_cash_failed", user_id=user_id, error=str(exc))
 
 
 # =============================================================================
@@ -256,182 +400,107 @@ def submit_order(
     quantity: float,
     price: float | None = None,
     order_type: str = "market",
+    trade_type: str = TradeType.NORMAL,
+    exchange_code: str = "SH",
 ) -> dict[str, Any]:
-    """
-    提交交易订单（模拟）
-
-    Args:
-        user_id: 用户ID
-        symbol: 股票代码
-        side: buy 或 sell
-        quantity: 数量
-        price: 价格（限价单必填）
-        order_type: market/limit/stop/stop_limit
-
-    Returns:
-        订单结果
-    """
+    """提交交易订单（支持多业务类型）"""
+    db = get_db_session()
     try:
-        if side not in (OrderSide.BUY.value, OrderSide.SELL.value):
-            raise TradingError(f"无效的订单方向: {side}")
-
-        if order_type not in (OrderType.MARKET.value, OrderType.LIMIT.value, OrderType.STOP.value, OrderType.STOP_LIMIT.value):
-            raise TradingError(f"无效的订单类型: {order_type}")
-
-        if order_type == OrderType.LIMIT.value and price is None:
-            raise TradingError("限价单必须指定价格")
-
-        if quantity <= 0:
-            raise TradingError("数量必须大于 0")
-
         backend = _get_or_create_backend(user_id)
-
-        order = {
-            "symbol": symbol.upper(),
-            "side": side.lower(),
-            "quantity": quantity,
-            "price": price,
-            "order_type": order_type.lower(),
-        }
-
-        if order_type == OrderType.MARKET.value:
-            order["market_price"] = price or 0
-
-        result = backend.submit_order(order)
-
-        # 持久化资金变动
-        _persist_cash(user_id, backend)
-
-        return {
-            "success": True,
-            "order": {
-                "id": result["id"],
-                "symbol": result["symbol"],
-                "side": result["side"],
-                "quantity": result["quantity"],
-                "price": result.get("price"),
-                "filled_price": result.get("filled_price"),
-                "status": result["status"],
-                "created_at": result["created_at"],
-            }
-        }
-
+        return backend.submit_order(
+            db=db,
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            price=price,
+            order_type=order_type,
+            trade_type=trade_type,
+            exchange_code=exchange_code,
+        )
     except TradingError:
         raise
     except Exception as exc:
         logger.error("order_failed", user_id=user_id, symbol=symbol, side=side, error=str(exc))
         raise OrderError(f"提交订单失败: {exc}") from exc
+    finally:
+        db.close()
 
 
-def get_positions(user_id: int) -> dict[str, Any]:
-    """
-    获取当前持仓
-
-    Args:
-        user_id: 用户ID
-
-    Returns:
-        持仓列表和摘要
-    """
+def get_positions(user_id: int, trade_type: str | None = None) -> dict[str, Any]:
+    """获取持仓列表"""
+    db = get_db_session()
     try:
         backend = _get_or_create_backend(user_id)
-        return {
-            "positions": backend.get_positions(),
-            "summary": backend.get_portfolio_summary(),
-        }
+        positions = backend.get_positions(db, trade_type)
+        summary = backend.get_portfolio_summary(db)
+        return {"positions": positions, "summary": summary}
     except Exception as exc:
         logger.error("get_positions_failed", user_id=user_id, error=str(exc))
         raise TradingError(f"获取持仓失败: {exc}") from exc
+    finally:
+        db.close()
 
 
-def get_position(user_id: int, symbol: str) -> dict[str, Any]:
-    """
-    获取指定股票持仓
-
-    Args:
-        user_id: 用户ID
-        symbol: 股票代码
-
-    Returns:
-        持仓数据
-    """
+def get_orders(user_id: int, trade_type: str | None = None, status: str | None = None) -> dict[str, Any]:
+    """获取订单列表"""
+    db = get_db_session()
     try:
         backend = _get_or_create_backend(user_id)
-        pos = backend.get_position(symbol.upper())
-
-        if not pos:
-            return {"symbol": symbol, "has_position": False}
-
-        return {"has_position": True, "position": pos}
-    except Exception as exc:
-        logger.error("get_position_failed", user_id=user_id, symbol=symbol, error=str(exc))
-        raise TradingError(f"获取持仓失败: {exc}") from exc
-
-
-def get_orders(user_id: int, status: str | None = None) -> dict[str, Any]:
-    """
-    获取订单列表
-
-    Args:
-        user_id: 用户ID
-        status: 订单状态过滤
-
-    Returns:
-        订单列表
-    """
-    try:
-        backend = _get_or_create_backend(user_id)
-        orders = backend.get_orders(status)
-        return {
-            "count": len(orders),
-            "orders": orders,
-        }
+        orders = backend.get_orders(db, trade_type, status)
+        return {"count": len(orders), "orders": orders}
     except Exception as exc:
         logger.error("get_orders_failed", user_id=user_id, error=str(exc))
         raise TradingError(f"获取订单失败: {exc}") from exc
-
-
-def cancel_order(user_id: int, order_id: str) -> dict[str, Any]:
-    """
-    取消订单
-
-    Args:
-        user_id: 用户ID
-        order_id: 订单 ID
-
-    Returns:
-        取消结果
-    """
-    try:
-        backend = _get_or_create_backend(user_id)
-        success = backend.cancel_order(order_id)
-
-        if success:
-            logger.info("order_cancelled", user_id=user_id, order_id=order_id)
-            return {"success": True, "message": "订单已取消"}
-        else:
-            return {"success": False, "message": "订单无法取消（可能已成交或不存在）"}
-    except Exception as exc:
-        logger.error("cancel_order_failed", user_id=user_id, order_id=order_id, error=str(exc))
-        raise TradingError(f"取消订单失败: {exc}") from exc
+    finally:
+        db.close()
 
 
 def get_portfolio(user_id: int) -> dict[str, Any]:
-    """
-    获取投资组合摘要
-
-    Args:
-        user_id: 用户ID
-
-    Returns:
-        投资组合数据
-    """
+    """获取投资组合摘要"""
+    db = get_db_session()
     try:
         backend = _get_or_create_backend(user_id)
-        return {
-            "summary": backend.get_portfolio_summary(),
-            "positions": backend.get_positions(),
-        }
+        summary = backend.get_portfolio_summary(db)
+        positions = backend.get_positions(db)
+        return {"summary": summary, "positions": positions}
     except Exception as exc:
         logger.error("get_portfolio_failed", user_id=user_id, error=str(exc))
         raise TradingError(f"获取投资组合失败: {exc}") from exc
+    finally:
+        db.close()
+
+
+def cancel_order(user_id: int, order_id: str) -> dict[str, Any]:
+    """取消订单（简化：仅支持未成交订单）"""
+    db = get_db_session()
+    try:
+        order = db.query(Order).filter(Order.id == order_id, Order.user_id == user_id).first()
+        if not order:
+            return {"success": False, "message": "订单不存在"}
+        if order.status in (OrderStatus.FILLED.value, OrderStatus.CANCELLED.value, OrderStatus.REJECTED.value):
+            return {"success": False, "message": "订单已成交或已取消"}
+
+        order.status = OrderStatus.CANCELLED
+        order.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+        # 解冻资金和持仓
+        backend = _get_or_create_backend(user_id)
+        portfolio = backend._get_or_create_portfolio(db)
+        if order.side == OrderSide.BUY.value and order.frozen_cash > 0:
+            portfolio.frozen_cash = max(0, portfolio.frozen_cash - order.frozen_cash)
+            portfolio.available_cash += order.frozen_cash
+        elif order.side == OrderSide.SELL.value and order.frozen_position > 0:
+            pos = backend._get_position(db, order.symbol, order.trade_type)
+            if pos:
+                pos.frozen_quantity = max(0, pos.frozen_quantity - order.frozen_position)
+                pos.available_quantity += order.frozen_position
+
+        db.commit()
+        logger.info("order_cancelled", user_id=user_id, order_id=order_id)
+        return {"success": True, "message": "订单已取消"}
+    except Exception as exc:
+        logger.error("cancel_order_failed", user_id=user_id, order_id=order_id, error=str(exc))
+        raise TradingError(f"取消订单失败: {exc}") from exc
+    finally:
+        db.close()

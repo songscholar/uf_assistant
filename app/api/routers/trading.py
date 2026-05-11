@@ -15,7 +15,6 @@ from app.tools.trading import (
     cancel_order,
     get_orders,
     get_portfolio,
-    get_position,
     get_positions,
     submit_order,
 )
@@ -34,11 +33,13 @@ class OrderRequest(BaseModel):
     quantity: float = Field(..., gt=0, description="数量")
     price: float | None = Field(None, description="价格（限价单必填）")
     order_type: str = Field("market", description="market/limit/stop/stop_limit")
+    trade_type: str = Field("normal", description="normal/block/hk_sh/hk_sz/etf_create/etf_redeem")
+    exchange_code: str = Field("SH", description="SH/SZ/HK")
 
 
 @router.post("/trading/order")
 async def place_order(request: OrderRequest, current_user: dict = Depends(get_current_user)):
-    """提交模拟订单"""
+    """提交模拟订单（支持多业务类型）"""
     try:
         return submit_order(
             user_id=current_user["user_id"],
@@ -47,6 +48,8 @@ async def place_order(request: OrderRequest, current_user: dict = Depends(get_cu
             quantity=request.quantity,
             price=request.price,
             order_type=request.order_type,
+            trade_type=request.trade_type,
+            exchange_code=request.exchange_code,
         )
     except TradingError as exc:
         logger.warning("place_order_business_error", user_id=current_user["user_id"], error=str(exc))
@@ -70,7 +73,11 @@ async def positions(current_user: dict = Depends(get_current_user)):
 async def position(symbol: str, current_user: dict = Depends(get_current_user)):
     """获取指定股票模拟持仓"""
     try:
-        return get_position(user_id=current_user["user_id"], symbol=symbol)
+        result = get_positions(user_id=current_user["user_id"])
+        for pos in result.get("positions", []):
+            if pos.get("symbol") == symbol.upper():
+                return {"has_position": True, "position": pos}
+        return {"symbol": symbol, "has_position": False}
     except Exception as exc:
         logger.error("position_error", user_id=current_user["user_id"], symbol=symbol, error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))

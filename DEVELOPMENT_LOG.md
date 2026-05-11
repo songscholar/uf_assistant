@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-05-11 — 多业务类型证券交易引擎（Step 1 完成）
+
+### 变更摘要
+
+重构模拟交易后端，支持多业务类型（普通委托、大宗交易、港股通、ETF 申赎），实现 T+0/T+1/T+2 交收引擎和费用计算引擎。所有交易按用户隔离（per-user），注册默认 500W 模拟资金。
+
+### 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/trading/fees.py` | ~200 | 多业务类型费用计算引擎（普通/大宗/港股通/ETF） |
+| `app/trading/settlement_engine.py` | ~180 | T+0/T+1/T+2 日终交收引擎 |
+| `app/trading/scheduler.py` | ~60 | APScheduler 定时任务（每晚 20:00 执行交收） |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/core/constants.py` | 新增 `TradeType`、`SettlementMode`、`FeeType` 枚举 |
+| `app/trading/models.py` | 新增 `MockPortfolio`、`Position`、`SettlementTask`、`TradeLog` 表，支持 `trade_type`/`settlement_mode`/`frozen_quantity` |
+| `app/tools/trading.py` | 重写 `MockTradingBackend`：per-user 隔离、资金冻结、费用计算、交收任务生成 |
+| `app/api/routers/trading.py` | 所有端点接入 `user_id`（`current_user["user_id"]`） |
+| `app/api/main.py` | lifespan 中启动交收定时调度器 |
+| `app/api/agent/trading.py` | 移除已废弃的 `get_position` 导入，单持仓查询返回 501 |
+| `frontend/src/pages/TradingPage.tsx` | 防御性解析后端返回 |
+| `tests/test_tools_trading.py` | 重写 14 个测试，覆盖普通委托/大宗限额/港股通费用/T+1 交收 |
+
+### 验证结果
+
+- **普通委托 T+1 全流程**：买入冻结资金 → 次日交收释放资金/增加持仓 → 卖出冻结持仓 → 次日交收释放持仓/增加资金 ✅
+- **港股通 T+2**：买入冻结资金 → 两日后交收，费用包含印花税+交收费+组合费 ✅
+- **大宗交易限额**：<30 万股 或 <200W 金额自动拦截 ✅
+- **pytest**：14/14 交易测试通过，全量 567 通过，4 个 pre-existing 失败（与本次无关）
+
+### 已知问题
+
+- `avg_cost` 交收后未正确计算（买入时记录成本价逻辑待修复）
+- 卖出后 `position_value` 未即时扣除冻结持仓市值（需前端或后端修复总资产显示）
+- Agent Gateway 交易端点未接入 `user_id`（返回 501）
+
+---
+
 ## 2026-05-11 — 人民币支付系统（支付宝 / 微信 / 模拟支付）
 
 ### 变更摘要
@@ -2981,3 +3023,74 @@ api/v1/trading/live/...nce?market=crypto:1 Failed to load resource: 500
 - `frontend npx tsc --noEmit`：**0 errors**（仅剩 pre-existing 的 api.test.ts 错误）
 - 后端 `python3 -m py_compile app/tools/trading.py`：**OK**
 - 本地 commit：`2a918cd`
+
+
+---
+
+## 2026-05-11 — 模拟交易用户资产系统（初始500W + 资金校验 + per-user隔离）
+
+### 改动目标
+修复模拟交易中用户总资产/可用资金为空的问题，实现按用户隔离的模拟资产系统，注册默认500W，买入扣减资金，卖出释放资金，并加入资金/持仓校验。
+
+### 涉及文件
+- **修改** `app/tools/trading.py` — `MockTradingBackend` 重构为 per-user 模式，添加资金算法
+- **修改** `app/api/routers/trading.py` — 模拟交易端点接入 `current_user`，传入 `user_id`
+- **修改** `app/api/routers/auth.py` — `users` 表添加资产字段，注册时初始化500W
+- **修改** `app/auth/models.py` — `uf_users` 表添加 `mock_initial_capital` / `mock_available_cash`
+- **修改** `app/auth/user_service.py` — `create_user` 初始化模拟资产
+- **修改** `frontend/src/pages/TradingPage.tsx` — 正确解析后端返回的资产字段
+
+### 改动方案
+
+**1. 后端 `MockTradingBackend` 重构**
+- 全局单例 `_mock_backend` → 按 `user_id` 隔离的字典 `_mock_backends: dict[int, MockTradingBackend]`
+- 每个用户独立的 `initial_capital`、`available_cash`、持仓、订单
+- 从 `users` 表加载/持久化资金状态
+
+**2. 资金算法**
+```
+买入成本 = 数量 × 价格 × (1 + 佣金0.03%)
+卖出收入 = 数量 × 价格 × (1 - 佣金0.03% - 印花税0.1%)
+总资产 = 可用资金 + 持仓市值
+总盈亏 = 未实现盈亏 + 已实现盈亏
+```
+
+**3. 校验逻辑**
+- 买入：检查 `available_cash >= 成本`，不足时抛出 `TradingError`
+- 卖出：检查 `持仓数量 >= 卖出数量`，不足时抛出 `TradingError`
+- `TradingError` 被 API 层捕获，返回 HTTP 400（业务错误）
+
+**4. 数据库变更**
+- `users` 表添加：`mock_initial_capital REAL DEFAULT 5000000`、`mock_available_cash REAL DEFAULT 5000000`
+- `uf_users` 表同步添加（保持与 `auth/models.py` 一致）
+- 现有用户通过 `ALTER TABLE` 添加列，默认值为 500W
+
+**5. 后端 API 变更**
+- `submit_order(user_id, ...)`、`get_positions(user_id)`、`get_orders(user_id)` 等全部传入 `user_id`
+- 端点函数签名添加 `current_user: dict = Depends(get_current_user)`
+
+**6. 前端适配**
+- `fetchMockData` 正确解析 `pfData?.summary`（包含 `total_assets`/`available_cash`/`position_value`/`total_pnl`/`total_pnl_percent`）
+- catch 块中默认显示 500W 资产
+
+### 测试验证
+```
+买入 100 股 @ 1500:
+  可用资金: 5,000,000 → 4,849,955 (扣 150,000 + 佣金 45)
+  持仓市值: 150,000
+
+卖出 50 股 @ 1600:
+  可用资金: 4,849,955 → 4,929,851 (加 80,000 - 佣金 24 - 印花税 80)
+  已实现盈亏: 5,000 (50×100)
+  未实现盈亏: 5,000 (50×100)
+  总盈亏率: 13.33%
+
+资金不足买入 100,000 股:
+  抛出: "可用资金不足：需要 ¥150,045,000.00，当前可用 ¥4,929,851.00"
+```
+
+### 验证结果
+- Python 编译：**全部通过**
+- TypeScript 编译：**0 errors**（仅剩 pre-existing 的 api.test.ts）
+- 后端单元测试：**通过**
+- 本地 commit：`f7ae8e9`

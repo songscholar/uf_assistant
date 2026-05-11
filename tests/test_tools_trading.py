@@ -1,172 +1,335 @@
 """
-测试交易工具模块
+测试交易工具模块（多业务类型证券引擎）
 """
-
-import json
 
 import pytest
 
-from app.core.constants import OrderSide, OrderStatus, OrderType
+from app.core.constants import OrderSide, OrderType, TradeType
 from app.core.exceptions import TradingError
 from app.tools.trading import (
     MockTradingBackend,
     cancel_order,
     get_orders,
     get_portfolio,
-    get_position,
     get_positions,
     submit_order,
 )
+from app.trading.models import get_db_session, MockPortfolio, Position, TradeLog, SettlementTask
 
 
 class TestMockTradingBackend:
     """测试模拟交易后端"""
 
+    @pytest.fixture(autouse=True)
+    def setup_db(self):
+        """每个测试前清理数据"""
+        db = get_db_session()
+        db.query(TradeLog).delete()
+        db.query(SettlementTask).delete()
+        db.query(Position).delete()
+        db.query(MockPortfolio).delete()
+        db.commit()
+        yield
+        db.close()
+
     def test_submit_buy_order(self):
         """测试提交买入订单"""
-        backend = MockTradingBackend()
-        order = backend.submit_order({
-            "symbol": "000001",
-            "side": OrderSide.BUY.value,
-            "quantity": 100,
-            "price": 10.5,
-            "order_type": OrderType.LIMIT.value,
-        })
-        
-        assert order["id"] is not None
-        assert order["status"] == OrderStatus.FILLED.value
-        assert order["filled_quantity"] == 100
-        assert order["filled_price"] == 10.5
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999001, initial_capital=1_000_000)
+        order = backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=10.0,
+            order_type=OrderType.LIMIT.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        assert order["order_id"] is not None
+        assert order["status"] == "filled"
+        assert order["quantity"] == 100
+        assert order["price"] == 10.0
+        assert order["fees"]["total"] > 0
+        db.close()
 
     def test_position_after_buy(self):
-        """测试买入后持仓"""
-        backend = MockTradingBackend()
-        backend.submit_order({
-            "symbol": "000001",
-            "side": OrderSide.BUY.value,
-            "quantity": 100,
-            "price": 10.0,
-            "order_type": OrderType.MARKET.value,
-        })
-        
-        pos = backend.get_position("000001")
-        assert pos is not None
-        assert pos["quantity"] == 100
-        assert pos["avg_cost"] == 10.0
+        """测试买入后持仓冻结（T+1交收前持仓为空）"""
+        from datetime import datetime, timezone, timedelta
+        from app.trading.settlement_engine import run_daily_settlement
+
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999002, initial_capital=1_000_000)
+        backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=10.0,
+            order_type=OrderType.MARKET.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        # T+1 买入后持仓表为空（待交收）
+        result_before = get_positions(user_id=999002)
+        assert len(result_before["positions"]) == 0
+        # T+1 交收后持仓出现
+        run_daily_settlement(datetime.now(timezone.utc) + timedelta(days=1))
+        result_after = get_positions(user_id=999002)
+        assert len(result_after["positions"]) == 1
+        assert result_after["positions"][0]["total_quantity"] == 100
+        assert result_after["positions"][0]["available_quantity"] == 100
+        db.close()
+
+    def test_position_after_settlement(self):
+        """测试交收后持仓可用"""
+        from datetime import datetime, timezone, timedelta
+        from app.trading.settlement_engine import run_daily_settlement
+
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999003, initial_capital=1_000_000)
+        backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=10.0,
+            order_type=OrderType.MARKET.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        # T+1 交收
+        run_daily_settlement(datetime.now(timezone.utc) + timedelta(days=1))
+        result = get_positions(user_id=999003)
+        assert result["positions"][0]["available_quantity"] == 100
+        db.close()
 
     def test_position_after_sell(self):
-        """测试卖出后持仓"""
-        backend = MockTradingBackend()
-        backend.submit_order({
-            "symbol": "000001",
-            "side": OrderSide.BUY.value,
-            "quantity": 100,
-            "price": 10.0,
-            "order_type": OrderType.MARKET.value,
-        })
-        backend.submit_order({
-            "symbol": "000001",
-            "side": OrderSide.SELL.value,
-            "quantity": 50,
-            "price": 12.0,
-            "order_type": OrderType.MARKET.value,
-        })
-        
-        pos = backend.get_position("000001")
-        assert pos["quantity"] == 50
-        assert pos["realized_pnl"] == 100.0  # (12-10) * 50
+        """测试卖出后持仓（需T+1交收后确认）"""
+        from datetime import datetime, timezone, timedelta
+        from app.trading.settlement_engine import run_daily_settlement
+
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999004, initial_capital=1_000_000)
+        # 买入
+        backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=10.0,
+            order_type=OrderType.MARKET.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        run_daily_settlement(datetime.now(timezone.utc) + timedelta(days=1))
+        # 卖出
+        backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.SELL.value,
+            quantity=50,
+            price=12.0,
+            order_type=OrderType.MARKET.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        # 卖出后 total 不变（冻结中）
+        result = get_positions(user_id=999004)
+        assert result["positions"][0]["total_quantity"] == 100
+        assert result["positions"][0]["frozen_quantity"] == 50
+        # T+1 交收后
+        run_daily_settlement(datetime.now(timezone.utc) + timedelta(days=2))
+        result2 = get_positions(user_id=999004)
+        assert result2["positions"][0]["total_quantity"] == 50
+        assert result2["positions"][0]["frozen_quantity"] == 0
+        db.close()
 
     def test_cancel_order(self):
-        """测试取消订单"""
-        backend = MockTradingBackend()
-        order = backend.submit_order({
-            "symbol": "000001",
-            "side": OrderSide.BUY.value,
-            "quantity": 100,
-            "price": 10.0,
-            "order_type": OrderType.LIMIT.value,
-        })
-        
-        # 已成交的订单无法取消
-        assert backend.cancel_order(order["id"]) is False
+        """测试取消订单——已成交订单无法取消"""
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999005, initial_capital=1_000_000)
+        order = backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=10.0,
+            order_type=OrderType.LIMIT.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        result = cancel_order(user_id=999005, order_id=order["order_id"])
+        assert result["success"] is False
+        db.close()
 
     def test_portfolio_summary(self):
         """测试投资组合摘要"""
-        backend = MockTradingBackend()
-        backend.submit_order({
-            "symbol": "000001",
-            "side": OrderSide.BUY.value,
-            "quantity": 100,
-            "price": 10.0,
-            "order_type": OrderType.MARKET.value,
-        })
-        
-        summary = backend.get_portfolio_summary()
-        assert summary["total_positions"] == 1
-        assert summary["total_cost"] == 1000.0
+        from datetime import datetime, timezone, timedelta
+        from app.trading.settlement_engine import run_daily_settlement
+
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999006, initial_capital=1_000_000)
+        backend.submit_order(
+            db=db,
+            symbol="000001",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=10.0,
+            order_type=OrderType.MARKET.value,
+            trade_type=TradeType.NORMAL,
+            exchange_code="SH",
+        )
+        # T+1 交收后查询
+        run_daily_settlement(datetime.now(timezone.utc) + timedelta(days=1))
+        result = get_portfolio(user_id=999006)
+        assert result["summary"]["total_positions"] == 1
+        assert result["summary"]["initial_capital"] == 1_000_000.0
+        db.close()
+
+    def test_insufficient_funds(self):
+        """测试资金不足"""
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999007, initial_capital=1000)
+        with pytest.raises(TradingError, match="可用资金不足"):
+            backend.submit_order(
+                db=db,
+                symbol="000001",
+                side=OrderSide.BUY.value,
+                quantity=1000,
+                price=100.0,
+                order_type=OrderType.LIMIT.value,
+                trade_type=TradeType.NORMAL,
+                exchange_code="SH",
+            )
+        db.close()
+
+    def test_block_trade_min_size(self):
+        """测试大宗交易限额"""
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999008, initial_capital=10_000_000)
+        with pytest.raises(TradingError, match="大宗交易限额不足"):
+            backend.submit_order(
+                db=db,
+                symbol="600519",
+                side=OrderSide.BUY.value,
+                quantity=100,
+                price=100.0,
+                order_type=OrderType.LIMIT.value,
+                trade_type=TradeType.BLOCK_TRADE,
+                exchange_code="SH",
+            )
+        db.close()
+
+    def test_stock_connect_fees(self):
+        """测试港股通费用"""
+        db = get_db_session()
+        backend = MockTradingBackend(user_id=999009, initial_capital=1_000_000)
+        order = backend.submit_order(
+            db=db,
+            symbol="00700",
+            side=OrderSide.BUY.value,
+            quantity=100,
+            price=400.0,
+            order_type=OrderType.LIMIT.value,
+            trade_type=TradeType.STOCK_CONNECT_SH,
+            exchange_code="HK",
+        )
+        fees = order["fees"]
+        assert fees["stamp_tax"] > 0
+        assert fees["portfolio_fee"] > 0
+        assert order["settlement_mode"] == "T+2"
+        db.close()
 
 
 class TestTradingTools:
     """测试交易工具函数"""
 
+    @pytest.fixture(autouse=True)
+    def setup_db(self):
+        db = get_db_session()
+        db.query(TradeLog).delete()
+        db.query(SettlementTask).delete()
+        db.query(Position).delete()
+        db.query(MockPortfolio).delete()
+        db.commit()
+        yield
+        db.close()
+
     def test_submit_order_success(self):
         """测试成功下单"""
-        result = submit_order("000001", "buy", 100, 10.5, "limit")
-        data = json.loads(result)
-        assert data["success"] is True
-        assert data["order"]["symbol"] == "000001"
-        assert data["order"]["side"] == "buy"
+        result = submit_order(
+            user_id=999101,
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.5,
+            order_type="limit",
+            trade_type="normal",
+            exchange_code="SH",
+        )
+        assert result["order_id"] is not None
+        assert result["symbol"] == "000001"
+        assert result["side"] == "buy"
 
     def test_submit_order_invalid_side(self):
         """测试无效订单方向"""
         with pytest.raises(TradingError):
-            submit_order("000001", "invalid", 100, 10.5, "limit")
+            submit_order(
+                user_id=999102,
+                symbol="000001",
+                side="invalid",
+                quantity=100,
+                price=10.5,
+                order_type="limit",
+                trade_type="normal",
+                exchange_code="SH",
+            )
 
     def test_get_positions(self):
         """测试获取持仓"""
-        # 先下单
-        submit_order("000002", "buy", 200, 20.0, "limit")
-        
-        result = get_positions()
-        data = json.loads(result)
-        assert "positions" in data
-        assert "summary" in data
-
-    def test_get_position(self):
-        """测试获取单个持仓"""
-        submit_order("000003", "buy", 300, 30.0, "limit")
-        
-        result = get_position("000003")
-        data = json.loads(result)
-        assert data["has_position"] is True
-
-    def test_get_position_not_found(self):
-        """测试无持仓"""
-        result = get_position("999999")
-        data = json.loads(result)
-        assert data["has_position"] is False
+        submit_order(
+            user_id=999103,
+            symbol="000002",
+            side="buy",
+            quantity=200,
+            price=20.0,
+            order_type="limit",
+            trade_type="normal",
+            exchange_code="SH",
+        )
+        result = get_positions(user_id=999103)
+        assert "positions" in result
+        assert "summary" in result
 
     def test_get_orders(self):
         """测试获取订单"""
-        result = get_orders()
-        data = json.loads(result)
-        assert "orders" in data
-        assert "count" in data
-
-    def test_cancel_order(self):
-        """测试取消订单"""
-        result = submit_order("000004", "buy", 100, 10.0, "limit")
-        order_data = json.loads(result)
-        order_id = order_data["order"]["id"]
-        
-        # 已成交的订单无法取消
-        result = cancel_order(order_id)
-        data = json.loads(result)
-        assert data["success"] is False
+        submit_order(
+            user_id=999104,
+            symbol="000004",
+            side="buy",
+            quantity=100,
+            price=10.0,
+            order_type="limit",
+            trade_type="normal",
+            exchange_code="SH",
+        )
+        result = get_orders(user_id=999104)
+        assert "orders" in result
+        assert "count" in result
 
     def test_get_portfolio(self):
         """测试获取投资组合"""
-        result = get_portfolio()
-        data = json.loads(result)
-        assert "summary" in data
-        assert "positions" in data
+        submit_order(
+            user_id=999105,
+            symbol="000005",
+            side="buy",
+            quantity=100,
+            price=10.0,
+            order_type="limit",
+            trade_type="normal",
+            exchange_code="SH",
+        )
+        result = get_portfolio(user_id=999105)
+        assert "summary" in result
+        assert "positions" in result

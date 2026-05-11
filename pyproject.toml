@@ -48,6 +48,8 @@ dependencies = [
   "pydantic-settings>=2.6.0",
   # 数据库
   "sqlalchemy>=2.0.0",
+  # 定时任务
+  "apscheduler>=3.10.0",
   "alembic>=1.13.0",
   # 认证
   "pyjwt>=2.8.0",

@@ -78,6 +78,11 @@ async def lifespan(app: FastAPI):
     init_trading_tables()
     logger.info("trading_tables_initialized")
 
+    # 启动交易定时任务（日终交收）
+    from app.trading.scheduler import start_scheduler
+    start_scheduler()
+    logger.info("trading_scheduler_started")
+
     # 初始化认证模块数据库表
     from app.auth.models import init_auth_tables
     init_auth_tables()
@@ -110,6 +115,10 @@ async def lifespan(app: FastAPI):
     # 停止 USDT worker
     from app.services.usdt_payment import get_usdt_order_worker
     get_usdt_order_worker().stop()
+
+    # 停止交易定时任务
+    from app.trading.scheduler import stop_scheduler
+    stop_scheduler()
 
     logger.info("api_server_shutting_down")
 
