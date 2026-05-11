@@ -2354,3 +2354,489 @@ KuCoin (Spot+Futures), Gate (Spot+Futures), Deepcoin, HTX
 - TypeScript 编译通过 ✅
 
 **Commits:** (待生成)
+
+
+---
+
+## 2026-05-06 — StrategyPage screen/pick 结果可读性修复
+
+### 变更摘要
+
+用户反馈 `/strategies/screen` 和 `/strategies/pick` 返回结果不友好（"count:0" 或 "信号0个" 看不懂）。修复内容包括：
+
+1. **条件筛选（screen）**：增加友好提示和条件说明
+2. **策略选股（pick）**：展示每只被分析股票的具体结论（买入/卖出/观望）
+
+### 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/services/stock_picker.py` | pick 增加 hold_signals/failed_symbols 返回；screen 增加 total_all/total_matched/conditions_text |
+| `frontend/src/pages/StrategyPage.tsx` | 重写 pick/screen 结果展示 UI |
+
+### 后端变更
+
+**`pick_by_strategy`**：
+- 不再只返回 buy/sell，增加 `hold_signals`（中性观望列表）和 `failed_symbols`（数据获取失败）
+- 返回更详细统计：`buy_count`/`sell_count`/`hold_count`/`failed_count`
+- 每只被分析股票都返回 `direction`/`confidence`/`reason`，让用户知道具体结论
+
+**`quick_screen`**：
+- 返回 `total_all`（全市场总数，如 5512）
+- 返回 `total_matched`（条件匹配数，含未展示的被 limit 截断的）
+- 返回 `conditions_text`（自然语言描述的条件，如"价格 50~100 元、涨跌幅 5%~5%"）
+
+### 前端变更
+
+**筛选结果（screen）**：
+- 顶部增加说明："在全市场 5,512 只股票中，按条件「价格 50~100 元」找到 0 只"
+- 空结果展示友好卡片：说明当前条件 + 建议放宽条件
+- 表格增加成交量列
+- 涨跌幅保留两位小数
+
+**策略选股（pick）**：
+- 顶部彩色标签摘要：买入 X / 卖出 Y / 观望 Z
+- 展示三类信号表格（买入/卖出/观望），每只票都能看到具体结论
+- 全部观望时展示解释："3 只股票均未触发买入或卖出信号，均处于观望状态"
+- 失败股票 hover 展示列表
+
+**筛选表单**：
+- 涨跌幅输入框下方增加说明："数值即百分比，如 5 表示涨跌幅 ≥5%"
+
+### 验证
+
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-06 — StrategyPage 四修复：成交量单位/策略说明/名称加载/表格统一
+
+### 变更摘要
+
+用户反馈四个体验问题，全部修复。
+
+### 问题1：条件筛选成交量缺少单位
+**修复：** `frontend/src/lib/utils.ts` + `StrategyPage.tsx`
+- 新增 `formatVolume(value, type)` 函数：成交量自动转为"手/万手/亿手"，成交额自动转为"元/万元/亿元"
+- screen 结果表格成交量列使用 `formatVolume()` 替代纯数字
+
+### 问题2：策略含义没有说明
+**修复：** `frontend/src/pages/StrategyPage.tsx`
+- 策略选择下拉框下方增加策略说明文字（直接取 `StrategyInfo.description`）
+- 选择不同策略时说明自动切换
+
+### 问题3：策略选股结果缺少股票名称
+**修复：** `app/services/stock_picker.py`
+- `pick_by_strategy` 循环前先加载 `market:spot` 缓存构建 `name_map`
+- 每只股票的 record 增加 `name` 字段
+- 前端展示 `item.name || '-'`
+
+### 问题4：买入/卖出/观望三表格排版不一致
+**修复：** `frontend/src/pages/StrategyPage.tsx`
+- 提取公共组件 `SignalTable({ items, color })`
+- 三表格共用同一组件，列宽固定（代码90px/名称100px/置信度80px），样式完全一致
+- 只有置信度文字颜色根据信号类型变化（success/danger/neutral）
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-06 — StrategyPage 策略详情弹窗 + 指标页面报错修复
+
+### 变更摘要
+
+用户提出两个需求：1）策略卡片「运行」按钮改为「策略详情」弹窗；2）指标分页面点击报错白屏。
+
+### 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/pages/StrategyPage.tsx` | 策略卡片改造、弹窗组件、指标页面修复 |
+
+### 1. 策略详情弹窗
+
+**StrategyCard 改造：**
+- 「运行」按钮 → 「策略详情」按钮（ BookOpen 图标 + 文字）
+- 点击打开半透明模态弹窗，移除原先的单股 evaluate 功能（symbol/loading/result state 一并清理）
+
+**StrategyDetailModal 弹窗内容：**
+- **策略简介**：每个策略的通俗解释（小白友好）
+- **算法原理**：步骤化的计算公式（等宽字体 + 预格式化）
+- **可调参数**：参数名 + 默认值 + 说明
+- **信号规则**：买入/卖出/观望条件列表，带彩色标签
+
+**四个策略详情数据（前端硬编码）：**
+- `ma_crossover`：均线交叉（金叉/死叉）
+- `macd`：DIF/DEA 交叉 + 柱状图动量
+- `rsi`：超买超卖阈值 + 边缘触发
+- `bollinger`：布林带上下轨突破/回归
+
+### 2. 指标页面报错修复
+
+**根因：** 后端 `/strategies/indicators` 返回 `{builtin: [...], custom: [...]}`，前端 `res.data?.indicators || res.data || []` 导致 `indicators` 被设为一个**对象**，`indicators.map()` 抛 `TypeError`。
+
+**修复：**
+```typescript
+const builtin = (data.builtin || []).map(ind => ({ ...ind, category: '内置' }))
+const custom = (data.custom || []).map(ind => ({ ...ind, category: '自定义' }))
+setIndicators([...builtin, ...custom])
+```
+
+同时补充了缺失的 `category` 字段默认值。
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-06 — StrategyPage 策略配置调整 + 策略库vs指标解释
+
+### 变更摘要
+
+用户两个需求：1）策略详情需要参数调整入口；2）困惑策略库和指标的区别。
+
+### 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/types/index.ts` | StrategyInfo 扩展 parameters/current_params 字段 |
+| `frontend/src/pages/StrategyPage.tsx` | 新增 StrategyConfigModal、调整配置按钮、当前配置展示 |
+
+### 1. 策略配置调整功能
+
+**StrategyCard 改造：**
+- 按钮区域新增两个按钮：「调整配置」（灰色）+「策略详情」（accent色）
+- 两个按钮并排，字号调整为 xs 更紧凑
+
+**StrategyConfigModal 配置弹窗：**
+- 展示当前策略的所有可调参数（从后端 `/strategies` 接口返回的 `parameters` 字段）
+- 每个参数显示：名称、当前值输入框、默认值提示、范围提示、说明文字
+- 底部「取消」+「保存配置」按钮
+- 保存后参数存入 `strategyConfigs` 状态
+
+**策略详情弹窗新增「当前配置」板块：**
+- 在「信号规则」上方展示当前已保存的参数值
+- 2 列网格布局，直观展示参数名+值
+
+**handlePick 使用自定义参数：**
+```typescript
+const params = strategyConfigs[selectedStrategy]
+strategyApi.pick(selectedStrategy, symbols, { min_confidence, params })
+```
+
+### 2. 策略库 vs 指标的区别
+
+向用户解释：
+- **策略库** = 完整的**交易系统**。输入股票数据 → 输出「买入/卖出/观望」信号，可直接用于选股。
+- **指标** = **技术分析工具**。输入股票数据 → 输出具体数值（如 RSI=45.3、MACD柱状图=-0.02），用于分析但不直接产生交易信号。
+
+举例类比：策略是「自动驾驶系统」（自己做决策），指标是「仪表盘」（显示速度、油量等数据，供人参考）。
+
+当前四个内置策略（均线交叉/MACD/RSI/布林带）恰好都基于这些技术指标，所以用户会有"都是那四个"的错觉。实际上策略库里的策略会综合判断产生交易信号，而指标页面只是展示单一指标的数值计算。
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-06 — 修复策略参数不显示问题
+
+### 根因
+
+后端 `/strategies` 接口直接返回**数组** `[{...}, {...}]`，但前端代码写的是：
+```typescript
+const list = res.data?.strategies || [...fallback]
+```
+
+`res.data` 是数组，`res.data?.strategies` 永远是 `undefined`，导致始终 fallback 到硬编码数据。而硬编码的 fallback 数据没有 `parameters` 字段，所以：
+- 调整配置弹窗 → 显示「暂无可调参数」
+- 策略详情弹窗 → 「当前配置」板块不渲染
+
+### 修复
+
+**前端 `StrategyPage.tsx`：**
+```typescript
+// 之前：res.data?.strategies → 永远是 undefined
+const list = res.data?.strategies || [...]
+
+// 之后：兼容后端直接返回数组
+const list = Array.isArray(res.data) ? res.data : res.data?.strategies || [...]
+```
+
+同时 fallback 数据补全了四个策略的 `parameters` 字段（含 name/type/default/min/max/description）。
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-06 — 策略配置弹窗UI优化 + 按钮样式统一
+
+### 变更摘要
+
+用户三个需求：1）配置弹窗去掉加减按钮、去前导0、仅整数；2）策略详情当前配置UI对齐可调参数；3）选股/筛选/生成策略按钮改透明样式。
+
+### 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/pages/StrategyPage.tsx` | 配置弹窗输入框、当前配置UI、三个按钮样式 |
+
+### 具体修改
+
+**1. 配置弹窗输入框**
+- `type="number"` → `type="text"` + `inputMode="numeric"`，彻底去掉浏览器原生加减按钮
+- 输入过滤：`replace(/\D/g, '')` 只保留数字
+- 去前导0：`replace(/^0+/, '') || '0'`，输入 "010" → 自动变为 "10"
+
+**2. 策略详情「当前配置」UI**
+- 从 `grid grid-cols-2` 改为和「可调参数」一致的卡片列表样式
+- 每项包含：参数名 code 标签 + 说明 + 当前值 + 范围提示
+
+**3. 按钮样式统一**
+- 「开始选股」「开始筛选」「生成策略」三个按钮
+- 从 `bg-accent text-white`（实心蓝色）→ `bg-bg-secondary text-text-secondary border border-border`（浅色透明）
+- hover 效果统一为 `hover:text-accent hover:bg-accent-bg`
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-06 — 行情页面新增自选股票模块
+
+### 变更摘要
+
+用户需求：在行情页面新增自选股票模块，布局在龙虎榜上方，UI 类似龙虎榜，支持增删改查。
+
+### 新增/修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/data/watchlist_models.py` | 新建：自选股票 SQLAlchemy 模型 + CRUD 操作 |
+| `app/api/routers/stock.py` | 新增：3 个自选股票 API 端点 |
+| `frontend/src/lib/api.ts` | 新增：stockApi watchlist 接口封装 |
+| `frontend/src/pages/MarketPage.tsx` | 新增：自选股票 UI 模块（表格 + 添加/删除） |
+
+### 后端设计
+
+**数据库模型 `WatchlistItem`：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | Integer PK | 自增主键 |
+| user_id | Integer | 用户ID，索引 |
+| symbol | String(20) | 股票代码 |
+| name | String(50) | 股票名称（缓存） |
+| created_at | DateTime | 创建时间 |
+
+唯一索引：`user_id + symbol` 防止重复添加。
+
+**API 端点：**
+| 方法 | 端点 | 功能 |
+|------|------|------|
+| GET | `/stock/watchlist` | 获取自选列表（自动附带实时行情） |
+| POST | `/stock/watchlist` | 添加自选 `{symbol, name?}` |
+| DELETE | `/stock/watchlist/{symbol}` | 删除自选 |
+
+获取自选列表时，后端对每个 symbol 调用 `get_stock_realtime()` 获取实时行情，统一返回给前端。
+
+### 前端设计
+
+**布局：** 自选股票板块位于龙虎榜上方，同样的 card 样式。
+
+**表格列：** 代码 | 名称 | 最新价 | 涨跌额 | 涨跌幅 | 成交量 | 操作
+
+**功能：**
+- **添加**：顶部输入框输入代码（如 600519）+「添加」按钮，支持回车快捷添加
+- **删除**：每行右侧 trash 图标按钮，点击删除
+- **自动刷新**：随行情页面 30 秒轮询一起刷新自选列表实时行情
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+- Python 语法检查通过 ✅
+
+
+
+---
+
+## 2026-05-06 — 修复自选股票数据库配置错误
+
+### 问题
+
+访问 `/api/v1/stock/watchlist` 报错：
+```
+{"detail":"'AppSettings' object has no attribute 'database_url'"}
+```
+
+### 根因
+
+`app/data/watchlist_models.py` 中使用了 `settings.database_url`，但 `AppSettings` 的配置结构是嵌套的：
+```python
+settings.database.url      # ✅ 正确
+settings.database_url      # ❌ 错误，属性不存在
+```
+
+### 修复
+
+`app/data/watchlist_models.py`：
+```python
+# 之前
+settings.database_url
+# 之后  
+settings.database.url
+```
+
+### 验证
+
+- Python 语法检查通过 ✅
+- 直接调用 CRUD 函数：增删查正常 ✅
+- TestClient 端到端测试：GET/POST/DELETE 均 200 ✅
+- 实时行情数据正常返回 ✅
+
+
+
+---
+
+## 2026-05-06 — 修复自选涨跌额 + 持仓/订单白屏
+
+### 问题1：自选股票涨跌额为空
+
+**根因：** 东财 API `get_stock_realtime()` 返回的数据中没有 `change`（涨跌额）字段，只有 `price`（最新价）和 `prev_close`（昨收）。后端直接 `rt.get("change")` 拿到 `None`。
+
+**修复：** `app/api/routers/stock.py` 的 `watchlist_list` 中主动计算：
+```python
+change = rt.get("change")
+if change is None and price is not None and prev_close is not None:
+    change = round(price - prev_close, 2)
+```
+
+验证：`price=11.23, prev_close=11.3` → `change=-0.07` ✅
+
+### 问题2：持仓/订单页面白屏
+
+**根因：** `PositionsTradesTab` 数据解析逻辑：
+```typescript
+setPositions(posRes.data?.positions || posRes.data || [])
+```
+当后端返回 `{positions: null}` 时：
+- `posRes.data?.positions` → `null`
+- `null || {positions: null}` → `{positions: null}`（对象！）
+- 对象传入 `setPositions`，后续 `.map()` 抛 `TypeError`
+
+**修复：** `frontend/src/pages/StrategyPage.tsx`
+```typescript
+const posData = posRes.data?.positions ?? posRes.data ?? []
+setPositions(Array.isArray(posData) ? posData : [])
+```
+
+同时把所有 `.toFixed(2)` 直接调用改为 `formatNumber()`（内置 null 保护），避免数值字段为 undefined 时二次崩溃。
+
+### 验证
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+- 后端涨跌额计算验证通过 ✅
+
+
+
+---
+
+## 2026-05-06 — 自选股票增强：添加日期/添加价格/自添加涨跌幅
+
+### 变更摘要
+
+用户需求：自选股票新增三个字段——添加日期、添加价格（快照）、自添加以来涨跌幅。
+
+### 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `app/data/watchlist_models.py` | 模型增加 `added_price` 字段 + 自动迁移 |
+| `app/api/routers/stock.py` | 添加时记录价格快照，列表查询计算自添加涨跌幅 |
+| `frontend/src/pages/MarketPage.tsx` | 表格新增三列：添加价格/自添加涨跌幅/添加日期 |
+
+### 后端变更
+
+**数据库迁移：**
+- `WatchlistItem` 新增 `added_price FLOAT` 列
+- 启动时自动检测并执行 `ALTER TABLE`（兼容 SQLite/PostgreSQL）
+
+**添加自选时记录价格快照：**
+```python
+rt = get_stock_realtime(symbol)
+added_price = rt.get("price")  # 添加时的实时价格
+add_watchlist_item(user_id, symbol, name, added_price)
+```
+
+**列表查询计算自添加涨跌幅：**
+```python
+since_added_pct = round((current_price - added_price) / added_price * 100, 2)
+```
+
+### 前端变更
+
+表格列扩展为 10 列：
+代码 | 名称 | 最新价 | 涨跌额 | 涨跌幅 | **添加价格** | **自添加涨跌幅** | **添加日期** | 成交量 | 操作
+
+- 旧数据（迁移前添加的）：`added_price` 为 `None`，显示 `-`
+- 新数据（迁移后添加的）：完整展示三列
+
+### 验证
+
+端到端测试：
+```
+symbol: 600519
+price: 1366.78
+added_price: 1366.77
+since_added_pct: 0.0%
+added_at: 2026-05-11
+```
+
+- 数据库迁移 OK ✅
+- 添加时价格快照记录 OK ✅
+- 自添加涨跌幅计算 OK ✅
+- `test_strategies.py` 19 passed ✅
+- TypeScript 编译通过 ✅
+
+
+
+---
+
+## 2026-05-07 — 修复：个人信息页面取当前登录信息
+
+### 改动目标
+前端「我的」→「个人信息」中，用户名和邮箱改为优先取当前登录信息（`authStore.user`），而非仅依赖独立 API (`/user/profile`) 返回的数据。
+
+### 涉及文件
+- **修改** `frontend/src/pages/ProfilePage.tsx` — `ProfileSection` 组件
+
+### 改动方案
+1. `ProfileSection` 内引入 `useAuthStore()` 获取当前登录用户 `user`
+2. `useEffect` 中调用 `userApi.getProfile()` 后：
+   - `username` 回退链：`data.username` → `user?.username` → `''`
+   - `email` 回退链：`data.email` → `user?.email` → `''`
+3. API 失败时，直接使用 `user?.username` / `user?.email` 填充表单
+4. 非编辑态显示回退链：`profile?.username` → `user?.username` → `'--'`
+5. 取消编辑时同样使用 `user` 作为回退
+
+### 测试验证
+- `frontend npx tsc --noEmit`：**0 errors**

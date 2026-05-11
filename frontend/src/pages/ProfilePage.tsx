@@ -41,6 +41,7 @@ function Toggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void 
 // ── Profile Section ─────────────────────────────────────────────────────────
 
 function ProfileSection() {
+  const { user } = useAuthStore()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ username: '', email: '' })
@@ -51,12 +52,22 @@ function ProfileSection() {
     userApi.getProfile()
       .then((res) => {
         const data = res.data?.data || res.data || {}
+        // 优先使用登录信息中的用户名和邮箱，API 返回的作为补充
         setProfile(data)
-        setForm({ username: data.username || '', email: data.email || '' })
+        setForm({
+          username: data.username || user?.username || '',
+          email: data.email || user?.email || '',
+        })
       })
-      .catch(() => {})
+      .catch(() => {
+        // API 失败时，直接使用当前登录信息
+        setForm({
+          username: user?.username || '',
+          email: user?.email || '',
+        })
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [user])
 
   const handleSave = async () => {
     setSaving(true)
@@ -122,7 +133,7 @@ function ProfileSection() {
               {saving ? '保存中...' : '保存'}
             </button>
             <button
-              onClick={() => { setEditing(false); setForm({ username: profile?.username || '', email: profile?.email || '' }) }}
+              onClick={() => { setEditing(false); setForm({ username: profile?.username || user?.username || '', email: profile?.email || user?.email || '' }) }}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-bg-secondary text-text-secondary hover:bg-bg-hover transition-all"
             >
               取消
@@ -136,8 +147,8 @@ function ProfileSection() {
               <User className="w-6 h-6 text-accent" />
             </div>
             <div>
-              <div className="font-semibold text-text-primary">{profile?.username || '--'}</div>
-              <div className="text-sm text-text-secondary">{profile?.email || '--'}</div>
+              <div className="font-semibold text-text-primary">{profile?.username || user?.username || '--'}</div>
+              <div className="text-sm text-text-secondary">{profile?.email || user?.email || '--'}</div>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-text-tertiary">
