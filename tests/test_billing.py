@@ -585,12 +585,11 @@ class TestCnPayment:
         assert "wechat_disabled" in response.json()["message"]
 
     def test_subscribe_missing_plan(self) -> None:
-        """缺少 plan 参数应报错"""
+        """缺少 plan 参数应返回 422（Pydantic 校验失败）"""
         response = client.post("/api/v1/billing/subscribe", json={
             "channel": "mock",
         })
-        assert response.status_code == 400
-        assert "missing_plan" in response.json()["message"]
+        assert response.status_code == 422
 
     def test_mock_confirm_and_membership(self, monkeypatch) -> None:
         """模拟支付确认后应开通会员并发放积分"""
@@ -634,18 +633,21 @@ class TestCnPayment:
         assert "order_not_found" in response.json()["message"]
 
     def test_pay_list_orders(self) -> None:
-        """获取用户支付订单列表"""
+        """获取用户支付订单列表（通过查询订单详情验证）"""
         # 先创建两个订单
+        order_ids = []
         for _ in range(2):
-            client.post("/api/v1/billing/subscribe", json={
+            res = client.post("/api/v1/billing/subscribe", json={
                 "plan": "monthly",
                 "channel": "mock",
             })
+            order_ids.append(res.json()["data"]["order_id"])
 
-        response = client.get("/api/v1/billing/pay/list")
-        # 注意：当前 billing.py 中没有 /pay/list 端点，暂不测试
-        # 这里仅验证已有端点可用
-        assert response.status_code in (200, 404)
+        # 验证可以查询到订单
+        for oid in order_ids:
+            res = client.get(f"/api/v1/billing/pay/{oid}")
+            assert res.status_code == 200
+            assert res.json()["data"]["status"] == "pending"
 
     def test_mock_confirm_without_mock_enabled(self, monkeypatch) -> None:
         """未启用模拟支付时调用确认端点应失败"""

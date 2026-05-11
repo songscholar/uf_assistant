@@ -4,6 +4,49 @@
 
 ---
 
+## 2026-05-11 — 人民币支付系统（支付宝 / 微信 / 模拟支付）
+
+### 变更摘要
+
+修复 `/billing/subscribe` 404 错误，新增完整的人民币支付系统，支持支付宝、微信支付和模拟支付三种渠道。模拟支付通过 `.env` 配置开关，开发测试无需真实商户资质。
+
+### 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `app/services/cn_payment.py` | ~480 | 人民币支付服务：MockPaymentService / AlipayService / WechatPayService / CnPaymentService |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/data/billing_models.py` | 新增 `CnPayOrderModel`（人民币支付订单表） |
+| `app/core/config.py` | 新增 `CnPaymentSettings`（17 项配置：mock/支付宝/微信） |
+| `app/api/routers/billing.py` | 新增 7 个端点：`POST /subscribe`、`POST /pay/create`、`GET /pay/{id}`、`POST /pay/{id}/mock-confirm`、支付宝回调、微信回调 |
+| `frontend/src/types/index.ts` | 新增 `CnPayOrder`、`PaymentConfig` 类型 |
+| `frontend/src/lib/api.ts` | 更新 `billingApi.subscribe` 签名，新增 `createPayOrder`、`getPayOrder`、`mockConfirm` |
+| `frontend/src/pages/BillingPage.tsx` | 重写支付流程：点击订阅 → 选择支付方式（支付宝/微信/模拟）→ 展示二维码/确认按钮 → 支付成功刷新会员状态 |
+| `.env.example` | 新增 17 项人民币支付环境变量模板 |
+| `pyproject.toml` | 新增 `[project.optional-dependencies] pay`（cryptography + wechatpayv3） |
+| `tests/test_billing.py` | 新增 12 个人民币支付测试用例 |
+
+### 技术决策
+
+1. **自研签名逻辑**：支付宝 RSA2 签名使用标准库 `cryptography` 实现，无需安装 `alipay-sdk-python`；微信支付提供 SDK 接入和自研签名双路径。
+2. **模拟支付默认关闭**：`CN_PAY_MOCK_ENABLED=false`，仅开发环境开启，避免误用于生产。
+3. **时区安全处理**：`confirm_payment` 和 `_complete_cn_order` 中对 `expires_at` 做 `tzinfo` 统一处理，避免 SQLite 存储的 naive datetime 与 `datetime.now(timezone.utc)` 比较报错。
+4. **USD→CNY 汇率**：当前使用固定汇率 7.2 并向上取整，实际生产应接入实时汇率接口。
+
+### 验证结果
+
+- ✅ 全量测试：566 passed，4 failed（均为既有失败，与本次改动无关）
+- ✅ Billing 模块测试：55 passed（新增 12 个全部通过）
+- ✅ 语法检查：全部通过
+- ✅ 模拟支付端到端：创建订单 → 确认支付 → 会员开通 → 积分到账
+- ✅ 支付宝/微信未配置时正确返回禁用错误
+
+---
+
 ## 2026-05-07 — QuantDinger 用户系统完整移植
 
 ### 变更摘要

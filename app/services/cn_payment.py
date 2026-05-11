@@ -117,7 +117,10 @@ class MockPaymentService:
                 return False, "order_not_found", {}
             if order.status == "paid":
                 return True, "already_paid", {"order_id": order.id}
-            if order.expires_at and _now() > order.expires_at:
+            expires_at = order.expires_at
+            if expires_at and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at and _now() > expires_at:
                 order.status = "closed"
                 session.commit()
                 return False, "order_expired", {}
@@ -525,7 +528,10 @@ def _complete_cn_order(out_trade_no: str, trade_no: str | None = None) -> Tuple[
             return False, "order_not_found"
         if order.status == "paid":
             return True, "already_paid"
-        if order.expires_at and _now() > order.expires_at:
+        expires_at = order.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at and _now() > expires_at:
             order.status = "closed"
             session.commit()
             return False, "order_expired"
