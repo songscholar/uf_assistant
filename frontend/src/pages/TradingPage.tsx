@@ -10,7 +10,7 @@ import {
   Zap,
   Shield,
 } from 'lucide-react'
-import { tradingApi, liveTradingApi, getErrorMessage } from '@/lib/api'
+import { tradingApi, liveTradingApi, stockApi, getErrorMessage } from '@/lib/api'
 import type { Order, Position, Portfolio, LiveOrder, LivePosition, PnLSummary } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
 
@@ -43,6 +43,11 @@ export default function TradingPage() {
   const [orderQuantity, setOrderQuantity] = useState('')
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderMessage, setOrderMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Quote data
+  const [quoteData, setQuoteData] = useState<any>(null)
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [maxQuantity, setMaxQuantity] = useState<number | null>(null)
 
   const fetchMockData = useCallback(async () => {
     try {
@@ -101,10 +106,70 @@ export default function TradingPage() {
     else fetchLiveData()
   }, [mode, fetchMockData, fetchLiveData])
 
+  // 获取行情
+  const fetchQuote = useCallback(async (symbol: string) => {
+    if (!symbol || mode !== 'mock') return
+    setQuoteLoading(true)
+    try {
+      const res = await stockApi.getRealtime(symbol)
+      setQuoteData(res.data)
+    } catch {
+      setQuoteData(null)
+    } finally {
+      setQuoteLoading(false)
+    }
+  }, [mode])
+
+  // 代码变化时延迟获取行情
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (orderSymbol) fetchQuote(orderSymbol)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [orderSymbol, fetchQuote])
+
+  // 价格/方向变化时计算最大可买/卖数量
+  useEffect(() => {
+    if (!orderPrice || !quoteData) {
+      setMaxQuantity(null)
+      return
+    }
+    const price = parseFloat(orderPrice)
+    if (price <= 0 || isNaN(price)) {
+      setMaxQuantity(null)
+      return
+    }
+    if (orderSide === 'buy') {
+      const cash = portfolio?.available_cash || 0
+      const qty = Math.floor(cash / price / 100) * 100
+      setMaxQuantity(Math.max(0, qty))
+    } else {
+      const pos = positions.find((p: any) => p.symbol === orderSymbol)
+      if (pos) {
+        const qty = Math.floor(pos.quantity / 100) * 100
+        setMaxQuantity(Math.max(0, qty))
+      } else {
+        setMaxQuantity(0)
+      }
+    }
+  }, [orderPrice, orderSide, orderSymbol, portfolio, positions, quoteData])
+
   const handleSubmitOrder = async () => {
     if (!orderSymbol || !orderQuantity) {
       setOrderMessage({ type: 'error', text: '请填写股票代码和数量' })
       return
+    }
+    // 限价校验
+    if (orderPrice && quoteData) {
+      const price = parseFloat(orderPrice)
+      if (quoteData.limit_up != null && price > quoteData.limit_up) {
+        setOrderMessage({ type: 'error', text: `委托价不能高于涨停价 ${quoteData.limit_up.toFixed(2)}` })
+        return
+      }
+      if (quoteData.limit_down != null && price < quoteData.limit_down) {
+        setOrderMessage({ type: 'error', text: `委托价不能低于跌停价 ${quoteData.limit_down.toFixed(2)}` })
+        return
+      }
     }
     setOrderLoading(true)
     setOrderMessage(null)
@@ -317,90 +382,191 @@ export default function TradingPage() {
 
       {/* Order Form */}
       {activeTab === 'order' && (
-        <div className="bg-bg-card border border-border rounded-xl p-4 max-w-md card-hover">
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs text-text-tertiary mb-1 block">
-                {mode === 'live' ? '交易对 / 股票代码' : '股票代码'}
-              </label>
-              <input
-                type="text"
-                value={orderSymbol}
-                onChange={(e) => setOrderSymbol(e.target.value)}
-                placeholder={mode === 'live' && marketFilter === 'crypto' ? 'BTC/USDT' : '600519'}
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-text-tertiary mb-1 block">买卖方向</label>
-              <div className="flex gap-2">
-                {(['buy', 'sell'] as const).map((side) => (
-                  <button
-                    key={side}
-                    onClick={() => setOrderSide(side)}
-                    className={cn(
-                      'flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200',
-                      orderSide === side
-                        ? side === 'buy' ? 'bg-[rgba(74,222,128,0.15)] text-[#4ade80]' : 'bg-[rgba(248,113,113,0.15)] text-[#f87171]'
-                        : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover'
-                    )}
-                  >
-                    {side === 'buy' ? '买入' : '卖出'}
-                  </button>
-                ))}
+        <div className="flex gap-4">
+          {/* 左侧：下单表单 */}
+          <div className="bg-bg-card border border-border rounded-xl p-4 w-full max-w-md card-hover">
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-text-tertiary mb-1 block">
+                  {mode === 'live' ? '交易对 / 股票代码' : '股票代码'}
+                </label>
+                <input
+                  type="text"
+                  value={orderSymbol}
+                  onChange={(e) => setOrderSymbol(e.target.value)}
+                  placeholder={mode === 'live' && marketFilter === 'crypto' ? 'BTC/USDT' : '600519'}
+                  className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent"
+                />
               </div>
-            </div>
-            <div>
-              <label className="text-xs text-text-tertiary mb-1 block">价格</label>
-              <input
-                type="number"
-                value={orderPrice}
-                onChange={(e) => setOrderPrice(e.target.value)}
-                placeholder="留空为市价"
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-text-tertiary mb-1 block">数量</label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={orderQuantity}
-                onChange={(e) => {
-                  const v = e.target.value
-                  // 只允许整数
-                  if (v === '' || /^\d+$/.test(v)) {
-                    setOrderQuantity(v)
-                  }
-                }}
-                placeholder={mode === 'live' && marketFilter === 'crypto' ? '1' : '100'}
-                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-            </div>
-            {orderMessage && (
-              <div className={cn(
-                'text-xs rounded-lg px-3 py-2',
-                orderMessage.type === 'success'
-                  ? 'text-[#4ade80] bg-[rgba(74,222,128,0.1)]'
-                  : 'text-[#f87171] bg-[rgba(248,113,113,0.1)]'
-              )}>
-                {orderMessage.text}
+              <div>
+                <label className="text-xs text-text-tertiary mb-1 block">买卖方向</label>
+                <div className="flex gap-2">
+                  {(['buy', 'sell'] as const).map((side) => (
+                    <button
+                      key={side}
+                      onClick={() => setOrderSide(side)}
+                      className={cn(
+                        'flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                        orderSide === side
+                          ? side === 'buy' ? 'bg-[rgba(74,222,128,0.15)] text-[#4ade80]' : 'bg-[rgba(248,113,113,0.15)] text-[#f87171]'
+                          : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover'
+                      )}
+                    >
+                      {side === 'buy' ? '买入' : '卖出'}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-            <button
-              onClick={handleSubmitOrder}
-              disabled={orderLoading}
-              className={cn(
-                'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50',
-                orderSide === 'buy'
-                  ? 'bg-[rgba(74,222,128,0.15)] text-[#4ade80] hover:bg-[rgba(74,222,128,0.25)] hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
-                  : 'bg-[rgba(248,113,113,0.15)] text-[#f87171] hover:bg-[rgba(248,113,113,0.25)] hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
+              <div>
+                <label className="text-xs text-text-tertiary mb-1 block">价格</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={orderPrice}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+                      setOrderPrice(v)
+                    }
+                  }}
+                  placeholder="留空为市价"
+                  className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-text-tertiary mb-1 block">数量</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={orderQuantity}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '' || /^\d+$/.test(v)) {
+                      setOrderQuantity(v)
+                    }
+                  }}
+                  placeholder={mode === 'live' && marketFilter === 'crypto' ? '1' : '100'}
+                  className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm transition-all duration-200 hover:border-border-focus focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                {maxQuantity !== null && maxQuantity >= 0 && (
+                  <div className="text-xs text-text-tertiary mt-1">
+                    {orderSide === 'buy'
+                      ? `当前可买数量：${maxQuantity} 股`
+                      : `当前可卖数量：${maxQuantity} 股`}
+                  </div>
+                )}
+              </div>
+              {orderMessage && (
+                <div className={cn(
+                  'text-xs rounded-lg px-3 py-2',
+                  orderMessage.type === 'success'
+                    ? 'text-[#4ade80] bg-[rgba(74,222,128,0.1)]'
+                    : 'text-[#f87171] bg-[rgba(248,113,113,0.1)]'
+                )}>
+                  {orderMessage.text}
+                </div>
               )}
-            >
-              {orderLoading ? '提交中...' : `确认${orderSide === 'buy' ? '买入' : '卖出'}`}
-            </button>
+              <button
+                onClick={handleSubmitOrder}
+                disabled={orderLoading}
+                className={cn(
+                  'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50',
+                  orderSide === 'buy'
+                    ? 'bg-[rgba(74,222,128,0.15)] text-[#4ade80] hover:bg-[rgba(74,222,128,0.25)] hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
+                    : 'bg-[rgba(248,113,113,0.15)] text-[#f87171] hover:bg-[rgba(248,113,113,0.25)] hover:-translate-y-[1px] hover:shadow-md active:translate-y-0'
+                )}
+              >
+                {orderLoading ? '提交中...' : `确认${orderSide === 'buy' ? '买入' : '卖出'}`}
+              </button>
+            </div>
           </div>
+
+          {/* 右侧：行情展示 */}
+          {mode === 'mock' && (
+            <div className="flex-1 bg-bg-card border border-border rounded-xl p-4 card-hover min-w-[280px]">
+              <div className="text-sm font-medium text-text-primary mb-3">行情信息</div>
+              {quoteLoading ? (
+                <div className="text-xs text-text-tertiary">加载中...</div>
+              ) : quoteData ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">名称</span>
+                    <span className="text-text-primary font-medium">{quoteData.name || '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">现价</span>
+                    <span className={cn(
+                      'font-medium',
+                      (quoteData.change_pct || 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'
+                    )}>
+                      {quoteData.price?.toFixed(2) ?? '--'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">涨跌幅</span>
+                    <span className={cn(
+                      'font-medium',
+                      (quoteData.change_pct || 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'
+                    )}>
+                      {quoteData.change_pct != null ? `${quoteData.change_pct >= 0 ? '+' : ''}${quoteData.change_pct.toFixed(2)}%` : '--'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">涨跌额</span>
+                    <span className={cn(
+                      'font-medium',
+                      (quoteData.change_pct || 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'
+                    )}>
+                      {quoteData.price != null && quoteData.prev_close != null
+                        ? `${(quoteData.price - quoteData.prev_close) >= 0 ? '+' : ''}${(quoteData.price - quoteData.prev_close).toFixed(2)}`
+                        : '--'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">今开</span>
+                    <span className="text-text-primary">{quoteData.open?.toFixed(2) ?? '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">最高</span>
+                    <span className="text-text-primary">{quoteData.high?.toFixed(2) ?? '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">最低</span>
+                    <span className="text-text-primary">{quoteData.low?.toFixed(2) ?? '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">涨停价</span>
+                    <span className="text-[#f87171]">{quoteData.limit_up?.toFixed(2) ?? '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">跌停价</span>
+                    <span className="text-[#4ade80]">{quoteData.limit_down?.toFixed(2) ?? '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">成交量</span>
+                    <span className="text-text-primary">{quoteData.volume != null ? formatNumber(quoteData.volume) : '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">成交额</span>
+                    <span className="text-text-primary">{quoteData.amount != null ? formatNumber(quoteData.amount) : '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">市盈率(TTM)</span>
+                    <span className="text-text-primary">{quoteData.pe_ttm?.toFixed(2) ?? '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">总市值</span>
+                    <span className="text-text-primary">{quoteData.market_cap != null ? `${(quoteData.market_cap / 1e8).toFixed(2)}亿` : '--'}</span>
+                  </div>
+                </div>
+              ) : orderSymbol ? (
+                <div className="text-xs text-text-tertiary">未找到该股票行情</div>
+              ) : (
+                <div className="text-xs text-text-tertiary">请输入股票代码查看行情</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
