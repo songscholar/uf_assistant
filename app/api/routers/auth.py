@@ -61,11 +61,11 @@ def _rip(ip: str) -> None:
     now = time.time()
     with _lock:
         if _ip_blk.get(ip, 0) > now:
-            raise HTTPException(429, detail="ip_rate_limited", headers={"Retry-After": str(int(_ip_blk[ip] - now))})
+            raise HTTPException(429, detail="访问过于频繁，请稍后重试", headers={"Retry-After": str(int(_ip_blk[ip] - now))})
         a = [t for t in _ip_att.get(ip, []) if now - t < _IP_W]
         if len(a) >= _IP_L:
             _ip_blk[ip] = now + _IP_B; _ip_att[ip] = []
-            raise HTTPException(429, detail="ip_rate_limited", headers={"Retry-After": str(int(_IP_B))})
+            raise HTTPException(429, detail="访问过于频繁，请稍后重试", headers={"Retry-After": str(int(_IP_B))})
 
 
 def _wip(ip: str) -> None:
@@ -78,11 +78,11 @@ def _rac(u: str) -> None:
     now = time.time(); k = u.lower()
     with _lock:
         if _ac_lck.get(k, 0) > now:
-            raise HTTPException(423, detail="account_locked", headers={"Retry-After": str(int(_ac_lck[k] - now))})
+            raise HTTPException(423, detail="账户已被锁定，请稍后重试", headers={"Retry-After": str(int(_ac_lck[k] - now))})
         a = [t for t in _ac_att.get(k, []) if now - t < _AC_W]
         if len(a) >= _AC_L:
             _ac_lck[k] = now + _AC_B; _ac_att[k] = []
-            raise HTTPException(423, detail="account_locked", headers={"Retry-After": str(int(_AC_B))})
+            raise HTTPException(423, detail="账户已被锁定，请稍后重试", headers={"Retry-After": str(int(_AC_B))})
 
 
 def _wac(u: str) -> None:
@@ -211,7 +211,7 @@ def _ensure_user(email: str, name: str, login: str) -> dict[str, Any]:
         uname = f"{uname}_{secrets.token_hex(3)}"
     user = _cu(uname, email, _hpw(secrets.token_urlsafe(32)), nn=name or uname)
     if not user:
-        raise HTTPException(500, detail="account_creation_failed")
+        raise HTTPException(500, detail="账户创建失败，请稍后重试")
     return user
 
 
@@ -261,15 +261,15 @@ async def login(request: LoginRequest, req: Request) -> dict[str, Any]:
     if s.single_user_mode:
         if request.username == s.admin_user and request.password == s.admin_password:
             return {"token": _jwt("0", request.username, "admin", 0), "user": {"id": 0, "username": request.username, "role": "admin"}}
-        raise HTTPException(401, detail="invalid_credentials")
+        raise HTTPException(401, detail="用户名或密码错误")
     if s.turnstile_secret_key and request.turnstile_token and not await _turnstile(request.turnstile_token, ip):
-        raise HTTPException(400, detail="turnstile_failed")
+        raise HTTPException(400, detail="人机验证失败，请刷新页面重试")
     _rip(ip); _rac(request.username); _ensure()
     user = _fu("username = :u", {"u": request.username})
     if not user or not _cpw(request.password, user["password_hash"]):
         _wip(ip); _wac(request.username); raise HTTPException(401, detail="invalid_credentials")
     if not user.get("is_active", True):
-        raise HTTPException(403, detail="account_disabled")
+        raise HTTPException(403, detail="账户已被禁用")
     logger.info("login_ok", uid=user["id"])
     return {"token": _jwt(str(user["id"]), user["username"], user.get("role", "user"), user.get("token_version", 0)), "user": {k: user[k] for k in ("id", "username", "email", "role", "nickname")}}
 
@@ -280,7 +280,7 @@ async def login_with_code(request: LoginCodeRequest, req: Request) -> dict[str, 
     with _lock:
         entry = _codes.pop((email, "login"), None)
     if not entry or time.time() > entry["expires"] or entry["code"] != request.code:
-        raise HTTPException(400, detail="code_expired_or_invalid")
+        raise HTTPException(400, detail="验证码已过期或无效")
     _ensure()
     user = _fu("email = :e", {"e": email})
     if not user:
@@ -302,11 +302,11 @@ async def send_code(request: SendCodeRequest, req: Request) -> dict[str, Any]:
         raise HTTPException(400, detail="invalid_code_type")
     with _lock:
         if (email, ct) in _codes and time.time() < _codes[(email, ct)]["expires"] - 540:
-            raise HTTPException(429, detail="code_send_too_frequent")
+            raise HTTPException(429, detail="验证码发送过于频繁，请稍后再试")
     if ct == "register":
         _ensure()
         if _fu("email = :e", {"e": email}):
-            raise HTTPException(409, detail="email_already_registered")
+            raise HTTPException(409, detail="该邮箱已注册")
     code = f"{secrets.randbelow(1000000):06d}"; s = get_settings().auth
     with _lock:
         _codes[(email, ct)] = {"code": code, "expires": time.time() + s.email_code_expire_minutes * 60}
@@ -316,13 +316,13 @@ async def send_code(request: SendCodeRequest, req: Request) -> dict[str, Any]:
         logger.info("code_generated_dev_mode", email=email, type=ct, code=code, note="SMTP 未配置，验证码已记录到日志，请查看服务器终端")
     else:
         logger.info("code_sent", email=email, type=ct)
-    return {"message": "code_sent", "expires_in": s.email_code_expire_minutes * 60, "dev_mode": not mail_ok}
+    return {"message": "验证码已发送", "expires_in": s.email_code_expire_minutes * 60, "dev_mode": not mail_ok}
 
 
 @router.post("/auth/register")
 async def register(request: RegisterRequest, req: Request) -> dict[str, Any]:
     if not get_settings().auth.registration_enabled:
-        raise HTTPException(403, detail="registration_disabled")
+        raise HTTPException(403, detail="当前已关闭注册")
     email = request.email.lower()
     with _lock:
         entry = _codes.pop((email, "register"), None)
@@ -330,12 +330,12 @@ async def register(request: RegisterRequest, req: Request) -> dict[str, Any]:
         raise HTTPException(400, detail="code_expired_or_invalid")
     _ensure()
     if _fu("username = :u", {"u": request.username}):
-        raise HTTPException(409, detail="username_taken")
+        raise HTTPException(409, detail="该用户名已被占用")
     if _fu("email = :e", {"e": email}):
         raise HTTPException(409, detail="email_already_registered")
     user = _cu(request.username, email, _hpw(request.password))
     if not user:
-        raise HTTPException(500, detail="registration_failed")
+        raise HTTPException(500, detail="注册失败，请稍后重试")
     if request.referral_code:
         logger.info("referral", uid=user["id"], code=request.referral_code)
     return {"token": _jwt(str(user["id"]), user["username"], "user", user.get("token_version", 0)), "user": {"id": user["id"], "username": user["username"], "email": email, "role": "user"}}
@@ -351,18 +351,18 @@ async def reset_password(request: ResetPasswordRequest) -> dict[str, Any]:
     _ensure()
     user = _fu("email = :e", {"e": email})
     if not user:
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     _e("UPDATE users SET password_hash = :p WHERE id = :i", {"p": _hpw(request.new_password), "i": user["id"]})
-    return {"message": "password_reset_success"}
+    return {"message": "密码重置成功"}
 
 
 @router.post("/auth/change-password")
 async def change_password(request: ChangePasswordRequest, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     _ensure(); cur = _fu("id = :i", {"i": user["id"]})
     if not cur or not _cpw(request.old_password, cur["password_hash"]):
-        raise HTTPException(400, detail="old_password_incorrect")
+        raise HTTPException(400, detail="原密码错误")
     _e("UPDATE users SET password_hash = :p WHERE id = :i", {"p": _hpw(request.new_password), "i": user["id"]})
-    return {"message": "password_changed"}
+    return {"message": "密码修改成功"}
 
 
 # ── OAuth ────────────────────────────────────────────────────────────────────
@@ -371,7 +371,7 @@ def _oauth_redirect(provider: str) -> RedirectResponse:
     s = get_settings().auth
     cid = s.google_client_id if provider == "google" else s.github_client_id
     if not cid:
-        raise HTTPException(501, detail=f"{provider}_oauth_not_configured")
+        raise HTTPException(501, detail="该登录方式未配置")
     state = secrets.token_urlsafe(32)
     with _lock:
         _oauth[state] = {"redirect": "", "expires": time.time() + s.oauth_state_ttl_minutes * 60}
@@ -386,10 +386,10 @@ async def _oauth_cb(provider: str, code: str, state: str) -> RedirectResponse:
     with _lock:
         se = _oauth.pop(state, None)
     if not se or time.time() > se["expires"]:
-        raise HTTPException(400, detail="invalid_oauth_state")
+        raise HTTPException(400, detail="登录状态已过期，请重新登录")
     info = await _oauth_exchange(provider, code)
     if not info["email"]:
-        raise HTTPException(400, detail="oauth_no_email")
+        raise HTTPException(400, detail="无法获取邮箱信息，请尝试其他登录方式")
     _ensure()
     user = _ensure_user(info["email"], info["name"], info["login"])
     return RedirectResponse(url=f"/auth/callback?token={_jwt(str(user['id']), user['username'], user.get('role', 'user'), user.get('token_version', 0))}")
@@ -414,7 +414,7 @@ async def oauth_github_callback(code: str, state: str) -> RedirectResponse:
 
 @router.post("/auth/logout")
 async def logout() -> dict[str, str]:
-    return {"message": "logged_out"}
+    return {"message": "已退出登录"}
 
 
 @router.get("/auth/info")

@@ -15,7 +15,7 @@ import {
   Smartphone,
   Zap,
 } from 'lucide-react'
-import { billingApi } from '@/lib/api'
+import { billingApi, getErrorMessage } from '@/lib/api'
 import type { BillingPlan, CreditBalance, CreditLog, MembershipInfo, CnPayOrder } from '@/types'
 import { cn, formatNumber } from '@/lib/utils'
 
@@ -525,7 +525,7 @@ function RechargeTab() {
       const res = await billingApi.createUsdtPayment(parseFloat(amount).toString())
       setPayment(res.data?.data || res.data || null)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '创建支付失败')
+      setError(getErrorMessage(err, '创建支付失败'))
     } finally {
       setCreating(false)
     }

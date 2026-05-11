@@ -221,4 +221,4 @@ class StockPicker:
 
         except Exception as exc:
             logger.error("quick_screen_failed", error=str(exc))
-            return {"error": f"筛选失败: {exc}"}
+            return {"error": "筛选失败，请稍后重试"}

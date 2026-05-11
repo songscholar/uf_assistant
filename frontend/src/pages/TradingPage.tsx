@@ -10,7 +10,7 @@ import {
   Zap,
   Shield,
 } from 'lucide-react'
-import { tradingApi, liveTradingApi } from '@/lib/api'
+import { tradingApi, liveTradingApi, getErrorMessage } from '@/lib/api'
 import type { Order, Position, Portfolio, LiveOrder, LivePosition, PnLSummary } from '@/types'
 import { cn, formatNumber, formatPercent } from '@/lib/utils'
 
@@ -609,7 +609,7 @@ function CredentialsPanel() {
       })
       setTestResult(res.data)
     } catch (err: any) {
-      setTestResult({ success: false, message: err.message || '测试失败' })
+      setTestResult({ success: false, message: getErrorMessage(err, '测试失败') })
     } finally {
       setTesting(false)
     }

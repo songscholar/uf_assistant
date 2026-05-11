@@ -62,7 +62,7 @@ async def list_all(user: dict = Depends(get_current_user)):
             db.close()
     except Exception as exc:
         logger.error("list_credentials_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取凭证列表失败，请稍后重试")
 
 
 @router.post("/credentials")
@@ -85,7 +85,7 @@ async def add(request: CredentialRequest, user: dict = Depends(get_current_user)
             db.close()
     except Exception as exc:
         logger.error("add_credential_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="添加凭证失败，请检查输入后重试")
 
 
 @router.put("/credentials/{credential_id}")
@@ -113,7 +113,7 @@ async def update(credential_id: str, request: CredentialUpdateRequest, user: dic
         raise
     except Exception as exc:
         logger.error("update_credential_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="更新凭证失败，请稍后重试")
 
 
 @router.delete("/credentials/{credential_id}")
@@ -132,7 +132,7 @@ async def delete(credential_id: str, user: dict = Depends(get_current_user)):
         raise
     except Exception as exc:
         logger.error("delete_credential_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="删除凭证失败，请稍后重试")
 
 
 @router.post("/credentials/test")
@@ -155,7 +155,7 @@ async def test_connection(request: CredentialTestRequest, user: dict = Depends(g
         logger.error("credential_test_failed", error=str(exc))
         return {
             "success": False,
-            "message": f"连接失败: {exc}",
+            "message": "连接失败，请检查网络或凭证配置后重试",
             "data": None,
         }
 

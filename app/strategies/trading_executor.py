@@ -1956,7 +1956,7 @@ class TradingExecutor:
         )
 
         if pending_id is None:
-            return {"success": False, "error": "Deduped or enqueue failed"}
+            return {"success": False, "error": "信号去重或入队失败，请稍后重试"}
 
         if execution_mode == "live":
             return {

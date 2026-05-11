@@ -234,11 +234,11 @@ def _execute_indicator(
         dict with 'buy' and 'sell' boolean Series, or 'error' key on failure.
     """
     if depth >= _MAX_CALL_DEPTH:
-        return {"error": f"Maximum indicator call depth ({_MAX_CALL_DEPTH}) exceeded"}
+        return {"error": f"指标调用深度超过限制（最大 {_MAX_CALL_DEPTH} 层），可能存在循环调用"}
 
     is_safe, err = validate_code_safety(code)
     if not is_safe:
-        return {"error": f"Unsafe indicator code: {err}"}
+        return {"error": f"指标代码包含不安全操作: {err}，请检查后重试"}
 
     df = kline_df.copy()
 
@@ -274,7 +274,7 @@ def _execute_indicator(
     # Validate and add safe builtins
     is_safe_builtins, err2 = validate_code_safety(code)
     if not is_safe_builtins:
-        return {"error": f"Code safety check failed: {err2}"}
+        return {"error": f"代码安全检查未通过: {err2}，请检查后重试"}
 
     from app.core.safe_exec import build_safe_builtins
 
@@ -289,7 +289,7 @@ def _execute_indicator(
             timeout=30,
         )
         if not result["success"]:
-            return {"error": result.get("error", "Indicator execution failed")}
+            return {"error": result.get("error", "指标执行失败，请稍后重试")}
 
         # Extract output from the execution environment
         output = exec_globals.get("output", {})
@@ -307,7 +307,7 @@ def _execute_indicator(
             sell_series = df["sell"]
 
         if buy_series is None or sell_series is None:
-            return {"error": "Indicator code did not produce buy/sell signals"}
+            return {"error": "指标代码未产生买入/卖出信号"}
 
         # Ensure boolean type and proper index
         buy_arr = pd.Series(buy_series, index=kline_df.index).fillna(False).astype(bool)
@@ -317,7 +317,7 @@ def _execute_indicator(
 
     except Exception as exc:
         logger.error("indicator_execution_error", error=str(exc))
-        return {"error": f"Indicator execution error: {exc}"}
+        return {"error": f"指标执行出错: {exc}，请检查代码后重试"}
 
 
 # =============================================================================
@@ -354,10 +354,10 @@ def _execute_script_strategy(
     try:
         on_init, on_bar = compile_strategy_script_handlers(code)
     except (ValueError, RuntimeError) as exc:
-        return {"error": f"Script compilation failed: {exc}"}
+        return {"error": f"脚本编译失败: {exc}，请检查代码后重试"}
 
     if kline_df.empty:
-        return {"error": "No kline data available"}
+        return {"error": "暂无K线数据，请稍后重试"}
 
     # Build context
     ctx = StrategyScriptContext(bars_df=kline_df, initial_balance=initial_capital)

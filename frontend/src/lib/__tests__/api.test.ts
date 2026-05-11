@@ -119,14 +119,14 @@ describe('billingApi', () => {
     expect(mockGet).toHaveBeenCalledWith('/billing/credits')
   })
 
-  it('subscribe calls POST with planId', async () => {
-    await billingApi.subscribe('pro')
-    expect(mockPost).toHaveBeenCalledWith('/billing/subscribe', { plan_id: 'pro' })
+  it('subscribe calls POST with plan and channel', async () => {
+    await billingApi.subscribe('pro', 'alipay')
+    expect(mockPost).toHaveBeenCalledWith('/billing/subscribe', { plan: 'pro', channel: 'alipay' })
   })
 
-  it('createUsdtPayment calls POST with amount', async () => {
-    await billingApi.createUsdtPayment(100)
-    expect(mockPost).toHaveBeenCalledWith('/billing/usdt/create', { amount: 100 })
+  it('createUsdtPayment calls POST with plan', async () => {
+    await billingApi.createUsdtPayment('pro')
+    expect(mockPost).toHaveBeenCalledWith('/billing/usdt/create', { plan: 'pro' })
   })
 })
 

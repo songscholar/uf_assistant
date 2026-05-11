@@ -74,7 +74,7 @@ async def list_strategies():
         return list_all_strategies()
     except Exception as exc:
         logger.error("list_strategies_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取策略列表失败，请稍后重试")
 
 
 @router.post("/strategies/{strategy_key}/evaluate")
@@ -118,7 +118,7 @@ async def evaluate_strategy(strategy_key: str, request: StrategyEvaluateRequest)
         raise
     except Exception as exc:
         logger.error("evaluate_strategy_error", strategy=strategy_key, error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="策略评估失败，请稍后重试")
 
 
 @router.post("/strategies/pick")
@@ -134,7 +134,7 @@ async def pick_stocks(request: StrategyPickRequest):
         )
     except Exception as exc:
         logger.error("pick_stocks_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="选股失败，请稍后重试")
 
 
 @router.post("/strategies/screen")
@@ -156,7 +156,7 @@ async def quick_screen(request: QuickScreenRequest):
         return picker.quick_screen(conditions)
     except Exception as exc:
         logger.error("quick_screen_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="股票筛选失败，请稍后重试")
 
 
 @router.post("/strategies/custom")
@@ -181,7 +181,7 @@ async def create_custom_strategy(request: CustomStrategyRequest):
         raise
     except Exception as exc:
         logger.error("custom_strategy_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="生成自定义策略失败，请稍后重试")
 
 
 @router.get("/market/daily-report")
@@ -192,7 +192,7 @@ async def daily_report():
         return analyzer.generate_daily_report()
     except Exception as exc:
         logger.error("daily_report_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="生成每日报告失败，请稍后重试")
 
 
 # =============================================================================
@@ -319,10 +319,10 @@ async def run_backtest(request: BacktestRequest):
 
         return result
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail="回测参数有误，请检查后重试")
     except Exception as exc:
         logger.error("backtest_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="回测执行失败，请稍后重试")
 
 
 @router.post("/strategies/verify-code")
@@ -350,7 +350,7 @@ async def verify_code(request: CodeVerifyRequest):
                 return {"valid": False, "error": f"语法错误: {e.msg} (行 {e.lineno})"}
     except Exception as exc:
         logger.error("verify_code_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="代码验证失败，请稍后重试")
 
 
 @router.post("/strategies/code-quality")
@@ -363,7 +363,7 @@ async def code_quality(request: CodeQualityRequest):
         return result
     except Exception as exc:
         logger.error("code_quality_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="代码质量检查失败，请稍后重试")
 
 
 @router.post("/strategies/parse-params")
@@ -381,7 +381,7 @@ async def parse_params(request: ParseParamsRequest):
         }
     except Exception as exc:
         logger.error("parse_params_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="参数解析失败，请稍后重试")
 
 
 @router.post("/strategies/indicator/execute")
@@ -425,7 +425,7 @@ async def execute_indicator(request: IndicatorExecuteRequest):
         raise
     except Exception as exc:
         logger.error("execute_indicator_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="指标执行失败，请稍后重试")
 
 
 @router.get("/strategies/indicators")
@@ -444,7 +444,7 @@ async def list_indicators():
         }
     except Exception as exc:
         logger.error("list_indicators_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取指标列表失败，请稍后重试")
 
 
 @router.get("/strategies/indicators/{name}")
@@ -466,7 +466,7 @@ async def get_indicator(name: str):
         raise
     except Exception as exc:
         logger.error("get_indicator_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取指标详情失败，请稍后重试")
 
 
 @router.post("/strategies/start")
@@ -486,7 +486,7 @@ async def start_strategy(request: StrategyStartRequest):
         raise
     except Exception as exc:
         logger.error("start_strategy_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="启动策略失败，请稍后重试")
 
 
 @router.post("/strategies/stop")
@@ -505,7 +505,7 @@ async def stop_strategy(request: StrategyStopRequest):
         raise
     except Exception as exc:
         logger.error("stop_strategy_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="停止策略失败，请稍后重试")
 
 
 @router.get("/strategies/positions")
@@ -541,7 +541,7 @@ async def get_strategy_positions(strategy_id: str | None = None):
             session.close()
     except Exception as exc:
         logger.error("get_positions_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取策略持仓失败，请稍后重试")
 
 
 @router.get("/strategies/trades")
@@ -575,7 +575,7 @@ async def get_strategy_trades(strategy_id: str | None = None, limit: int = 50):
             session.close()
     except Exception as exc:
         logger.error("get_trades_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取交易记录失败，请稍后重试")
 
 
 @router.get("/strategies/equity-curve")
@@ -601,7 +601,7 @@ async def get_equity_curve(run_id: int):
             session.close()
     except Exception as exc:
         logger.error("get_equity_curve_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取权益曲线失败，请稍后重试")
 
 
 @router.get("/strategies/logs")
@@ -634,7 +634,7 @@ async def get_strategy_logs(strategy_id: int, limit: int = 100):
             session.close()
     except Exception as exc:
         logger.error("get_logs_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取策略日志失败，请稍后重试")
 
 
 # =============================================================================

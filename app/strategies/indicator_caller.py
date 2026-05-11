@@ -68,18 +68,18 @@ class IndicatorCaller:
         # 检查调用深度
         if _depth >= self.MAX_CALL_DEPTH:
             logger.error(f"Indicator call depth exceeded {self.MAX_CALL_DEPTH}")
-            return {"error": f"Indicator call depth exceeded {self.MAX_CALL_DEPTH}"}
+            return {"error": f"指标调用深度超过限制（最大 {self.MAX_CALL_DEPTH} 层）"}
 
         # 获取指标代码
         indicator_code, indicator_id = self._get_indicator_code(indicator_ref)
         if not indicator_code:
             logger.warning(f"Indicator not found: {indicator_ref}")
-            return {"error": f"Indicator not found: {indicator_ref}"}
+            return {"error": f"指标不存在: {indicator_ref}"}
 
         # 检查循环依赖
         if indicator_id in self._call_stack:
             logger.error(f"Circular dependency detected: {self._call_stack} -> {indicator_id}")
-            return {"error": f"Circular dependency detected: {self._call_stack} -> {indicator_id}"}
+            return {"error": f"检测到循环依赖: {self._call_stack} -> {indicator_id}"}
 
         self._call_stack.append(indicator_id)
 
@@ -88,7 +88,7 @@ class IndicatorCaller:
             is_safe, err = validate_code_safety(indicator_code)
             if not is_safe:
                 logger.error(f"Indicator {indicator_ref} unsafe: {err}")
-                return {"error": f"Unsafe indicator code: {err}"}
+                return {"error": f"指标代码包含不安全操作: {err}"}
 
             # 解析并合并参数
             declared_params = IndicatorParamsParser.parse_params(indicator_code)
@@ -126,7 +126,7 @@ class IndicatorCaller:
             )
             if not exec_result["success"]:
                 logger.error(f"Indicator {indicator_ref} rejected: {exec_result.get('error')}")
-                return {"error": f"Indicator execution failed: {exec_result.get('error')}"}
+                return {"error": f"指标执行失败: {exec_result.get('error')}"}
 
             # 提取 buy/sell 信号（与 UF _execute_indicator 一致）
             output = exec_env.get("output", {})
@@ -143,7 +143,7 @@ class IndicatorCaller:
                 sell_series = df_copy["sell"]
 
             if buy_series is None or sell_series is None:
-                return {"error": "Indicator code did not produce buy/sell signals"}
+                return {"error": "指标代码未产生买入/卖出信号"}
 
             buy_arr = pd.Series(buy_series, index=df.index).fillna(False).astype(bool)
             sell_arr = pd.Series(sell_series, index=df.index).fillna(False).astype(bool)
@@ -152,7 +152,7 @@ class IndicatorCaller:
 
         except Exception as e:
             logger.error(f"Error calling indicator {indicator_ref}: {e}")
-            return {"error": f"Indicator execution error: {e}"}
+            return {"error": f"指标执行出错: {e}"}
         finally:
             self._call_stack.pop()
 

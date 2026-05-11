@@ -49,7 +49,7 @@ async def overview():
         raise
     except Exception as exc:
         logger.error("overview_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取市场概况失败，请稍后重试")
 
 
 @router.get("/market/indices")
@@ -61,7 +61,7 @@ async def indices():
         raise
     except Exception as exc:
         logger.error("indices_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取大盘指数失败，请稍后重试")
 
 
 @router.get("/market/sectors")
@@ -73,7 +73,7 @@ async def sectors():
         raise
     except Exception as exc:
         logger.error("sectors_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取板块热点失败，请稍后重试")
 
 
 @router.get("/market/longhu")
@@ -85,7 +85,7 @@ async def longhu(date: str | None = Query(None, description="日期 YYYY-MM-DD")
         raise
     except Exception as exc:
         logger.error("longhu_error", date=date, error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取龙虎榜失败，请稍后重试")
 
 
 @router.get("/market/northbound")
@@ -97,4 +97,4 @@ async def northbound():
         raise
     except Exception as exc:
         logger.error("northbound_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取北向资金失败，请稍后重试")

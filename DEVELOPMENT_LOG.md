@@ -3094,3 +3094,36 @@ api/v1/trading/live/...nce?market=crypto:1 Failed to load resource: 500
 - TypeScript 编译：**0 errors**（仅剩 pre-existing 的 api.test.ts）
 - 后端单元测试：**通过**
 - 本地 commit：`f7ae8e9`
+
+
+---
+
+## 2025-05-07 — 前端报错信息中文化映射
+
+### 改动目标
+将前端所有直接暴露给用户的英文网络/异常错误映射为中文用户友好提示，与后端已中文化的 `detail` 保持一致。
+
+### 涉及文件
+
+**新增工具函数**
+- `frontend/src/lib/api.ts` — 新增 `getErrorMessage(err, fallback)` 统一映射：
+  - `Network Error` → `网络连接失败，请检查网络设置`
+  - `timeout` / `Timeout` → `请求超时，请稍后重试`
+  - `canceled` / `cancelled` / `aborted` → `请求已取消`
+  - 优先透传后端返回的 `detail` / `message`（已经是中文）
+
+**页面文件（全部替换 `err.message` 直接暴露）**
+- `frontend/src/pages/LoginPage.tsx`
+- `frontend/src/pages/RegisterPage.tsx`
+- `frontend/src/pages/TradingPage.tsx`
+- `frontend/src/pages/BillingPage.tsx`
+- `frontend/src/pages/AdminUsersPage.tsx`
+- `frontend/src/pages/CryptoPage.tsx`
+- `frontend/src/pages/StrategyPage.tsx`
+
+**测试修复**
+- `frontend/src/lib/__tests__/api.test.ts` — 修复 `subscribe` / `createUsdtPayment` 签名与 API 定义不匹配的 pre-existing 编译错误
+
+### 验证结果
+- `npm run build`：**通过**（0 TypeScript errors）
+- 前端构建产物正常生成

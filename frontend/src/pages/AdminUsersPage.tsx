@@ -14,7 +14,7 @@ import {
   UserPlus,
   Coins,
 } from 'lucide-react'
-import { userAdminApi } from '@/lib/api'
+import { userAdminApi, getErrorMessage } from '@/lib/api'
 import type { AdminUser } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -72,7 +72,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '保存失败')
+      setError(getErrorMessage(err, '保存失败'))
     } finally {
       setSaving(false)
     }

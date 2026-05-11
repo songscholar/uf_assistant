@@ -114,7 +114,7 @@ async def list_conversations(user: dict = Depends(get_current_user), limit: int 
         return ConversationListResponse(conversations=conversations)
     except Exception as exc:
         logger.error("list_conversations_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取会话列表失败，请稍后重试")
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
@@ -139,7 +139,7 @@ async def get_conversation(conversation_id: str):
         raise
     except Exception as exc:
         logger.error("get_conversation_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取会话详情失败，请稍后重试")
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -155,7 +155,7 @@ async def delete_conversation(conversation_id: str):
         raise
     except Exception as exc:
         logger.error("delete_conversation_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="删除会话失败，请稍后重试")
 
 
 @router.post("/conversations")
@@ -170,4 +170,4 @@ async def create_conversation(user: dict = Depends(get_current_user), title: str
         }
     except Exception as exc:
         logger.error("create_conversation_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="创建会话失败，请稍后重试")

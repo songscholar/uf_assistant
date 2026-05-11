@@ -22,7 +22,7 @@ import {
   SlidersHorizontal,
   Lightbulb,
 } from 'lucide-react'
-import { strategyApi, strategyEngineApi } from '@/lib/api'
+import { strategyApi, strategyEngineApi, getErrorMessage } from '@/lib/api'
 import type {
   StrategyInfo,
   StrategyListItem,
@@ -526,7 +526,7 @@ function BacktestTab() {
       const res = await strategyEngineApi.backtest({ code, symbol, params })
       setResult(res.data)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '回测失败')
+      setError(getErrorMessage(err, '回测失败'))
     } finally {
       setRunning(false)
     }
@@ -1047,7 +1047,7 @@ function LibraryTab() {
       const res = await strategyApi.pick(selectedStrategy, symbols, { min_confidence: minConfidence, params })
       setPickResult(res.data)
     } catch (err: any) {
-      setPickResult({ error: err.message || '选股失败' })
+      setPickResult({ error: getErrorMessage(err, '选股失败') })
     } finally {
       setPickLoading(false)
     }
@@ -1066,7 +1066,7 @@ function LibraryTab() {
       const res = await strategyApi.screen(filters)
       setScreenResult(res.data)
     } catch (err: any) {
-      setScreenResult({ error: err.message || '筛选失败' })
+      setScreenResult({ error: getErrorMessage(err, '筛选失败') })
     } finally {
       setPickLoading(false)
     }
@@ -1080,7 +1080,7 @@ function LibraryTab() {
       const res = await strategyApi.createCustom(customDesc.trim())
       setCustomResult(res.data)
     } catch (err: any) {
-      setCustomResult({ success: false, error: err.message || '生成失败' })
+      setCustomResult({ success: false, error: getErrorMessage(err, '生成失败') })
     } finally {
       setCustomLoading(false)
     }

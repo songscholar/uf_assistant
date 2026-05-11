@@ -175,7 +175,7 @@ async def get_user_detail(user_id: int, _admin: dict[str, Any] = Depends(require
     """Get user detail by ID."""
     rows = _q(f"SELECT {_UC} FROM users WHERE id = :id", {"id": user_id})
     if not rows:
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     u = _ur(rows[0]); u.pop("password_hash", None)
     return {"user": u}
 
@@ -184,9 +184,9 @@ async def get_user_detail(user_id: int, _admin: dict[str, Any] = Depends(require
 async def create_user(request: CreateUserRequest, _admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """Create a new user."""
     if _q("SELECT id FROM users WHERE username = :u", {"u": request.username}):
-        raise HTTPException(409, detail="username_taken")
+        raise HTTPException(409, detail="该用户名已被占用")
     if _q("SELECT id FROM users WHERE email = :e", {"e": request.email}):
-        raise HTTPException(409, detail="email_already_registered")
+        raise HTTPException(409, detail="该邮箱已注册")
     now = datetime.now(timezone.utc)
     uid = _e("INSERT INTO users (username,email,password_hash,role,nickname,is_active,created_at,updated_at) VALUES (:u,:e,:p,:r,:n,1,:t,:t)", {"u": request.username, "e": request.email, "p": _hpw(request.password), "r": request.role, "n": request.nickname or request.username, "t": now})
     if request.credits > 0 and get_settings().billing.enabled:
@@ -199,15 +199,15 @@ async def create_user(request: CreateUserRequest, _admin: dict[str, Any] = Depen
 async def update_user(request: UpdateUserRequest, _admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """Update user info."""
     if not _q("SELECT id FROM users WHERE id = :id", {"id": request.user_id}):
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     sets: list[str] = []; p: dict[str, Any] = {"id": request.user_id, "now": datetime.now(timezone.utc)}
     if request.username is not None:
         if _q("SELECT id FROM users WHERE username = :u AND id != :id", {"u": request.username, "id": request.user_id}):
-            raise HTTPException(409, detail="username_taken")
+            raise HTTPException(409, detail="该用户名已被占用")
         sets.append("username = :u"); p["u"] = request.username
     if request.email is not None:
         if _q("SELECT id FROM users WHERE email = :e AND id != :id", {"e": request.email, "id": request.user_id}):
-            raise HTTPException(409, detail="email_already_registered")
+            raise HTTPException(409, detail="该邮箱已注册")
         sets.append("email = :e"); p["e"] = request.email
     if request.role is not None:
         sets.append("role = :r"); p["r"] = request.role
@@ -216,32 +216,32 @@ async def update_user(request: UpdateUserRequest, _admin: dict[str, Any] = Depen
     if request.is_active is not None:
         sets.append("is_active = :a"); p["a"] = 1 if request.is_active else 0
     if not sets:
-        raise HTTPException(400, detail="no_fields_to_update")
+        raise HTTPException(400, detail="没有要更新的字段")
     sets.append("updated_at = :now")
     _e(f"UPDATE users SET {', '.join(sets)} WHERE id = :id", p)
     logger.info("admin_update_user", uid=request.user_id)
-    return {"message": "user_updated", "user_id": request.user_id}
+    return {"message": "用户信息已更新", "user_id": request.user_id}
 
 
 @router.delete("/users/delete")
 async def delete_user(user_id: int, admin: dict[str, Any] = Depends(require_admin)) -> dict[str, str]:
     """Delete a user (cannot delete self)."""
     if admin.get("id") == user_id:
-        raise HTTPException(400, detail="cannot_delete_self")
+        raise HTTPException(400, detail="不能删除自己")
     if not _q("SELECT id FROM users WHERE id = :id", {"id": user_id}):
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     _e("DELETE FROM users WHERE id = :id", {"id": user_id})
     logger.info("admin_delete_user", uid=user_id)
-    return {"message": "user_deleted"}
+    return {"message": "用户已删除"}
 
 
 @router.post("/users/reset-password")
 async def admin_reset_password(request: AdminResetPasswordRequest, _admin: dict[str, Any] = Depends(require_admin)) -> dict[str, str]:
     """Admin reset any user's password."""
     if not _q("SELECT id FROM users WHERE id = :id", {"id": request.user_id}):
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     _e("UPDATE users SET password_hash = :p, updated_at = :now WHERE id = :id", {"p": _hpw(request.new_password), "id": request.user_id, "now": datetime.now(timezone.utc)})
-    return {"message": "password_reset_success"}
+    return {"message": "密码已重置"}
 
 
 @router.get("/users/roles")
@@ -258,18 +258,18 @@ async def get_roles(_admin: dict[str, Any] = Depends(require_admin)) -> dict[str
 async def set_credits(request: SetCreditsRequest, _admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """Set user credits (admin)."""
     if not get_settings().billing.enabled:
-        raise HTTPException(503, detail="billing_not_enabled")
+        raise HTTPException(503, detail="计费系统未启用")
     now = datetime.now(timezone.utc)
     _e("INSERT INTO user_credits (user_id,credits,created_at,updated_at) VALUES (:uid,:c,:t,:t) ON CONFLICT(user_id) DO UPDATE SET credits = :c, updated_at = :t", {"uid": str(request.user_id), "c": request.amount, "t": now})
     logger.info("admin_set_credits", uid=request.user_id, amount=request.amount)
-    return {"message": "credits_set", "user_id": request.user_id, "credits": request.amount}
+    return {"message": "积分已设置", "user_id": request.user_id, "credits": request.amount}
 
 
 @router.post("/users/set-vip")
 async def set_vip(request: SetVipRequest, _admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """Set user VIP status (admin)."""
     if not get_settings().billing.enabled:
-        raise HTTPException(503, detail="billing_not_enabled")
+        raise HTTPException(503, detail="计费系统未启用")
     expires_at: datetime | None = None; is_lifetime = False
     if request.expires_at:
         s = request.expires_at.strip().lower()
@@ -279,11 +279,11 @@ async def set_vip(request: SetVipRequest, _admin: dict[str, Any] = Depends(requi
             try:
                 expires_at = datetime.fromisoformat(request.expires_at.replace("Z", "+00:00"))
             except Exception as e:
-                raise HTTPException(400, detail=f"invalid_expires_at: {e}")
+                raise HTTPException(400, detail="VIP 过期时间格式不正确")
     now = datetime.now(timezone.utc)
     _e("INSERT INTO user_credits (user_id,vip_expires_at,vip_is_lifetime,created_at,updated_at) VALUES (:uid,:exp,:lt,:t,:t) ON CONFLICT(user_id) DO UPDATE SET vip_expires_at = :exp, vip_is_lifetime = :lt, updated_at = :t", {"uid": str(request.user_id), "exp": expires_at, "lt": 1 if is_lifetime else 0, "t": now})
     logger.info("admin_set_vip", uid=request.user_id, lifetime=is_lifetime)
-    return {"message": "vip_set", "user_id": request.user_id, "vip_expires_at": request.expires_at, "is_lifetime": is_lifetime}
+    return {"message": "VIP 状态已设置", "user_id": request.user_id, "vip_expires_at": request.expires_at, "is_lifetime": is_lifetime}
 
 
 @router.get("/users/credits-log")
@@ -300,7 +300,7 @@ async def get_profile(user: dict[str, Any] = Depends(get_current_user)) -> dict[
     """Get own profile with billing info."""
     rows = _q(f"SELECT {_UC} FROM users WHERE id = :id", {"id": user["user_id"]})
     if not rows:
-        raise HTTPException(404, detail="user_not_found")
+        raise HTTPException(404, detail="用户不存在")
     profile = _ur(rows[0])
     if get_settings().billing.enabled:
         br = _q("SELECT credits,vip_expires_at,vip_is_lifetime,vip_plan FROM user_credits WHERE user_id = :uid", {"uid": str(user["user_id"])})
@@ -323,11 +323,11 @@ async def update_profile(request: UpdateProfileRequest, user: dict[str, Any] = D
     if request.timezone is not None:
         sets.append("timezone = :tz"); p["tz"] = request.timezone
     if not sets:
-        raise HTTPException(400, detail="no_fields_to_update")
+        raise HTTPException(400, detail="没有要更新的字段")
     sets.append("updated_at = :now")
     _e(f"UPDATE users SET {', '.join(sets)} WHERE id = :id", p)
     logger.info("profile_updated", uid=user["user_id"])
-    return {"message": "profile_updated"}
+    return {"message": "个人资料已更新"}
 
 
 @router.post("/users/change-password")
@@ -335,9 +335,9 @@ async def change_password(request: ChangePasswordRequest, user: dict[str, Any] =
     """Change own password."""
     rows = _q("SELECT password_hash FROM users WHERE id = :id", {"id": user["user_id"]})
     if not rows or not _cpw(request.old_password, rows[0][0]):
-        raise HTTPException(400, detail="old_password_incorrect")
+        raise HTTPException(400, detail="原密码错误")
     _e("UPDATE users SET password_hash = :p, updated_at = :now WHERE id = :id", {"p": _hpw(request.new_password), "id": user["user_id"], "now": datetime.now(timezone.utc)})
-    return {"message": "password_changed"}
+    return {"message": "密码已修改"}
 
 
 # ── Notification Settings ────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ async def update_notification_settings(request: dict[str, Any], user: dict[str, 
     meta["notifications"] = request
     _save_meta(user["user_id"], meta)
     logger.info("notification_settings_updated", uid=user["user_id"])
-    return {"message": "notification_settings_updated"}
+    return {"message": "通知设置已更新"}
 
 
 # ── Chart Templates ──────────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ async def save_chart_template(request: dict[str, Any], user: dict[str, Any] = De
     meta["chart_templates"] = templates
     _save_meta(user["user_id"], meta)
     logger.info("chart_template_saved", uid=user["user_id"], tid=request.get("id"))
-    return {"message": "template_saved", "id": request.get("id")}
+    return {"message": "图表模板已保存", "id": request.get("id")}
 
 
 @router.delete("/users/chart-templates")
@@ -396,7 +396,7 @@ async def delete_chart_template(template_id: int, user: dict[str, Any] = Depends
     meta["chart_templates"] = [t for t in meta.get("chart_templates", []) if t.get("id") != template_id]
     _save_meta(user["user_id"], meta)
     logger.info("chart_template_deleted", uid=user["user_id"], tid=template_id)
-    return {"message": "template_deleted"}
+    return {"message": "图表模板已删除"}
 
 
 # ── /user/* aliases (frontend compatibility) ──────────────────────────────────

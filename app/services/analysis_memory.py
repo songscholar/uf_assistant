@@ -397,7 +397,7 @@ class AnalysisMemoryService:
             }
         except Exception as e:
             logger.error(f"Failed to get performance stats: {e}")
-            return {"total_analyses": 0, "avg_confidence": 0, "accuracy_pct": 0, "error": str(e)}
+            return {"total_analyses": 0, "avg_confidence": 0, "accuracy_pct": 0, "error": "获取统计数据失败，请稍后重试"}
 
     def get_adjusted_confidence(self, raw_confidence: int, market: str | None = None, symbol: str | None = None) -> int:
         """基于历史准确率桶校准置信度"""

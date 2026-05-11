@@ -53,10 +53,10 @@ async def place_order(request: OrderRequest, current_user: dict = Depends(get_cu
         )
     except TradingError as exc:
         logger.warning("place_order_business_error", user_id=current_user["user_id"], error=str(exc))
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail="交易参数有误，请检查后重试")
     except Exception as exc:
         logger.error("place_order_error", user_id=current_user["user_id"], error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="下单失败，请稍后重试")
 
 
 @router.get("/trading/positions")
@@ -66,7 +66,7 @@ async def positions(current_user: dict = Depends(get_current_user)):
         return get_positions(user_id=current_user["user_id"])
     except Exception as exc:
         logger.error("positions_error", user_id=current_user["user_id"], error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取持仓失败，请稍后重试")
 
 
 @router.get("/trading/position/{symbol}")
@@ -80,7 +80,7 @@ async def position(symbol: str, current_user: dict = Depends(get_current_user)):
         return {"symbol": symbol, "has_position": False}
     except Exception as exc:
         logger.error("position_error", user_id=current_user["user_id"], symbol=symbol, error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取持仓失败，请稍后重试")
 
 
 @router.get("/trading/orders")
@@ -90,7 +90,7 @@ async def orders(status: str | None = None, current_user: dict = Depends(get_cur
         return get_orders(user_id=current_user["user_id"], status=status)
     except Exception as exc:
         logger.error("orders_error", user_id=current_user["user_id"], error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取订单列表失败，请稍后重试")
 
 
 @router.delete("/trading/orders/{order_id}")
@@ -100,7 +100,7 @@ async def cancel(order_id: str, current_user: dict = Depends(get_current_user)):
         return cancel_order(user_id=current_user["user_id"], order_id=order_id)
     except Exception as exc:
         logger.error("cancel_error", user_id=current_user["user_id"], order_id=order_id, error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="取消订单失败，请稍后重试")
 
 
 @router.get("/trading/portfolio")
@@ -110,7 +110,7 @@ async def portfolio(current_user: dict = Depends(get_current_user)):
         return get_portfolio(user_id=current_user["user_id"])
     except Exception as exc:
         logger.error("portfolio_error", user_id=current_user["user_id"], error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取投资组合失败，请稍后重试")
 
 
 # ── 实盘交易接口 ─────────────────────────────────────────────────────────────
@@ -171,10 +171,10 @@ async def live_order(request: LiveOrderRequest):
             db.close()
     except CredentialError as exc:
         logger.warning("live_order_no_credential", error=str(exc))
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail="未配置交易凭证或凭证无效，请先检查凭证设置")
     except Exception as exc:
         logger.error("live_order_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="实盘下单失败，请稍后重试")
 
 
 @router.get("/trading/live/orders")
@@ -222,7 +222,7 @@ async def live_orders(
             db.close()
     except Exception as exc:
         logger.error("live_orders_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取订单列表失败，请稍后重试")
 
 
 @router.post("/trading/live/cancel/{order_id}")
@@ -243,10 +243,10 @@ async def live_cancel(order_id: str, market: str = Query(...)):
             db.close()
     except CredentialError as exc:
         logger.warning("live_cancel_no_credential", order_id=order_id, error=str(exc))
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail="未配置交易凭证或凭证无效，请先检查凭证设置")
     except Exception as exc:
         logger.error("live_cancel_error", order_id=order_id, error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="取消订单失败，请稍后重试")
 
 
 @router.get("/trading/live/positions")
@@ -280,7 +280,7 @@ async def live_positions(market: str | None = Query(None)):
             db.close()
     except Exception as exc:
         logger.error("live_positions_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取持仓失败，请稍后重试")
 
 
 @router.post("/trading/live/sync")
@@ -312,10 +312,10 @@ async def live_sync(market: str = Query(...)):
             db.close()
     except CredentialError as exc:
         logger.warning("live_sync_no_credential", error=str(exc))
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail="未配置交易凭证或凭证无效，请先检查凭证设置")
     except Exception as exc:
         logger.error("live_sync_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="同步持仓失败，请稍后重试")
 
 
 @router.get("/trading/live/pnl")
@@ -332,7 +332,7 @@ async def live_pnl(market: str | None = Query(None)):
             db.close()
     except Exception as exc:
         logger.error("live_pnl_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取盈亏数据失败，请稍后重试")
 
 
 @router.get("/trading/live/balance")
@@ -351,10 +351,10 @@ async def live_balance(market: str = Query(...)):
             db.close()
     except CredentialError as exc:
         logger.warning("live_balance_no_credential", error=str(exc))
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail="未配置交易凭证或凭证无效，请先检查凭证设置")
     except Exception as exc:
         logger.error("live_balance_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取账户余额失败，请稍后重试")
 
 
 @router.get("/trading/live/trades")
@@ -376,4 +376,4 @@ async def live_trades(
             db.close()
     except Exception as exc:
         logger.error("live_trades_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="获取交易历史失败，请稍后重试")

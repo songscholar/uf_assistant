@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Bitcoin, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Clock } from 'lucide-react'
-import { cryptoApi } from '@/lib/api'
+import { cryptoApi, getErrorMessage } from '@/lib/api'
 import type { CryptoPrice } from '@/types'
 import { cn, formatNumber } from '@/lib/utils'
 
@@ -68,7 +68,7 @@ export default function CryptoPage() {
       setDataSource(data.source === 'demo' ? 'demo' : 'live')
       setLastUpdated(new Date().toISOString())
     } catch (err: any) {
-      setError(err.message || '获取数据失败')
+      setError(getErrorMessage(err, '获取数据失败'))
       setCryptos([])
     } finally {
       setLoading(false)

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
+import { getErrorMessage } from '@/lib/api'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -18,8 +19,7 @@ export default function LoginPage() {
       await login(username, password)
       navigate('/chat')
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '登录失败'
-      setError(msg)
+      setError(getErrorMessage(err, '登录失败'))
     } finally {
       setLoading(false)
     }

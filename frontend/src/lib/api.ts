@@ -27,6 +27,30 @@ api.interceptors.response.use(
   },
 )
 
+/**
+ * 将常见英文网络/Axios 错误映射为中文用户友好提示。
+ * 优先使用后端返回的 detail/message（已经是中文）。
+ */
+export function getErrorMessage(err: unknown, fallback = '操作失败，请稍后重试'): string {
+  if (axios.isAxiosError(err)) {
+    if (err.response?.data?.detail) return String(err.response.data.detail)
+    if (err.response?.data?.message) return String(err.response.data.message)
+    const msg = err.message || ''
+    if (msg.includes('Network Error')) return '网络连接失败，请检查网络设置'
+    if (msg.includes('timeout') || msg.includes('Timeout')) return '请求超时，请稍后重试'
+    if (msg.includes('aborted') || msg.includes('canceled') || msg.includes('cancelled')) return '请求已取消'
+    return fallback
+  }
+  if (err instanceof Error) {
+    const msg = err.message || ''
+    if (msg.includes('Network Error')) return '网络连接失败，请检查网络设置'
+    if (msg.includes('timeout') || msg.includes('Timeout')) return '请求超时，请稍后重试'
+    if (msg.includes('aborted') || msg.includes('canceled') || msg.includes('cancelled')) return '请求已取消'
+    return msg || fallback
+  }
+  return fallback
+}
+
 // Chat APIs
 export const chatApi = {
   sendMessage: (message: string, conversationId?: string, provider?: string) =>

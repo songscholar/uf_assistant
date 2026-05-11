@@ -877,18 +877,18 @@ def test_exchange_connection(exchange_config: dict[str, Any]) -> dict[str, Any]:
                 result = _probe(market_type)
                 if result.get("success"):
                     if not explicit_market_type and len(market_candidates) > 1:
-                        result["message"] = f"Connection OK ({market_type})"
+                        result["message"] = f"连接成功（{market_type}）"
                     return result
                 last_failure = result
 
             if last_failure and not explicit_market_type and len(market_candidates) > 1:
                 tried = "/".join(market_candidates)
-                last_failure["message"] = f"{last_failure.get('message')}. Tried market_type={tried}"
-            return last_failure or {"success": False, "message": "Connection failed", "data": None}
+                last_failure["message"] = f"{last_failure.get('message')}。已尝试市场类型: {tried}"
+            return last_failure or {"success": False, "message": "连接失败", "data": None}
 
         except Exception as e:
             logger.error("test_exchange_connection_failed", error=str(e))
-            return {"success": False, "message": f"Connection failed: {e}", "data": None}
+            return {"success": False, "message": f"连接失败: {e}", "data": None}
 
 
 def _strategy_to_dict(strategy: StrategyModel) -> dict[str, Any]:

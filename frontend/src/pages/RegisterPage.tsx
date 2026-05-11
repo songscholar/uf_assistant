@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
-import { api } from '@/lib/api'
+import { api, getErrorMessage } from '@/lib/api'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -32,8 +32,7 @@ export default function RegisterPage() {
         })
       }, 1000)
     } catch (err: any) {
-      const msg = err.response?.data?.detail || (err instanceof Error ? err.message : '发送验证码失败')
-      setError(msg)
+      setError(err.response?.data?.detail || getErrorMessage(err, '发送验证码失败'))
     } finally {
       setCodeLoading(false)
     }
@@ -51,8 +50,7 @@ export default function RegisterPage() {
       await register(username, email, password, code)
       navigate('/chat')
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '注册失败'
-      setError(msg)
+      setError(getErrorMessage(err, '注册失败'))
     } finally {
       setLoading(false)
     }
