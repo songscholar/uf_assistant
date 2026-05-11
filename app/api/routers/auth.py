@@ -314,10 +314,9 @@ async def send_code(request: SendCodeRequest, req: Request) -> dict[str, Any]:
     mail_ok = await _mail(email, f"UF Stock Assistant - {subj.get(ct, '')}验证码", f"您的验证码是：{code}\n有效期 {s.email_code_expire_minutes} 分钟。")
     if not mail_ok:
         logger.info("code_generated_dev_mode", email=email, type=ct, code=code, note="SMTP 未配置，验证码已记录到日志，请查看服务器终端")
-        return {"message": "验证码已发送", "expires_in": s.email_code_expire_minutes * 60, "dev_mode": True, "code": code}
     else:
         logger.info("code_sent", email=email, type=ct)
-    return {"message": "验证码已发送", "expires_in": s.email_code_expire_minutes * 60, "dev_mode": False}
+    return {"message": "验证码已发送", "expires_in": s.email_code_expire_minutes * 60, "dev_mode": not mail_ok}
 
 
 @router.post("/auth/register")
