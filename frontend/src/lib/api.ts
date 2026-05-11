@@ -28,13 +28,65 @@ api.interceptors.response.use(
 )
 
 /**
+ * 后端错误码 → 中文映射表。
+ * 后端统一返回英文错误码，前端负责国际化展示。
+ */
+export const ERROR_CODE_MAP: Record<string, string> = {
+  // 认证
+  invalid_credentials: '用户名或密码错误',
+  account_creation_failed: '账户创建失败，请稍后重试',
+  account_disabled: '账户已被禁用',
+  account_locked: '账户已被锁定，请稍后重试',
+  captcha_failed: '人机验证失败，请刷新页面重试',
+  code_expired_or_invalid: '验证码已过期或无效',
+  invalid_code_type: '验证码类型无效',
+  code_send_rate_limited: '验证码发送过于频繁，请稍后再试',
+  email_already_registered: '该邮箱已注册',
+  registration_closed: '当前已关闭注册',
+  username_taken: '该用户名已被占用',
+  registration_failed: '注册失败，请稍后重试',
+  user_not_found: '用户不存在',
+  wrong_old_password: '原密码错误',
+  oauth_not_configured: '该登录方式未配置',
+  session_expired: '登录状态已过期，请重新登录',
+  oauth_email_unavailable: '无法获取邮箱信息，请尝试其他登录方式',
+  ip_rate_limited: '访问过于频繁，请稍后重试',
+
+  // 交易
+  insufficient_funds: '可用资金不足',
+  position_not_found: '持仓不存在',
+  position_insufficient: '持仓不足',
+  order_not_found: '订单不存在',
+  order_not_cancellable: '订单已成交或已取消',
+  block_trade_min_size: '大宗交易限额不足',
+  trade_type_not_supported: '该交易类型暂不支持',
+
+  // 通用
+  internal_error: '服务器内部错误，请稍后重试',
+}
+
+/**
  * 将常见英文网络/Axios 错误映射为中文用户友好提示。
- * 优先使用后端返回的 detail/message（已经是中文）。
+ * 优先匹配后端返回的错误码（ERROR_CODE_MAP），再兜底网络错误。
  */
 export function getErrorMessage(err: unknown, fallback = '操作失败，请稍后重试'): string {
   if (axios.isAxiosError(err)) {
-    if (err.response?.data?.detail) return String(err.response.data.detail)
-    if (err.response?.data?.message) return String(err.response.data.message)
+    const detail = err.response?.data?.detail
+    if (detail) {
+      const code = String(detail)
+      // 优先查错误码映射表
+      if (ERROR_CODE_MAP[code]) return ERROR_CODE_MAP[code]
+      // 已含中文直接透传（兼容旧接口或第三方服务）
+      if (/[\u4e00-\u9fff]/.test(code)) return code
+      // 未知错误码：原样展示（便于排查）
+      return code
+    }
+    if (err.response?.data?.message) {
+      const msg = String(err.response.data.message)
+      if (ERROR_CODE_MAP[msg]) return ERROR_CODE_MAP[msg]
+      if (/[\u4e00-\u9fff]/.test(msg)) return msg
+      return msg
+    }
     const msg = err.message || ''
     if (msg.includes('Network Error')) return '网络连接失败，请检查网络设置'
     if (msg.includes('timeout') || msg.includes('Timeout')) return '请求超时，请稍后重试'
