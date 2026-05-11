@@ -16,15 +16,21 @@ export default function RegisterPage() {
   const [codeSent, setCodeSent] = useState(false)
   const [codeCooldown, setCodeCooldown] = useState(0)
   const [codeLoading, setCodeLoading] = useState(false)
+  const [devCode, setDevCode] = useState('')
 
   const sendCode = async () => {
     if (!email || codeLoading) return
     setCodeLoading(true)
     setError('')
+    setDevCode('')
     try {
-      await api.post('/auth/send-code', { email, code_type: 'register' })
+      const resp = await api.post('/auth/send-code', { email, code_type: 'register' })
       setCodeSent(true)
       setCodeCooldown(60)
+      // dev_mode 下后端将验证码写入日志，同时返回中也可提示
+      if (resp.data?.dev_mode) {
+        setDevCode('开发模式：验证码已发送至服务器日志，请在终端查看')
+      }
       const timer = setInterval(() => {
         setCodeCooldown(prev => {
           if (prev <= 1) { clearInterval(timer); return 0 }
@@ -32,7 +38,11 @@ export default function RegisterPage() {
         })
       }, 1000)
     } catch (err: any) {
-      setError(err.response?.data?.detail || getErrorMessage(err, '发送验证码失败'))
+      const detail = err.response?.data?.detail
+      const msg = Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || String(d)).join('；')
+        : (detail || getErrorMessage(err, '发送验证码失败'))
+      setError(msg)
     } finally {
       setCodeLoading(false)
     }
@@ -105,6 +115,11 @@ export default function RegisterPage() {
             </div>
           </div>
 
+          {devCode && (
+            <div className="text-xs text-text-secondary bg-bg-secondary rounded-lg px-3 py-2">
+              {devCode}
+            </div>
+          )}
           {codeSent && (
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1">验证码</label>
