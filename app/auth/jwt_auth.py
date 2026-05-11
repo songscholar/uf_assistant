@@ -52,6 +52,7 @@ def verify_token_version(payload: dict) -> bool:
 
     user_id = payload.get("user_id")
     token_version = payload.get("token_version")
+    username = payload.get("sub")
     if user_id is None or token_version is None:
         return False
 
@@ -60,7 +61,7 @@ def verify_token_version(payload: dict) -> bool:
 
     session = get_auth_db_session()
     try:
-        user = session.query(User).filter(User.id == user_id).first()
+        user = session.query(User).filter(User.id == user_id, User.username == username).first()
         if user:
             return user.token_version == token_version
     finally:
