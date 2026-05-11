@@ -2918,3 +2918,25 @@ added_at: 2026-05-11
 
 ### 备注
 后端已返回正确字段（`size`、`amount`、`timestamp`、`pnl`、`side` 等），问题 purely 在前端字段名不匹配和数据解析脆弱性。
+
+
+---
+
+## 2026-05-07 — 修复：个人信息注册时间为空
+
+### 根因分析
+后端 `GET /user/profile` 返回格式为 `{ user: { username, email, created_at, ... } }`，但前端 `ProfileSection` 按 `res.data?.data || res.data` 解析，导致取到的是外层包装对象 `{ user: {...} }`，而非内层 profile。因此 `data.username`、`data.email`、`data.created_at` 全部为 `undefined`，注册时间显示为 `--`。
+
+数据库层面 `users` 表和 `uf_users` 表均有 `created_at` 字段且数据正常，无需改表。
+
+### 涉及文件
+- **修改** `frontend/src/pages/ProfilePage.tsx`
+
+### 改动方案
+将数据解析改为优先读取 `res.data?.user`，正确匹配后端返回结构：
+```tsx
+const data = res.data?.user || res.data?.data || res.data || {}
+```
+
+### 测试验证
+- `frontend npx tsc --noEmit`：**0 ProfilePage errors**（预存 2 个 api.test.ts 错误无关）

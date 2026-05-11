@@ -51,8 +51,8 @@ function ProfileSection() {
   useEffect(() => {
     userApi.getProfile()
       .then((res) => {
-        const data = res.data?.data || res.data || {}
-        // 优先使用登录信息中的用户名和邮箱，API 返回的作为补充
+        // 后端返回 { user: { username, email, created_at, ... } }
+        const data = res.data?.user || res.data?.data || res.data || {}
         setProfile(data)
         setForm({
           username: data.username || user?.username || '',
