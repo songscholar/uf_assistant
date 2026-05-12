@@ -9,8 +9,13 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 预加载 .env 到 os.environ，确保嵌套的 BaseSettings 子类也能读取环境变量
+# Pydantic Settings v2 的嵌套字段不会自动继承父级的 env_file 配置
+load_dotenv(override=False)
 
 
 class LogSettings(BaseSettings):

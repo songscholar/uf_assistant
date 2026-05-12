@@ -3277,3 +3277,39 @@ api/v1/trading/live/...nce?market=crypto:1 Failed to load resource: 500
 ### 验证结果
 - pytest：**567 passed, 4 failed（pre-existing，与本次修改无关）**
 - Python 编译：全部通过
+
+
+## 2025-05-12 — 修复 Pydantic nested settings 读取 .env 变量失效
+
+### 问题
+用户报告：`.env` 已设置 `STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED=true`，但后端 `billing.py` 仍报 `mock_payment_disabled`。
+
+### 根因分析
+Pydantic Settings v2 的嵌套 `BaseSettings` 字段（如 `cn_pay: CnPaymentSettings`）**不会自动继承父级的 `env_file` 配置**。
+
+具体机制：
+1. `AppSettings` 的 `env_nested_delimiter="__"`（双下划线）用于匹配嵌套字段
+2. 嵌套字段的 `.env` 变量名格式应为：`父前缀 + 字段名 + __ + 子字段名`
+3. `.env` 中原先写的是 `STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED=true`（单下划线），Pydantic 的 `explode_env_vars` 无法将其解析为 `cn_pay.mock_enabled`
+4. 结果是 `cn_pay` 使用 `default_factory=CnPaymentSettings()`，而 `CnPaymentSettings` 的 `env_file=None`，读不到 `.env`
+5. 对比 `auth`/`database` 字段：`.env` 中正确使用了双下划线（`STOCK_ASSISTANT_AUTH__SECRET_KEY`、`STOCK_ASSISTANT_DATABASE__URL`），所以能正常工作
+
+### 修复内容
+
+**1. `app/core/config.py` — 模块级 `load_dotenv()` 兜底**
+在导入区添加 `load_dotenv(override=False)`，将 `.env` 预加载到 `os.environ`。这样即使嵌套类的 `env_file=None`，也能通过 `EnvSettingsSource` 从 `os.environ` 读取变量。
+
+**2. `.env` — 修正变量名格式**
+将 `STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED=true` 改为 `STOCK_ASSISTANT_CN_PAY__MOCK_ENABLED=true`（双下划线），符合 Pydantic Settings v2 嵌套字段规范。
+
+**3. `tests/test_billing.py` — 同步更新测试**
+三个测试中 `monkeypatch.setenv` 的环境变量名改为双下划线格式，并清除单下划线变量避免残留干扰：
+- `test_subscribe_endpoint_mock_disabled`
+- `test_mock_confirm_and_membership`
+- `test_mock_confirm_without_mock_enabled`
+
+### 验证结果
+- `python3 -c "from app.core.config import get_settings; print(get_settings().cn_pay.mock_enabled)"` → `True` ✅
+- `pytest tests/test_config.py` → **9 passed** ✅
+- `pytest tests/test_billing.py` → **55 passed** ✅
+

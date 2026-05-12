@@ -557,7 +557,8 @@ class TestCnPayment:
 
     def test_subscribe_endpoint_mock_disabled(self, monkeypatch) -> None:
         """模拟支付关闭时应返回错误"""
-        monkeypatch.setenv("STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED", "false")
+        monkeypatch.setenv("STOCK_ASSISTANT_CN_PAY__MOCK_ENABLED", "false")
+        monkeypatch.delenv("STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED", raising=False)
         reload_settings()
         response = client.post("/api/v1/billing/subscribe", json={
             "plan": "monthly",
@@ -593,7 +594,8 @@ class TestCnPayment:
 
     def test_mock_confirm_and_membership(self, monkeypatch) -> None:
         """模拟支付确认后应开通会员并发放积分"""
-        monkeypatch.setenv("STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED", "true")
+        monkeypatch.setenv("STOCK_ASSISTANT_CN_PAY__MOCK_ENABLED", "true")
+        monkeypatch.delenv("STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED", raising=False)
         reload_settings()
 
         # 创建订单
@@ -651,7 +653,8 @@ class TestCnPayment:
 
     def test_mock_confirm_without_mock_enabled(self, monkeypatch) -> None:
         """未启用模拟支付时调用确认端点应失败"""
-        monkeypatch.setenv("STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED", "false")
+        monkeypatch.setenv("STOCK_ASSISTANT_CN_PAY__MOCK_ENABLED", "false")
+        monkeypatch.delenv("STOCK_ASSISTANT_CN_PAY_MOCK_ENABLED", raising=False)
         reload_settings()
 
         response = client.post("/api/v1/billing/pay/1/mock-confirm")
