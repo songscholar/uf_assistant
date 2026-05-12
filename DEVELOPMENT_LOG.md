@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-05-12 — 全模块改为本地 securities 表查询
+
+### 变更摘要
+
+所有行情查询入口统一改为优先查询本地 `securities` 表，无数据再 fallback 远程接口。
+
+### 新增/修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/services/market_sync.py` | 新增 `get_local_quote(symbol)` 公共接口 |
+| `app/strategies/trading_executor.py` | 股票价格查询改为 `get_local_quote` 优先 |
+| `app/strategies/market_data_collector.py` | `_get_stock_price` / `_get_fundamental` 改为本地表优先 |
+| `app/api/routers/stock.py` | watchlist 批量行情 / 添加价格快照改为本地表优先 |
+| `app/api/agent/markets.py` | agent realtime 接口改为本地表优先 |
+| `app/trading/backends/a_share_backend.py` | `get_ticker` 改为本地表优先 |
+| `app/services/analysis_memory.py` | `_fetch_current_price` 改为本地表优先 |
+| `app/services/market_sync.py` | A 股同步修复：`stock_zh_a_spot_em` → `stock_zh_a_spot()`；涨跌停按板块规则自动计算 |
+| `tests/test_tools_trading.py` | 测试 symbol 改为 TESTxxx，避免与真实证券数据冲突 |
+
+### 验证结果
+
+- 交易测试 15/15 通过 ✅
+- 全量测试 568 通过，4 个 pre-existing 失败 ✅
+- 前端构建通过 ✅
+- 本地 commit：`d997b9b` ✅
+
+---
+
 ## 2026-05-12 — 证券信息表 + 持仓订单展示修复 + 本地行情接口
 
 ### 变更摘要
@@ -17,7 +46,7 @@
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| `app/services/market_sync.py` | ~260 | 行情同步服务：A 股（AKShare `stock_zh_a_spot_em`）+ 币圈（CCXT `fetch_tickers`），SQLite upsert |
+| `app/services/market_sync.py` | ~300 | 行情同步服务：A 股（AKShare `stock_zh_a_spot`）+ 币圈（CCXT `fetch_tickers`），SQLite upsert；新增 `get_local_quote()` 本地查询接口 |
 
 ### 修改文件
 
