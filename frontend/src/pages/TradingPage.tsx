@@ -135,11 +135,13 @@ export default function TradingPage() {
   // 价格/方向变化时计算最大可买/卖数量
   useEffect(() => {
     if (orderSide === 'buy') {
-      if (!orderPrice || !quoteData) {
+      // 优先用输入的价格，没有则用行情价
+      const rawPrice = orderPrice || (quoteData?.price ? String(quoteData.price) : '')
+      if (!rawPrice) {
         setMaxQuantity(null)
         return
       }
-      const price = parseFloat(orderPrice)
+      const price = parseFloat(rawPrice)
       if (price <= 0 || isNaN(price)) {
         setMaxQuantity(null)
         return
@@ -149,6 +151,10 @@ export default function TradingPage() {
       setMaxQuantity(Math.max(0, qty))
     } else {
       // 卖出不需要价格，只看持仓
+      if (!orderSymbol) {
+        setMaxQuantity(null)
+        return
+      }
       const pos = positions.find((p: any) => p.symbol === orderSymbol)
       if (pos) {
         const qty = Math.floor(pos.quantity / 100) * 100
