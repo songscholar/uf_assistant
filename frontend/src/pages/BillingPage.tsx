@@ -46,7 +46,7 @@ function PaymentModal({ plan, onClose, onSuccess }: PaymentModalProps) {
   const planMap: Record<string, string> = {
     free: 'free',
     pro: 'monthly',
-    enterprise: 'yearly',
+    enterprise: 'lifetime',
   }
 
   const createOrder = async (selectedChannel: 'mock' | 'alipay' | 'wechat') => {

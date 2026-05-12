@@ -130,7 +130,7 @@ class TestVip:
         assert ok is True
         assert data["plan"] == "monthly"
         assert "order_id" in data
-        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        is_vip, expires, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
         assert expires is not None
 
@@ -138,7 +138,7 @@ class TestVip:
         user_id = _random_user()
         ok, msg, data = billing_svc.purchase_membership(user_id, "lifetime")
         assert ok is True
-        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        is_vip, expires, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
 
     def test_purchase_lifetime_auto_grant_first_month(self, billing_svc: BillingService) -> None:
@@ -182,7 +182,7 @@ class TestVip:
         billing_svc.purchase_membership(user_id, "monthly")
         ok, msg = billing_svc.set_vip(user_id, None)
         assert ok is True
-        is_vip, _ = billing_svc.get_user_vip_status(user_id)
+        is_vip, _, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is False
 
     def test_purchase_invalid_plan(self, billing_svc: BillingService) -> None:
@@ -339,7 +339,7 @@ class TestLifetimeMembership:
         user_id = _random_user()
         ok, msg, data = billing_svc.purchase_membership(user_id, "lifetime")
         assert ok is True
-        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        is_vip, expires, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
         assert expires is None
 
@@ -348,7 +348,7 @@ class TestLifetimeMembership:
         user_id = _random_user()
         ok, msg = billing_svc.set_vip(user_id, None, is_lifetime=True)
         assert ok is True
-        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        is_vip, expires, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
         assert expires is None
 
@@ -358,7 +358,7 @@ class TestLifetimeMembership:
         billing_svc.set_vip(user_id, None, is_lifetime=True)
         ok, msg = billing_svc.set_vip(user_id, None)
         assert ok is True
-        is_vip, expires = billing_svc.get_user_vip_status(user_id)
+        is_vip, expires, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is False
 
 
@@ -498,12 +498,12 @@ class TestMembershipRevoke:
         """撤销会员后 VIP 状态清除"""
         user_id = _random_user()
         billing_svc.purchase_membership(user_id, "monthly")
-        is_vip, _ = billing_svc.get_user_vip_status(user_id)
+        is_vip, _, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is True
 
         ok, msg = billing_svc.revoke_membership(user_id)
         assert ok is True
-        is_vip, _ = billing_svc.get_user_vip_status(user_id)
+        is_vip, _, _plan = billing_svc.get_user_vip_status(user_id)
         assert is_vip is False
 
     def test_revoke_non_vip(self, billing_svc: BillingService) -> None:

@@ -268,11 +268,60 @@ async def get_membership_plans(user: dict = Depends(get_current_user)) -> dict[s
     """获取会员套餐配置 + 当前用户计费快照"""
     try:
         svc = get_billing_service()
-        plans = svc.get_membership_plans()
+        plans_dict = svc.get_membership_plans()
         billing_info = svc.get_user_billing_info(str(user["user_id"]))
+
+        # 将后端字典格式转换为前端 BillingPlan[] 数组格式
+        plan_frontend_map = {
+            "monthly": {
+                "id": "pro",
+                "name": "专业版",
+                "features": ["无限 AI 分析", "高级策略回测", "实盘交易", "优先客服"],
+                "popular": True,
+            },
+            "yearly": {
+                "id": "enterprise",
+                "name": "企业版",
+                "features": ["全部功能", "API 接口", "专属客服", "定制策略"],
+                "popular": False,
+            },
+            "lifetime": {
+                "id": "enterprise",
+                "name": "终身会员",
+                "features": ["全部功能", "API 接口", "专属客服", "定制策略", "终身权益"],
+                "popular": False,
+            },
+        }
+
+        plans_list: list[dict[str, Any]] = []
+        for plan_key, plan_info in plans_dict.items():
+            frontend = plan_frontend_map.get(plan_key, {})
+            price_usd = float(plan_info.get("price_usd") or 0)
+            # USD -> CNY 近似汇率 7.2，向上取整到整数（与 subscribe 端点保持一致）
+            price_cny = int((price_usd * 7.2) + 0.99)
+            credits = int(plan_info.get("credits_once") or plan_info.get("credits_monthly") or 0)
+            plans_list.append({
+                "id": frontend.get("id", plan_key),
+                "name": frontend.get("name", plan_key),
+                "price": price_cny,
+                "credits": credits,
+                "features": frontend.get("features", []),
+                "popular": frontend.get("popular", False),
+            })
+
+        # 添加免费版
+        plans_list.insert(0, {
+            "id": "free",
+            "name": "免费版",
+            "price": 0,
+            "credits": 100,
+            "features": ["每日 5 次 AI 分析", "基础策略回测", "模拟交易"],
+            "popular": False,
+        })
+
         return {
             "code": "success",
-            "data": {"plans": plans, "billing": billing_info},
+            "data": {"plans": plans_list, "billing": billing_info},
         }
     except Exception as e:
         logger.error(f"get_membership_plans failed: {e}", exc_info=True)

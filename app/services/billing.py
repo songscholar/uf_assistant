@@ -354,29 +354,32 @@ class BillingService:
     # VIP / 会员
     # ------------------------------------------------------------------
 
-    def get_user_vip_status(self, user_id: str) -> Tuple[bool, Optional[datetime]]:
+    def get_user_vip_status(self, user_id: str) -> Tuple[bool, Optional[datetime], str]:
         """获取用户 VIP 状态（终身会员会自动检查并补发月度积分）
         
         返回:
-            (is_vip, expires_at): expires_at 为 None 表示终身会员永不过期
+            (is_vip, expires_at, vip_plan): expires_at 为 None 表示终身会员永不过期
         """
         try:
             session = BillingStore.get_session()
             row = session.query(UserCreditsModel).filter_by(user_id=user_id).first()
             if not row:
                 session.close()
-                return False, None
+                return False, None, ""
+
+            # 先读取所有需要的字段，避免 session 关闭后访问 ORM 属性
+            vip_plan = row.vip_plan or ""
 
             # 终身会员永不过期
             if row.vip_is_lifetime:
                 now = datetime.now(timezone.utc)
                 self._grant_lifetime_monthly_credits_if_due(session, row, now)
                 session.close()
-                return True, None
+                return True, None, vip_plan
 
             if not row.vip_expires_at:
                 session.close()
-                return False, None
+                return False, None, vip_plan
 
             expires_at = row.vip_expires_at
             if isinstance(expires_at, str):
@@ -388,10 +391,10 @@ class BillingService:
 
             is_vip = expires_at > now
             session.close()
-            return is_vip, expires_at
+            return is_vip, expires_at, vip_plan
         except Exception as e:
             logger.error(f"get_user_vip_status failed: {e}")
-            return False, None
+            return False, None, ""
 
     def _grant_lifetime_monthly_credits_if_due(
         self,
@@ -891,13 +894,40 @@ class BillingService:
     def get_user_billing_info(self, user_id: str) -> Dict[str, Any]:
         """获取用户计费与会员信息快照"""
         credits = self.get_user_credits(user_id)
-        is_vip, vip_expires_at = self.get_user_vip_status(user_id)
+        is_vip, vip_expires_at, vip_plan = self.get_user_vip_status(user_id)
         config = self.get_billing_config()
+
+        # 套餐等级映射（与前端 BillingPlan id 对应）
+        plan_level_map = {
+            "monthly": "pro",
+            "yearly": "enterprise",
+            "lifetime": "enterprise",
+        }
+        plan_name_map = {
+            "monthly": "专业版",
+            "yearly": "企业版",
+            "lifetime": "终身会员",
+        }
+
+        level = plan_name_map.get(vip_plan, "免费版") if is_vip else "免费版"
+
+        # 根据套餐返回权益列表
+        benefits: list[str] = []
+        if is_vip:
+            if vip_plan == "monthly":
+                benefits = ["无限 AI 分析", "高级策略回测", "实盘交易", "优先客服"]
+            elif vip_plan == "yearly":
+                benefits = ["全部功能", "API 接口", "专属客服", "定制策略"]
+            elif vip_plan == "lifetime":
+                benefits = ["全部功能", "API 接口", "专属客服", "定制策略", "终身权益"]
 
         return {
             "credits": float(credits),
             "is_vip": is_vip,
             "vip_expires_at": vip_expires_at.isoformat() if vip_expires_at else None,
+            "level": level,
+            "expires_at": vip_expires_at.isoformat() if vip_expires_at else None,
+            "benefits": benefits,
             "billing_enabled": config.get("enabled", False),
             "feature_costs": {
                 "ai_analysis": config.get("cost_ai_analysis", 0),
