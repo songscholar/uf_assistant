@@ -691,12 +691,29 @@ export default function TradingPage() {
             <thead>
               <tr className="bg-bg-secondary text-text-secondary text-xs">
                 {mode === 'live'
-                  ? ['市场', '代码', '数量', '成本', '现价', '未实现盈亏'].map((h) => (
-                      <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
-                    ))
-                  : ['代码', '名称', '数量', '成本', '现价', '市值', '盈亏', '费用'].map((h) => (
-                      <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
-                    ))
+                  ? (
+                      <>
+                        <th className="text-left px-4 py-2 font-medium">市场</th>
+                        <th className="text-left px-4 py-2 font-medium">代码</th>
+                        <th className="text-right px-4 py-2 font-medium">数量</th>
+                        <th className="text-right px-4 py-2 font-medium">成本</th>
+                        <th className="text-right px-4 py-2 font-medium">现价</th>
+                        <th className="text-right px-4 py-2 font-medium">未实现盈亏</th>
+                      </>
+                    )
+                  : (
+                      <>
+                        <th className="text-left px-4 py-2 font-medium">代码</th>
+                        <th className="text-left px-4 py-2 font-medium">名称</th>
+                        <th className="text-right px-4 py-2 font-medium">数量</th>
+                        <th className="text-right px-4 py-2 font-medium">成本</th>
+                        <th className="text-right px-4 py-2 font-medium">现价</th>
+                        <th className="text-right px-4 py-2 font-medium">市值</th>
+                        <th className="text-right px-4 py-2 font-medium">盈亏</th>
+                        <th className="text-right px-4 py-2 font-medium">收益率</th>
+                        <th className="text-right px-4 py-2 font-medium">费用</th>
+                      </>
+                    )
                 }
               </tr>
             </thead>
@@ -710,7 +727,7 @@ export default function TradingPage() {
                       <td className="px-4 py-3 text-right text-text-secondary">{pos.avg_cost?.toFixed(2)}</td>
                       <td className="px-4 py-3 text-right text-text-primary">{pos.current_price?.toFixed(2) ?? '--'}</td>
                       <td className={cn('px-4 py-3 text-right font-medium', (pos.unrealized_pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
-                        {pos.unrealized_pnl?.toFixed(2) ?? '--'}
+                        {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}{pos.unrealized_pnl?.toFixed(2) ?? '--'}
                       </td>
                     </tr>
                   ))
@@ -723,6 +740,9 @@ export default function TradingPage() {
                       <td className="px-4 py-3 text-right text-text-primary">{formatNumber(pos.current_price)}</td>
                       <td className="px-4 py-3 text-right text-text-primary">{formatNumber(pos.market_value)}</td>
                       <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
+                        {pos.pnl >= 0 ? '+' : ''}¥{formatNumber(Math.abs(pos.pnl))}
+                      </td>
+                      <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
                         {pos.pnl >= 0 ? '+' : ''}{formatPercent(pos.pnl_percent)}
                       </td>
                       <td className="px-4 py-3 text-right text-text-secondary">
@@ -733,7 +753,7 @@ export default function TradingPage() {
               }
               {(mode === 'live' ? livePositions : positions).length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无持仓</td>
+                  <td colSpan={mode === 'live' ? 6 : 9} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无持仓</td>
                 </tr>
               )}
             </tbody>
