@@ -354,7 +354,7 @@ function PlansTab() {
             <div
               key={plan.id}
               className={cn(
-                'bg-bg-card border rounded-xl p-6 card-hover relative overflow-hidden',
+                'bg-bg-card border rounded-xl p-6 card-hover relative overflow-hidden flex flex-col h-full',
                 plan.popular ? 'border-accent' : 'border-border'
               )}
             >
@@ -363,14 +363,18 @@ function PlansTab() {
                   推荐
                 </div>
               )}
-              <h3 className="text-lg font-bold text-text-primary mb-1">{plan.name}</h3>
-              <div className="mb-4">
-                <span className="text-3xl font-bold text-text-primary">{plan.price === 0 ? '免费' : `¥${plan.price}`}</span>
-                {plan.price > 0 && plan.id !== 'lifetime' && <span className="text-sm text-text-secondary">/月</span>}
-                {plan.id === 'lifetime' && <span className="text-sm text-text-secondary">/一次</span>}
+              {/* Header: 固定高度内容 */}
+              <div>
+                <h3 className="text-lg font-bold text-text-primary mb-1">{plan.name}</h3>
+                <div className="mb-4">
+                  <span className="text-3xl font-bold text-text-primary">{plan.price === 0 ? '免费' : `¥${plan.price}`}</span>
+                  {plan.price > 0 && plan.id !== 'lifetime' && <span className="text-sm text-text-secondary">/月</span>}
+                  {plan.id === 'lifetime' && <span className="text-sm text-text-secondary">/一次</span>}
+                </div>
+                <div className="text-xs text-text-tertiary mb-4">赠送 {plan.credits} 积分</div>
               </div>
-              <div className="text-xs text-text-tertiary mb-4">赠送 {plan.credits} 积分</div>
-              <ul className="space-y-2 mb-6">
+              {/* Features: 自适应撑开，将按钮推到底部 */}
+              <ul className="space-y-2 flex-1 mb-6">
                 {plan.features.map((f) => (
                   <li key={f} className="text-sm text-text-secondary flex items-center gap-2">
                     <Check className="w-4 h-4 text-success shrink-0" />
@@ -378,6 +382,7 @@ function PlansTab() {
                   </li>
                 ))}
               </ul>
+              {/* Button: 始终在底部 */}
               <button
                 onClick={() => {
                   if (!isDisabled && plan.price > 0) {
@@ -386,7 +391,7 @@ function PlansTab() {
                 }}
                 disabled={isDisabled}
                 className={cn(
-                  'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                  'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200 mt-auto',
                   'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
                   'disabled:opacity-50',
                   isDisabled
