@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-05-12 — 市价单取最新价 + 费用展示 + 卖出数量提示
+
+### 变更摘要
+
+1. **市价单取最新价**：用户不输入价格时，后端从 `securities` 表读取当前价格作为成交价
+2. **卖出数量提示优化**：无持仓时展示"当前可卖数量：0"，不再需要输入价格
+3. **费用预估展示**：下单区域新增费用预估面板（佣金、印花税、过户费、交易所费用、总费用），买入/卖出费用自动区分
+4. **订单/持仓费用列**：订单列表增加费用列；持仓列表增加累计买入费用列
+
+### 新增/修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `app/tools/trading.py` | `submit_order` 市价单查询 `securities` 表获取当前价格；`get_positions` 聚合累计买入费用 |
+| `app/api/routers/trading.py` | 新增 `POST /trading/fee-estimate` 费用预估接口 |
+| `frontend/src/lib/api.ts` | `tradingApi.estimateFee` |
+| `frontend/src/pages/TradingPage.tsx` | 卖出数量提示不需要价格；费用预估面板；订单列表费用列；持仓列表费用列 |
+| `frontend/src/types/index.ts` | `Position` 增加 `total_fee` |
+
+### 验证结果
+
+- 交易测试 15/15 通过 ✅
+- 全量测试 568 通过，4 个 pre-existing 失败 ✅
+- 前端构建通过 ✅
+- 本地 commit：`d9302e6` ✅
+
+---
+
 ## 2026-05-12 — 全模块改为本地 securities 表查询
 
 ### 变更摘要
