@@ -901,7 +901,7 @@ class BillingService:
         plan_level_map = {
             "monthly": "pro",
             "yearly": "enterprise",
-            "lifetime": "enterprise",
+            "lifetime": "lifetime",
         }
         plan_name_map = {
             "monthly": "专业版",

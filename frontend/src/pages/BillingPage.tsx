@@ -46,7 +46,8 @@ function PaymentModal({ plan, onClose, onSuccess }: PaymentModalProps) {
   const planMap: Record<string, string> = {
     free: 'free',
     pro: 'monthly',
-    enterprise: 'lifetime',
+    enterprise: 'yearly',
+    lifetime: 'lifetime',
   }
 
   const createOrder = async (selectedChannel: 'mock' | 'alipay' | 'wechat') => {
@@ -310,11 +311,16 @@ function PlansTab() {
     return <div className="flex items-center justify-center h-40 text-text-tertiary text-sm">加载中...</div>
   }
 
+  // 套餐等级（从低到高，用于判断包含关系）
+  const planRank: Record<string, number> = { free: 0, pro: 1, enterprise: 2, lifetime: 3 }
+  const userRank = membership?.plan_id ? (planRank[membership.plan_id] ?? 0) : 0
+
   // Default plans if API returns empty
   const displayPlans: BillingPlan[] = plans.length > 0 ? plans : [
     { id: 'free', name: '免费版', price: 0, credits: 100, features: ['每日 5 次 AI 分析', '基础策略回测', '模拟交易'] },
     { id: 'pro', name: '专业版', price: 99, credits: 5000, features: ['无限 AI 分析', '高级策略回测', '实盘交易', '优先客服'], popular: true },
     { id: 'enterprise', name: '企业版', price: 299, credits: 20000, features: ['全部功能', 'API 接口', '专属客服', '定制策略'] },
+    { id: 'lifetime', name: '终身会员', price: 499, credits: 800, features: ['全部功能', 'API 接口', '专属客服', '定制策略', '终身权益'] },
   ]
 
   return (
@@ -337,59 +343,68 @@ function PlansTab() {
       )}
 
       {/* Plans Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {displayPlans.map((plan) => (
-          <div
-            key={plan.id}
-            className={cn(
-              'bg-bg-card border rounded-xl p-6 card-hover relative overflow-hidden',
-              plan.popular ? 'border-accent' : 'border-border'
-            )}
-          >
-            {plan.popular && (
-              <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-accent-bg text-accent text-xs font-medium">
-                推荐
-              </div>
-            )}
-            <h3 className="text-lg font-bold text-text-primary mb-1">{plan.name}</h3>
-            <div className="mb-4">
-              <span className="text-3xl font-bold text-text-primary">{plan.price === 0 ? '免费' : `¥${plan.price}`}</span>
-              {plan.price > 0 && <span className="text-sm text-text-secondary">/月</span>}
-            </div>
-            <div className="text-xs text-text-tertiary mb-4">赠送 {plan.credits} 积分</div>
-            <ul className="space-y-2 mb-6">
-              {plan.features.map((f) => (
-                <li key={f} className="text-sm text-text-secondary flex items-center gap-2">
-                  <Check className="w-4 h-4 text-success shrink-0" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={() => {
-                const isCurrent = membership?.plan_id === plan.id
-                if (!isCurrent && plan.price > 0) {
-                  setSelectedPlan(plan)
-                }
-              }}
-              disabled={membership?.plan_id === plan.id || plan.price === 0}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {displayPlans.map((plan) => {
+          const currentRank = planRank[plan.id] ?? 0
+          const isCurrent = membership?.plan_id === plan.id
+          const isIncluded = currentRank < userRank  // 低等级套餐被高等级包含
+          const isDisabled = isCurrent || isIncluded || plan.price === 0
+
+          return (
+            <div
+              key={plan.id}
               className={cn(
-                'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
-                'disabled:opacity-50',
-                membership?.plan_id === plan.id || plan.price === 0
-                  ? 'bg-bg-secondary text-text-primary'
-                  : 'bg-accent text-white hover:bg-accent-light shadow-sm'
+                'bg-bg-card border rounded-xl p-6 card-hover relative overflow-hidden',
+                plan.popular ? 'border-accent' : 'border-border'
               )}
             >
-              {membership?.plan_id === plan.id
-                ? '当前方案'
-                : plan.price === 0
-                  ? '免费版'
-                  : '订阅'}
-            </button>
-          </div>
-        ))}
+              {plan.popular && (
+                <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-accent-bg text-accent text-xs font-medium">
+                  推荐
+                </div>
+              )}
+              <h3 className="text-lg font-bold text-text-primary mb-1">{plan.name}</h3>
+              <div className="mb-4">
+                <span className="text-3xl font-bold text-text-primary">{plan.price === 0 ? '免费' : `¥${plan.price}`}</span>
+                {plan.price > 0 && plan.id !== 'lifetime' && <span className="text-sm text-text-secondary">/月</span>}
+                {plan.id === 'lifetime' && <span className="text-sm text-text-secondary">/一次</span>}
+              </div>
+              <div className="text-xs text-text-tertiary mb-4">赠送 {plan.credits} 积分</div>
+              <ul className="space-y-2 mb-6">
+                {plan.features.map((f) => (
+                  <li key={f} className="text-sm text-text-secondary flex items-center gap-2">
+                    <Check className="w-4 h-4 text-success shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => {
+                  if (!isDisabled && plan.price > 0) {
+                    setSelectedPlan(plan)
+                  }
+                }}
+                disabled={isDisabled}
+                className={cn(
+                  'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                  'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
+                  'disabled:opacity-50',
+                  isDisabled
+                    ? 'bg-bg-secondary text-text-primary'
+                    : 'bg-accent text-white hover:bg-accent-light shadow-sm'
+                )}
+              >
+                {isCurrent
+                  ? '当前方案'
+                  : isIncluded
+                    ? '已包含'
+                    : plan.price === 0
+                      ? '免费版'
+                      : '订阅'}
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       {selectedPlan && (

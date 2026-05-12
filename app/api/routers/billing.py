@@ -286,7 +286,7 @@ async def get_membership_plans(user: dict = Depends(get_current_user)) -> dict[s
                 "popular": False,
             },
             "lifetime": {
-                "id": "enterprise",
+                "id": "lifetime",
                 "name": "终身会员",
                 "features": ["全部功能", "API 接口", "专属客服", "定制策略", "终身权益"],
                 "popular": False,
