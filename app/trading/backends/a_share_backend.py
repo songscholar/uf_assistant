@@ -123,10 +123,13 @@ class AShareBackend(ExchangeBackend):
         return {"CNY": 1_000_000}  # 模拟盘默认 100 万
 
     async def get_ticker(self, symbol: str) -> dict[str, Any]:
-        # 复用现有东财实时行情
+        # 优先本地 securities 表，fallback 东财实时行情
         try:
-            from app.tools.eastmoney_api import get_stock_realtime
-            data = get_stock_realtime(symbol)
-            return {"last": data.get("price", 0)}
+            from app.services.market_sync import get_local_quote
+            data = get_local_quote(symbol)
+            if data is None:
+                from app.tools.eastmoney_api import get_stock_realtime
+                data = get_stock_realtime(symbol)
+            return {"last": data.get("price", 0) if data else 0}
         except Exception:
             return {"last": 0}

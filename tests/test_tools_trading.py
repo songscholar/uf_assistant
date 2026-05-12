@@ -38,7 +38,7 @@ class TestMockTradingBackend:
         backend = MockTradingBackend(user_id=999001, initial_capital=1_000_000)
         order = backend.submit_order(
             db=db,
-            symbol="000001",
+            symbol="TEST001",
             side=OrderSide.BUY.value,
             quantity=100,
             price=10.0,
@@ -59,7 +59,7 @@ class TestMockTradingBackend:
         backend = MockTradingBackend(user_id=999002, initial_capital=1_000_000)
         backend.submit_order(
             db=db,
-            symbol="000001",
+            symbol="TEST001",
             side=OrderSide.BUY.value,
             quantity=100,
             price=10.0,
@@ -84,11 +84,11 @@ class TestMockTradingBackend:
         db = get_db_session()
         backend = MockTradingBackend(user_id=999003, initial_capital=1_000_000)
         backend.submit_order(
-            db=db, symbol="000001", side="buy", quantity=100, price=10.0,
+            db=db, symbol="TEST001", side="buy", quantity=100, price=10.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         backend.submit_order(
-            db=db, symbol="000001", side="buy", quantity=100, price=20.0,
+            db=db, symbol="TEST001", side="buy", quantity=100, price=20.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         result = get_positions(user_id=999003)
@@ -102,12 +102,12 @@ class TestMockTradingBackend:
         backend = MockTradingBackend(user_id=999004, initial_capital=1_000_000)
         # 买入
         backend.submit_order(
-            db=db, symbol="000001", side="buy", quantity=100, price=10.0,
+            db=db, symbol="TEST001", side="buy", quantity=100, price=10.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         # 卖出
         backend.submit_order(
-            db=db, symbol="000001", side="sell", quantity=50, price=12.0,
+            db=db, symbol="TEST001", side="sell", quantity=50, price=12.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         result = get_positions(user_id=999004)
@@ -124,11 +124,11 @@ class TestMockTradingBackend:
         db = get_db_session()
         backend = MockTradingBackend(user_id=999005, initial_capital=1_000_000)
         backend.submit_order(
-            db=db, symbol="000001", side="buy", quantity=100, price=10.0,
+            db=db, symbol="TEST001", side="buy", quantity=100, price=10.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         backend.submit_order(
-            db=db, symbol="000001", side="sell", quantity=100, price=12.0,
+            db=db, symbol="TEST001", side="sell", quantity=100, price=12.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         result = get_positions(user_id=999005)
@@ -144,7 +144,7 @@ class TestMockTradingBackend:
         db = get_db_session()
         backend = MockTradingBackend(user_id=999006, initial_capital=1_000_000)
         order = backend.submit_order(
-            db=db, symbol="000001", side="buy", quantity=100, price=10.0,
+            db=db, symbol="TEST001", side="buy", quantity=100, price=10.0,
             order_type="limit", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         result = cancel_order(user_id=999006, order_id=order["order_id"])
@@ -156,7 +156,7 @@ class TestMockTradingBackend:
         db = get_db_session()
         backend = MockTradingBackend(user_id=999007, initial_capital=1_000_000)
         backend.submit_order(
-            db=db, symbol="000001", side="buy", quantity=100, price=10.0,
+            db=db, symbol="TEST001", side="buy", quantity=100, price=10.0,
             order_type="market", trade_type=TradeType.NORMAL, exchange_code="SH",
         )
         result = get_portfolio(user_id=999007)
@@ -171,7 +171,7 @@ class TestMockTradingBackend:
         backend = MockTradingBackend(user_id=999008, initial_capital=1000)
         with pytest.raises(TradingError, match="可用资金不足"):
             backend.submit_order(
-                db=db, symbol="000001", side="buy", quantity=1000, price=100.0,
+                db=db, symbol="TEST001", side="buy", quantity=1000, price=100.0,
                 order_type="limit", trade_type=TradeType.NORMAL, exchange_code="SH",
             )
         db.close()
@@ -218,25 +218,25 @@ class TestTradingTools:
     def test_submit_order_success(self):
         """测试成功下单"""
         result = submit_order(
-            user_id=999101, symbol="000001", side="buy", quantity=100,
+            user_id=999101, symbol="TEST001", side="buy", quantity=100,
             price=10.5, order_type="limit", trade_type="normal", exchange_code="SH",
         )
         assert result["order_id"] is not None
-        assert result["symbol"] == "000001"
+        assert result["symbol"] == "TEST001"
         assert result["side"] == "buy"
 
     def test_submit_order_invalid_side(self):
         """测试无效订单方向"""
         with pytest.raises(TradingError):
             submit_order(
-                user_id=999102, symbol="000001", side="invalid", quantity=100,
+                user_id=999102, symbol="TEST001", side="invalid", quantity=100,
                 price=10.5, order_type="limit", trade_type="normal", exchange_code="SH",
             )
 
     def test_get_positions(self):
         """测试获取持仓"""
         submit_order(
-            user_id=999103, symbol="000002", side="buy", quantity=200,
+            user_id=999103, symbol="TEST002", side="buy", quantity=200,
             price=20.0, order_type="limit", trade_type="normal", exchange_code="SH",
         )
         result = get_positions(user_id=999103)
@@ -246,7 +246,7 @@ class TestTradingTools:
     def test_get_orders(self):
         """测试获取订单"""
         submit_order(
-            user_id=999104, symbol="000004", side="buy", quantity=100,
+            user_id=999104, symbol="TEST004", side="buy", quantity=100,
             price=10.0, order_type="limit", trade_type="normal", exchange_code="SH",
         )
         result = get_orders(user_id=999104)
@@ -256,7 +256,7 @@ class TestTradingTools:
     def test_get_portfolio(self):
         """测试获取投资组合"""
         submit_order(
-            user_id=999105, symbol="000005", side="buy", quantity=100,
+            user_id=999105, symbol="TEST005", side="buy", quantity=100,
             price=10.0, order_type="limit", trade_type="normal", exchange_code="SH",
         )
         result = get_portfolio(user_id=999105)

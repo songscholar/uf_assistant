@@ -44,7 +44,9 @@ def sync_a_share_securities() -> dict[str, int]:
 
     try:
         logger.info("a_share_sync_started")
-        df = ak.stock_zh_a_spot_em()
+        df = ak.stock_zh_a_spot()
+        # 清理代码前缀（sh/sz/bj）
+        df["代码"] = df["代码"].astype(str).str.replace(r"^(sh|sz|bj)", "", regex=True)
         logger.info("a_share_data_fetched", rows=len(df))
     except Exception as exc:
         logger.error("a_share_fetch_failed", error=str(exc))
@@ -61,26 +63,21 @@ def sync_a_share_securities() -> dict[str, int]:
                 if not symbol:
                     continue
 
-                # 从 AKShare 的 spot 表提取字段（列名可能因版本而异，防御性处理）
-                name = row.get("名称") or row.get("股票名称") or None
+                name = row.get("名称")
                 price = _to_float(row.get("最新价"))
                 prev_close = _to_float(row.get("昨收"))
                 open_price = _to_float(row.get("今开"))
                 high = _to_float(row.get("最高"))
                 low = _to_float(row.get("最低"))
-                limit_up = _to_float(row.get("涨停价"))
-                limit_down = _to_float(row.get("跌停价"))
                 change_pct = _to_float(row.get("涨跌幅"))
                 volume = _to_float(row.get("成交量"))
                 amount = _to_float(row.get("成交额"))
-                pe_ttm = _to_float(row.get("市盈率-动态")) or _to_float(row.get("市盈率"))
-                pb = _to_float(row.get("市净率"))
-                market_cap = _to_float(row.get("总市值"))
-                float_cap = _to_float(row.get("流通市值"))
-                turnover = _to_float(row.get("换手率"))
 
-                # 判断板块（根据代码规则）
+                # 涨跌停价格根据 prev_close 和板块规则计算
                 category = _a_share_category(symbol)
+                limit_rate = _limit_rate(symbol)
+                limit_up = round(prev_close * (1 + limit_rate), 2) if prev_close else None
+                limit_down = round(prev_close * (1 - limit_rate), 2) if prev_close else None
 
                 # SQLite upsert: INSERT ... ON CONFLICT DO UPDATE
                 stmt = sqlite_insert(Security).values(
@@ -100,11 +97,6 @@ def sync_a_share_securities() -> dict[str, int]:
                     volume=volume,
                     amount=amount,
                     lot_size=100,
-                    pe_ttm=pe_ttm,
-                    pb=pb,
-                    market_cap=market_cap,
-                    float_cap=float_cap,
-                    turnover=turnover,
                     timestamp=datetime.now(timezone.utc),
                     source="akshare",
                 )
@@ -123,18 +115,12 @@ def sync_a_share_securities() -> dict[str, int]:
                         "change_pct": stmt.excluded.change_pct,
                         "volume": stmt.excluded.volume,
                         "amount": stmt.excluded.amount,
-                        "pe_ttm": stmt.excluded.pe_ttm,
-                        "pb": stmt.excluded.pb,
-                        "market_cap": stmt.excluded.market_cap,
-                        "float_cap": stmt.excluded.float_cap,
-                        "turnover": stmt.excluded.turnover,
                         "timestamp": stmt.excluded.timestamp,
                         "source": stmt.excluded.source,
                     },
                 )
                 result = db.execute(stmt)
                 if result.rowcount == 1:
-                    # SQLite 无法区分 insert 和 update 的 rowcount，简单处理
                     inserted += 1
                 else:
                     updated += 1
@@ -249,6 +235,40 @@ def sync_crypto_securities(exchange_id: str = "gate") -> dict[str, int]:
     return {"inserted": inserted, "updated": updated, "failed": failed}
 
 
+# ── 本地查询接口（供全系统使用）───────────────────────────────────────────────
+
+def get_local_quote(symbol: str) -> dict[str, Any] | None:
+    """优先从本地 securities 表获取行情，无数据返回 None"""
+    try:
+        with get_db_session() as db:
+            sec = db.query(Security).filter(Security.symbol == symbol).first()
+            if sec and sec.price is not None:
+                return {
+                    "symbol": sec.symbol,
+                    "name": sec.name,
+                    "price": sec.price,
+                    "open": sec.open,
+                    "high": sec.high,
+                    "low": sec.low,
+                    "prev_close": sec.prev_close,
+                    "change_pct": sec.change_pct,
+                    "volume": sec.volume,
+                    "amount": sec.amount,
+                    "limit_up": sec.limit_up,
+                    "limit_down": sec.limit_down,
+                    "pe_ttm": sec.pe_ttm,
+                    "pb": sec.pb,
+                    "market_cap": sec.market_cap,
+                    "float_cap": sec.float_cap,
+                    "turnover": sec.turnover,
+                    "timestamp": sec.timestamp.isoformat() if sec.timestamp else None,
+                    "source": sec.source,
+                }
+    except Exception:
+        pass
+    return None
+
+
 # ── 统一入口 ──────────────────────────────────────────────────────────────────
 
 def sync_all_securities() -> dict[str, Any]:
@@ -285,8 +305,17 @@ def _a_share_category(symbol: str) -> str | None:
         return "创业板"
     if symbol.startswith("00"):
         return "深市主板"
-    if symbol.startswith("8") or symbol.startswith("4"):
+    if symbol.startswith("8") or symbol.startswith("4") or symbol.startswith("92"):
         return "北交所"
     if symbol.startswith("5"):
         return "沪市B股"
     return None
+
+
+def _limit_rate(symbol: str) -> float:
+    """根据代码返回涨跌停幅度（主板 10%，科创/创业 20%，北交所 30%）"""
+    if symbol.startswith("68") or symbol.startswith("30"):
+        return 0.20
+    if symbol.startswith("8") or symbol.startswith("4") or symbol.startswith("92"):
+        return 0.30
+    return 0.10

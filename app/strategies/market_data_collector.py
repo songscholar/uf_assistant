@@ -122,11 +122,14 @@ class MarketDataCollector:
             return None
 
     def _get_stock_price(self, symbol: str) -> dict[str, Any] | None:
-        """Fetch A-stock price via eastmoney_api (with tencent fallback)."""
+        """Fetch A-stock price via local securities table (fallback eastmoney_api)."""
         try:
-            from app.tools import eastmoney_api
+            from app.services.market_sync import get_local_quote
 
-            raw = eastmoney_api.get_stock_realtime(symbol)
+            raw = get_local_quote(symbol)
+            if raw is None:
+                from app.tools import eastmoney_api
+                raw = eastmoney_api.get_stock_realtime(symbol)
             if not raw:
                 return None
 
@@ -301,11 +304,14 @@ class MarketDataCollector:
             return None
 
     def _get_fundamental(self, symbol: str) -> dict[str, Any] | None:
-        """Fetch A-stock fundamental data via eastmoney_api (real-time quote includes PE/PB/cap)."""
+        """Fetch A-stock fundamental data via local table (fallback eastmoney_api)."""
         try:
-            from app.tools import eastmoney_api
+            from app.services.market_sync import get_local_quote
 
-            raw = eastmoney_api.get_stock_realtime(symbol)
+            raw = get_local_quote(symbol)
+            if raw is None:
+                from app.tools import eastmoney_api
+                raw = eastmoney_api.get_stock_realtime(symbol)
             if not raw:
                 return None
 

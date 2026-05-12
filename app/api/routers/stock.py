@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user
 from app.core.logging import get_logger
+from app.services.market_sync import get_local_quote
 from app.tools.stock_data import (
     get_capital_flow,
     get_stock_financial,
@@ -188,11 +189,13 @@ async def watchlist_list(current_user: dict = Depends(get_current_user)):
         if not items:
             return {"items": []}
 
-        # 批量获取实时行情
+        # 批量获取实时行情（优先本地表）
         results = []
         for item in items:
             try:
-                rt = get_stock_realtime(item["symbol"])
+                rt = get_local_quote(item["symbol"])
+                if rt is None:
+                    rt = get_stock_realtime(item["symbol"])
                 if isinstance(rt, dict):
                     price = rt.get("price")
                     prev_close = rt.get("prev_close")
@@ -265,10 +268,12 @@ async def watchlist_add(
                         name = row.iloc[0]["名称"]
             except Exception:
                 pass
-        # 获取添加时的实时价格快照
+        # 获取添加时的实时价格快照（优先本地表）
         added_price = None
         try:
-            rt = get_stock_realtime(request.symbol)
+            rt = get_local_quote(request.symbol)
+            if rt is None:
+                rt = get_stock_realtime(request.symbol)
             if isinstance(rt, dict):
                 added_price = rt.get("price")
         except Exception as exc:

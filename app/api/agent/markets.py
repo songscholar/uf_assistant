@@ -81,6 +81,12 @@ async def agent_stock_realtime(
     _inject_rate_limit(request, record)
     _check_instrument(record, symbol)
     try:
+        # 优先本地表
+        from app.services.market_sync import get_local_quote
+        local = get_local_quote(symbol)
+        if local:
+            return local
+        # fallback 远程
         return await _call_with_timeout(get_stock_realtime, symbol)
     except HTTPException:
         raise

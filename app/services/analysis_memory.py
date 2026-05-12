@@ -476,10 +476,13 @@ def _extract_price(analysis_result: Dict[str, Any]) -> Decimal | None:
 
 
 def _fetch_current_price(market: str, symbol: str) -> float | None:
-    """获取当前价格（A 股用东财 API）"""
+    """获取当前价格（优先本地 securities 表，fallback 东财 API）"""
     try:
         if market.lower() in ("a_stock", "astock", "cn", "china"):
-            data = get_stock_realtime(symbol)
+            from app.services.market_sync import get_local_quote
+            data = get_local_quote(symbol)
+            if data is None:
+                data = get_stock_realtime(symbol)
             if isinstance(data, dict):
                 return float(data.get("price") or data.get("最新价") or 0)
         # TODO: 扩展 Crypto / USStock 支持

@@ -2192,11 +2192,14 @@ class TradingExecutor:
         try:
             price: float | None = None
             if market == "stock":
-                from app.tools.stock_data import get_stock_realtime
+                from app.services.market_sync import get_local_quote
 
-                data = get_stock_realtime(symbol)
-                if isinstance(data, str):
-                    data = json.loads(data)
+                data = get_local_quote(symbol)
+                if data is None:
+                    from app.tools.stock_data import get_stock_realtime
+                    data = get_stock_realtime(symbol)
+                    if isinstance(data, str):
+                        data = json.loads(data)
                 if isinstance(data, dict):
                     raw = data.get("price")
                     if raw is not None:
