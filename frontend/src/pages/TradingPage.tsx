@@ -534,6 +534,15 @@ export default function TradingPage() {
                     <span className="text-text-secondary font-medium">总费用</span>
                     <span className="text-text-primary font-medium">¥{formatNumber(feeEstimate.fees?.total)}</span>
                   </div>
+                  <div className="flex justify-between pt-1">
+                    <span className="text-text-secondary font-medium">总金额</span>
+                    <span className={cn(
+                      'font-medium',
+                      orderSide === 'buy' ? 'text-[#4ade80]' : 'text-[#f87171]'
+                    )}>
+                      ¥{formatNumber((feeEstimate.amount || 0) + (feeEstimate.fees?.total || 0))}
+                    </span>
+                  </div>
                 </div>
               )}
               {orderMessage && (
