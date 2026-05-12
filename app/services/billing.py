@@ -926,6 +926,7 @@ class BillingService:
             "is_vip": is_vip,
             "vip_expires_at": vip_expires_at.isoformat() if vip_expires_at else None,
             "level": level,
+            "plan_id": plan_level_map.get(vip_plan, "free") if is_vip else "free",
             "expires_at": vip_expires_at.isoformat() if vip_expires_at else None,
             "benefits": benefits,
             "billing_enabled": config.get("enabled", False),

@@ -323,6 +323,7 @@ export interface CreditLog {
 
 export interface MembershipInfo {
   level: string;
+  plan_id: string;
   expires_at: string;
   benefits: string[];
 }

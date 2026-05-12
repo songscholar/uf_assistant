@@ -366,18 +366,27 @@ function PlansTab() {
               ))}
             </ul>
             <button
-              onClick={() => plan.price > 0 && setSelectedPlan(plan)}
-              disabled={plan.price === 0}
+              onClick={() => {
+                const isCurrent = membership?.plan_id === plan.id
+                if (!isCurrent && plan.price > 0) {
+                  setSelectedPlan(plan)
+                }
+              }}
+              disabled={membership?.plan_id === plan.id || plan.price === 0}
               className={cn(
                 'w-full py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 'hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.985]',
                 'disabled:opacity-50',
-                plan.popular
-                  ? 'bg-accent text-white hover:bg-accent-light shadow-sm'
-                  : 'bg-bg-secondary text-text-primary hover:bg-bg-hover'
+                membership?.plan_id === plan.id || plan.price === 0
+                  ? 'bg-bg-secondary text-text-primary'
+                  : 'bg-accent text-white hover:bg-accent-light shadow-sm'
               )}
             >
-              {plan.price === 0 ? '当前方案' : '订阅'}
+              {membership?.plan_id === plan.id
+                ? '当前方案'
+                : plan.price === 0
+                  ? '免费版'
+                  : '订阅'}
             </button>
           </div>
         ))}
