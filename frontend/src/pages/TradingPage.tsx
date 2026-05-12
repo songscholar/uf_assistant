@@ -363,7 +363,7 @@ export default function TradingPage() {
             { label: '总资产', value: `¥${formatNumber(portfolio.total_assets)}` },
             { label: '可用资金', value: `¥${formatNumber(portfolio.available_cash)}` },
             { label: '持仓市值', value: `¥${formatNumber(portfolio.position_value)}` },
-            { label: '累计收益', value: `${portfolio.total_pnl >= 0 ? '+' : ''}${formatPercent(portfolio.total_pnl_percent)}`, color: portfolio.total_pnl >= 0 ? 'text-rise' : 'text-fall' },
+            { label: '累计收益', value: `${portfolio.total_pnl >= 0 ? '+' : ''}¥${formatNumber(portfolio.total_pnl)} (${portfolio.total_pnl >= 0 ? '+' : ''}${formatPercent(portfolio.total_pnl_percent)})`, color: portfolio.total_pnl >= 0 ? 'text-rise' : 'text-fall' },
           ].map((item) => (
             <div key={item.label} className="bg-bg-card border border-border rounded-xl p-4 card-hover cursor-pointer">
               <div className="text-xs text-text-tertiary mb-1">{item.label}</div>
@@ -695,23 +695,23 @@ export default function TradingPage() {
                       <>
                         <th className="text-left px-4 py-2 font-medium">市场</th>
                         <th className="text-left px-4 py-2 font-medium">代码</th>
-                        <th className="text-right px-4 py-2 font-medium">数量</th>
-                        <th className="text-right px-4 py-2 font-medium">成本</th>
-                        <th className="text-right px-4 py-2 font-medium">现价</th>
-                        <th className="text-right px-4 py-2 font-medium">未实现盈亏</th>
+                        <th className="text-left px-4 py-2 font-medium">数量</th>
+                        <th className="text-left px-4 py-2 font-medium">成本</th>
+                        <th className="text-left px-4 py-2 font-medium">现价</th>
+                        <th className="text-left px-4 py-2 font-medium">未实现盈亏</th>
                       </>
                     )
                   : (
                       <>
                         <th className="text-left px-4 py-2 font-medium">代码</th>
                         <th className="text-left px-4 py-2 font-medium">名称</th>
-                        <th className="text-right px-4 py-2 font-medium">数量</th>
-                        <th className="text-right px-4 py-2 font-medium">成本</th>
-                        <th className="text-right px-4 py-2 font-medium">现价</th>
-                        <th className="text-right px-4 py-2 font-medium">市值</th>
-                        <th className="text-right px-4 py-2 font-medium">盈亏</th>
-                        <th className="text-right px-4 py-2 font-medium">收益率</th>
-                        <th className="text-right px-4 py-2 font-medium">费用</th>
+                        <th className="text-left px-4 py-2 font-medium">数量</th>
+                        <th className="text-left px-4 py-2 font-medium">成本</th>
+                        <th className="text-left px-4 py-2 font-medium">现价</th>
+                        <th className="text-left px-4 py-2 font-medium">市值</th>
+                        <th className="text-left px-4 py-2 font-medium">盈亏</th>
+                        <th className="text-left px-4 py-2 font-medium">收益率</th>
+                        <th className="text-left px-4 py-2 font-medium">费用</th>
                       </>
                     )
                 }
@@ -723,10 +723,10 @@ export default function TradingPage() {
                     <tr key={`${pos.market}-${pos.symbol}`} className="hover:bg-bg-hover transition-colors duration-150 cursor-pointer">
                       <td className="px-4 py-3 text-text-secondary">{pos.market}</td>
                       <td className="px-4 py-3 text-text-primary font-medium">{pos.symbol}</td>
-                      <td className="px-4 py-3 text-right text-text-primary">{pos.quantity}</td>
-                      <td className="px-4 py-3 text-right text-text-secondary">{pos.avg_cost?.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right text-text-primary">{pos.current_price?.toFixed(2) ?? '--'}</td>
-                      <td className={cn('px-4 py-3 text-right font-medium', (pos.unrealized_pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
+                      <td className="px-4 py-3 text-left text-text-primary">{pos.quantity}</td>
+                      <td className="px-4 py-3 text-left text-text-secondary">{pos.avg_cost?.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-left text-text-primary">{pos.current_price?.toFixed(2) ?? '--'}</td>
+                      <td className={cn('px-4 py-3 text-left font-medium', (pos.unrealized_pnl ?? 0) >= 0 ? 'text-rise' : 'text-fall')}>
                         {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}{pos.unrealized_pnl?.toFixed(2) ?? '--'}
                       </td>
                     </tr>
@@ -735,17 +735,17 @@ export default function TradingPage() {
                     <tr key={pos.symbol} className="hover:bg-bg-hover transition-colors duration-150 cursor-pointer">
                       <td className="px-4 py-3 text-text-primary font-medium">{pos.symbol}</td>
                       <td className="px-4 py-3 text-text-secondary">{pos.name}</td>
-                      <td className="px-4 py-3 text-right text-text-primary">{pos.quantity}</td>
-                      <td className="px-4 py-3 text-right text-text-secondary">{formatNumber(pos.avg_cost)}</td>
-                      <td className="px-4 py-3 text-right text-text-primary">{formatNumber(pos.current_price)}</td>
-                      <td className="px-4 py-3 text-right text-text-primary">{formatNumber(pos.market_value)}</td>
-                      <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
+                      <td className="px-4 py-3 text-left text-text-primary">{pos.quantity}</td>
+                      <td className="px-4 py-3 text-left text-text-secondary">{formatNumber(pos.avg_cost)}</td>
+                      <td className="px-4 py-3 text-left text-text-primary">{formatNumber(pos.current_price)}</td>
+                      <td className="px-4 py-3 text-left text-text-primary">{formatNumber(pos.market_value)}</td>
+                      <td className={cn('px-4 py-3 text-left font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
                         {pos.pnl >= 0 ? '+' : ''}¥{formatNumber(Math.abs(pos.pnl))}
                       </td>
-                      <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
+                      <td className={cn('px-4 py-3 text-left font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
                         {pos.pnl >= 0 ? '+' : ''}{formatPercent(pos.pnl_percent)}
                       </td>
-                      <td className="px-4 py-3 text-right text-text-secondary">
+                      <td className="px-4 py-3 text-left text-text-secondary">
                         {pos.total_fee != null ? formatNumber(pos.total_fee) : '--'}
                       </td>
                     </tr>
