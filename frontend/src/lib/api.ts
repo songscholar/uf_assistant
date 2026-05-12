@@ -61,6 +61,16 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   block_trade_min_size: '大宗交易限额不足',
   trade_type_not_supported: '该交易类型暂不支持',
 
+  // 计费 / 支付
+  mock_payment_disabled: '模拟支付未启用',
+  alipay_disabled: '支付宝支付未启用',
+  wechat_disabled: '微信支付未启用',
+  unsupported_channel: '不支持的支付渠道',
+  missing_plan: '缺少套餐信息',
+  invalid_plan: '套餐信息无效',
+  missing_out_trade_no: '缺少交易单号',
+  invalid_expires_at: '过期时间无效',
+
   // 通用
   internal_error: '服务器内部错误，请稍后重试',
 }
@@ -85,6 +95,11 @@ export function getErrorMessage(err: unknown, fallback = '操作失败，请稍�
       const msg = String(err.response.data.message)
       if (ERROR_CODE_MAP[msg]) return ERROR_CODE_MAP[msg]
       if (/[\u4e00-\u9fff]/.test(msg)) return msg
+      // 尝试匹配 details.hint 中的中文提示
+      const hint = err.response.data.details?.hint
+      if (hint && /[\u4e00-\u9fff]/.test(String(hint))) {
+        return String(hint)
+      }
       return msg
     }
     const msg = err.message || ''
