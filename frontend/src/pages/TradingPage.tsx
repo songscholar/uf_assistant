@@ -518,23 +518,43 @@ export default function TradingPage() {
                     <span className="text-text-tertiary">成交金额</span>
                     <span className="text-text-primary">¥{formatNumber(feeEstimate.amount)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">佣金</span>
+                  <div className="group relative flex justify-between cursor-help">
+                    <span className="text-text-tertiary underline decoration-dotted decoration-text-tertiary/50">佣金</span>
                     <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.commission)}</span>
+                    <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 w-56 bg-bg-card border border-border rounded-lg p-2 shadow-lg text-[11px] text-text-secondary leading-relaxed">
+                      <div className="font-medium text-text-primary mb-0.5">佣金</div>
+                      <div>公式：成交金额 × 0.03%</div>
+                      <div>说明：最低 5 元，买入卖出均收取</div>
+                    </div>
                   </div>
                   {feeEstimate.fees?.stamp_tax > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-text-tertiary">印花税</span>
+                    <div className="group relative flex justify-between cursor-help">
+                      <span className="text-text-tertiary underline decoration-dotted decoration-text-tertiary/50">印花税</span>
                       <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.stamp_tax)}</span>
+                      <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 w-56 bg-bg-card border border-border rounded-lg p-2 shadow-lg text-[11px] text-text-secondary leading-relaxed">
+                        <div className="font-medium text-text-primary mb-0.5">印花税</div>
+                        <div>公式：成交金额 × 0.1%</div>
+                        <div>说明：仅卖出时收取，买入不收</div>
+                      </div>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">过户费</span>
+                  <div className="group relative flex justify-between cursor-help">
+                    <span className="text-text-tertiary underline decoration-dotted decoration-text-tertiary/50">过户费</span>
                     <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.transfer_fee)}</span>
+                    <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 w-56 bg-bg-card border border-border rounded-lg p-2 shadow-lg text-[11px] text-text-secondary leading-relaxed">
+                      <div className="font-medium text-text-primary mb-0.5">过户费</div>
+                      <div>公式：成交金额 × 0.002%</div>
+                      <div>说明：买入卖出均收取</div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">交易所费用</span>
+                  <div className="group relative flex justify-between cursor-help">
+                    <span className="text-text-tertiary underline decoration-dotted decoration-text-tertiary/50">交易所费用</span>
                     <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.exchange_fee)}</span>
+                    <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 w-56 bg-bg-card border border-border rounded-lg p-2 shadow-lg text-[11px] text-text-secondary leading-relaxed">
+                      <div className="font-medium text-text-primary mb-0.5">交易所费用</div>
+                      <div>公式：成交金额 × 0.00487%</div>
+                      <div>说明：含证管费 + 经手费，买入卖出均收取</div>
+                    </div>
                   </div>
                   <div className="flex justify-between border-t border-border-light pt-1 mt-1">
                     <span className="text-text-secondary font-medium">总费用</span>
