@@ -188,6 +188,15 @@ export const tradingApi = {
   cancelOrder: (id: string) => api.delete(`/trading/orders/${id}`),
 
   getPortfolio: () => api.get('/trading/portfolio'),
+
+  estimateFee: (params: {
+    symbol: string
+    side: 'buy' | 'sell'
+    quantity: number
+    price: number
+    trade_type?: string
+    exchange_code?: string
+  }) => api.post('/trading/fee-estimate', params),
 }
 
 // Live Trading APIs (实盘)

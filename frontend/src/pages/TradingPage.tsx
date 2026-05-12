@@ -49,6 +49,10 @@ export default function TradingPage() {
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [maxQuantity, setMaxQuantity] = useState<number | null>(null)
 
+  // Fee estimate
+  const [feeEstimate, setFeeEstimate] = useState<any>(null)
+  const [feeLoading, setFeeLoading] = useState(false)
+
   const fetchMockData = useCallback(async () => {
     try {
       const [portfolioRes, positionsRes, ordersRes] = await Promise.all([
@@ -130,20 +134,21 @@ export default function TradingPage() {
 
   // 价格/方向变化时计算最大可买/卖数量
   useEffect(() => {
-    if (!orderPrice || !quoteData) {
-      setMaxQuantity(null)
-      return
-    }
-    const price = parseFloat(orderPrice)
-    if (price <= 0 || isNaN(price)) {
-      setMaxQuantity(null)
-      return
-    }
     if (orderSide === 'buy') {
+      if (!orderPrice || !quoteData) {
+        setMaxQuantity(null)
+        return
+      }
+      const price = parseFloat(orderPrice)
+      if (price <= 0 || isNaN(price)) {
+        setMaxQuantity(null)
+        return
+      }
       const cash = portfolio?.available_cash || 0
       const qty = Math.floor(cash / price / 100) * 100
       setMaxQuantity(Math.max(0, qty))
     } else {
+      // 卖出不需要价格，只看持仓
       const pos = positions.find((p: any) => p.symbol === orderSymbol)
       if (pos) {
         const qty = Math.floor(pos.quantity / 100) * 100
@@ -153,6 +158,48 @@ export default function TradingPage() {
       }
     }
   }, [orderPrice, orderSide, orderSymbol, portfolio, positions, quoteData])
+
+  // 费用预估
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!orderSymbol || !orderQuantity) {
+        setFeeEstimate(null)
+        return
+      }
+      const qty = parseFloat(orderQuantity)
+      if (isNaN(qty) || qty <= 0) {
+        setFeeEstimate(null)
+        return
+      }
+      let price: number
+      if (orderPrice) {
+        price = parseFloat(orderPrice)
+        if (isNaN(price) || price <= 0) {
+          setFeeEstimate(null)
+          return
+        }
+      } else if (quoteData?.price) {
+        price = quoteData.price
+      } else {
+        setFeeEstimate(null)
+        return
+      }
+      setFeeLoading(true)
+      tradingApi.estimateFee({
+        symbol: orderSymbol,
+        side: orderSide,
+        quantity: qty,
+        price: price,
+      }).then((res) => {
+        setFeeEstimate(res.data)
+      }).catch(() => {
+        setFeeEstimate(null)
+      }).finally(() => {
+        setFeeLoading(false)
+      })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [orderSymbol, orderSide, orderPrice, orderQuantity, quoteData])
 
   const handleSubmitOrder = async () => {
     if (!orderSymbol || !orderQuantity) {
@@ -457,6 +504,38 @@ export default function TradingPage() {
                   </div>
                 )}
               </div>
+              {/* 费用预估 */}
+              {mode === 'mock' && feeEstimate && (
+                <div className="bg-bg-secondary rounded-lg p-3 text-xs space-y-1">
+                  <div className="text-text-secondary font-medium mb-1">费用预估</div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">成交金额</span>
+                    <span className="text-text-primary">¥{formatNumber(feeEstimate.amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">佣金</span>
+                    <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.commission)}</span>
+                  </div>
+                  {feeEstimate.fees?.stamp_tax > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-text-tertiary">印花税</span>
+                      <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.stamp_tax)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">过户费</span>
+                    <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.transfer_fee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-tertiary">交易所费用</span>
+                    <span className="text-text-primary">¥{formatNumber(feeEstimate.fees?.exchange_fee)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border-light pt-1 mt-1">
+                    <span className="text-text-secondary font-medium">总费用</span>
+                    <span className="text-text-primary font-medium">¥{formatNumber(feeEstimate.fees?.total)}</span>
+                  </div>
+                </div>
+              )}
               {orderMessage && (
                 <div className={cn(
                   'text-xs rounded-lg px-3 py-2',
@@ -580,7 +659,7 @@ export default function TradingPage() {
                   ? ['市场', '代码', '数量', '成本', '现价', '未实现盈亏'].map((h) => (
                       <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
                     ))
-                  : ['代码', '名称', '数量', '成本', '现价', '市值', '盈亏'].map((h) => (
+                  : ['代码', '名称', '数量', '成本', '现价', '市值', '盈亏', '费用'].map((h) => (
                       <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
                     ))
                 }
@@ -611,12 +690,15 @@ export default function TradingPage() {
                       <td className={cn('px-4 py-3 text-right font-medium', pos.pnl >= 0 ? 'text-rise' : 'text-fall')}>
                         {pos.pnl >= 0 ? '+' : ''}{formatPercent(pos.pnl_percent)}
                       </td>
+                      <td className="px-4 py-3 text-right text-text-secondary">
+                        {pos.total_fee != null ? formatNumber(pos.total_fee) : '--'}
+                      </td>
                     </tr>
                   ))
               }
               {(mode === 'live' ? livePositions : positions).length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无持仓</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无持仓</td>
                 </tr>
               )}
             </tbody>
@@ -630,7 +712,7 @@ export default function TradingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-bg-secondary text-text-secondary text-xs">
-                {['时间', mode === 'live' ? '市场' : null, '代码', '方向', '类型', '价格', '数量', '状态', '操作']
+                {['时间', mode === 'live' ? '市场' : null, '代码', '方向', '类型', '价格', '数量', '费用', '状态', '操作']
                   .filter(Boolean)
                   .map((h) => (
                     <th key={h as string} className="text-left px-4 py-2 font-medium">{h}</th>
@@ -665,6 +747,9 @@ export default function TradingPage() {
                           : '市价'}
                     </td>
                     <td className="px-4 py-3 text-right text-text-primary">{o.quantity}</td>
+                    <td className="px-4 py-3 text-right text-text-secondary">
+                      {(o as any).total_fee != null ? formatNumber((o as any).total_fee) : '--'}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={o.status} />
                     </td>
@@ -683,7 +768,7 @@ export default function TradingPage() {
               })}
               {(mode === 'live' ? liveOrders : orders).length === 0 && (
                 <tr>
-                  <td colSpan={mode === 'live' ? 9 : 8} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无订单</td>
+                  <td colSpan={mode === 'live' ? 10 : 9} className="px-4 py-8 text-center text-text-tertiary text-sm">暂无订单</td>
                 </tr>
               )}
             </tbody>

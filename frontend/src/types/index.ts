@@ -116,6 +116,7 @@ export interface Position {
   pnl_percent: number;
   unrealized_pnl: number;
   realized_pnl: number;
+  total_fee: number;
   trade_type: string;
 }
 

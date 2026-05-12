@@ -130,8 +130,21 @@ class MockTradingBackend:
         if quantity <= 0:
             raise TradingError("数量必须大于 0")
 
-        # 确定成交价
-        filled_price = price or 0
+        # 确定成交价（市价单查询本地 securities 表最新价）
+        if price is None or price <= 0:
+            try:
+                sec = db.query(Security).filter(Security.symbol == symbol).first()
+                if sec and sec.price:
+                    filled_price = sec.price
+                else:
+                    filled_price = 0
+            except Exception:
+                filled_price = 0
+        else:
+            filled_price = price
+
+        if filled_price <= 0:
+            raise TradingError(f"无法获取 {symbol} 的当前价格，请填写委托价格")
 
         # 计算费用
         fee_result = calculate_fees(trade_type, side, quantity, filled_price, exchange_code=exchange_code)
@@ -309,6 +322,21 @@ class MockTradingBackend:
             cost_basis = p.avg_cost * p.total_quantity
             pnl = round(market_value - cost_basis, 2) if p.avg_cost else 0
             pnl_percent = round(pnl / cost_basis * 100, 2) if cost_basis else 0
+
+            # 累计买入费用
+            total_fee = 0.0
+            try:
+                from sqlalchemy import func as sa_func
+                fee_sum = db.query(sa_func.sum(Order.total_fee)).filter(
+                    Order.user_id == self.user_id,
+                    Order.symbol == p.symbol,
+                    Order.side == OrderSide.BUY.value,
+                ).scalar()
+                if fee_sum:
+                    total_fee = round(float(fee_sum), 2)
+            except Exception:
+                pass
+
             result.append({
                 "id": p.id,
                 "symbol": p.symbol,
@@ -324,6 +352,7 @@ class MockTradingBackend:
                 "pnl_percent": pnl_percent,
                 "unrealized_pnl": round(p.unrealized_pnl, 2) if p.unrealized_pnl else 0,
                 "realized_pnl": round(p.realized_pnl, 2) if p.realized_pnl else 0,
+                "total_fee": total_fee,
                 "trade_type": p.trade_type,
             })
         return result

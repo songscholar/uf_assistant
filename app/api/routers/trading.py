@@ -11,6 +11,8 @@ from app.auth.dependencies import get_current_user
 from app.core.constants import MarketType, TradingMode
 from app.core.exceptions import CredentialError, TradingError
 from app.core.logging import get_logger
+from app.trading.fees import calculate_fees
+from app.core.constants import TradeType
 from app.tools.trading import (
     cancel_order,
     get_orders,
@@ -57,6 +59,40 @@ async def place_order(request: OrderRequest, current_user: dict = Depends(get_cu
     except Exception as exc:
         logger.error("place_order_error", user_id=current_user["user_id"], error=str(exc))
         raise HTTPException(status_code=500, detail="下单失败，请稍后重试")
+
+
+class FeeEstimateRequest(BaseModel):
+    """费用预估请求"""
+    symbol: str = Field(..., description="股票代码")
+    side: str = Field(..., description="buy 或 sell")
+    quantity: float = Field(..., gt=0, description="数量")
+    price: float = Field(..., gt=0, description="价格")
+    trade_type: str = Field("normal", description="normal/block/hk_sh/hk_sz/etf_create/etf_redeem")
+    exchange_code: str = Field("SH", description="SH/SZ/HK")
+
+
+@router.post("/trading/fee-estimate")
+async def fee_estimate(request: FeeEstimateRequest):
+    """费用预估（买入/卖出费用明细）"""
+    try:
+        fee_result = calculate_fees(
+            TradeType(request.trade_type),
+            request.side,
+            request.quantity,
+            request.price,
+            exchange_code=request.exchange_code,
+        )
+        return {
+            "symbol": request.symbol,
+            "side": request.side,
+            "quantity": request.quantity,
+            "price": request.price,
+            "amount": round(request.quantity * request.price, 2),
+            "fees": fee_result.to_dict(),
+        }
+    except Exception as exc:
+        logger.error("fee_estimate_error", error=str(exc))
+        raise HTTPException(status_code=500, detail="费用计算失败")
 
 
 @router.get("/trading/positions")
