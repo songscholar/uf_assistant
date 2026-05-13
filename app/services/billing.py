@@ -598,16 +598,6 @@ class BillingService:
                     session.add(log)
                 row.vip_monthly_credits_last_grant = now
 
-            # VIP 日志
-            audit_log = CreditsLogModel(
-                user_id=user_id,
-                action="membership_purchase",
-                amount=0,
-                balance_after=row.credits,
-                remark=f"Membership purchased: {plan}",
-                reference_id=order_ref,
-            )
-            session.add(audit_log)
             session.commit()
 
             return True, "success", {
@@ -707,11 +697,13 @@ class BillingService:
                 logs.append({
                     "id": r.id,
                     "action": r.action,
+                    "type": r.action,
                     "amount": float(r.amount),
                     "balance_after": float(r.balance_after),
                     "feature": r.feature,
                     "reference_id": r.reference_id,
                     "remark": r.remark,
+                    "description": r.remark or r.action,
                     "created_at": created_at_str,
                 })
 
@@ -897,6 +889,27 @@ class BillingService:
         is_vip, vip_expires_at, vip_plan = self.get_user_vip_status(user_id)
         config = self.get_billing_config()
 
+        # 计算累计获得和累计消费
+        total_earned = Decimal("0")
+        total_spent = Decimal("0")
+        session = BillingStore.get_session()
+        try:
+            from sqlalchemy import func
+            earned_result = session.query(func.sum(CreditsLogModel.amount)).filter(
+                CreditsLogModel.user_id == user_id,
+                CreditsLogModel.amount > 0,
+            ).scalar()
+            spent_result = session.query(func.sum(CreditsLogModel.amount)).filter(
+                CreditsLogModel.user_id == user_id,
+                CreditsLogModel.amount < 0,
+            ).scalar()
+            total_earned = Decimal(str(earned_result or 0))
+            total_spent = Decimal(str(abs(spent_result or 0)))
+        except Exception as e:
+            logger.error(f"get_user_billing_info calc totals failed: {e}")
+        finally:
+            session.close()
+
         # 套餐等级映射（与前端 BillingPlan id 对应）
         plan_level_map = {
             "monthly": "pro",
@@ -929,6 +942,8 @@ class BillingService:
             "plan_id": plan_level_map.get(vip_plan, "free") if is_vip else "free",
             "expires_at": vip_expires_at.isoformat() if vip_expires_at else None,
             "benefits": benefits,
+            "total_earned": float(total_earned),
+            "total_spent": float(total_spent),
             "billing_enabled": config.get("enabled", False),
             "feature_costs": {
                 "ai_analysis": config.get("cost_ai_analysis", 0),
